@@ -26,7 +26,7 @@ const Index = () => {
           <ProcessingView 
             steps={state.steps}
             currentStep={state.currentStep}
-            videoTitle={state.videoInfo?.title}
+            videoInfo={state.videoInfo}
           />
         );
       

@@ -1,13 +1,14 @@
 import { Check, Loader2, AlertCircle } from 'lucide-react';
-import { ProcessingStep } from '@/types';
+import { ProcessingStep, VideoInfo } from '@/types';
+import VideoPreview from './VideoPreview';
 
 interface ProcessingViewProps {
   steps: ProcessingStep[];
   currentStep: number;
-  videoTitle?: string;
+  videoInfo?: VideoInfo;
 }
 
-const ProcessingView = ({ steps, currentStep, videoTitle }: ProcessingViewProps) => {
+const ProcessingView = ({ steps, currentStep, videoInfo }: ProcessingViewProps) => {
   const getStepIcon = (step: ProcessingStep) => {
     switch (step.status) {
       case 'complete':
@@ -39,20 +40,37 @@ const ProcessingView = ({ steps, currentStep, videoTitle }: ProcessingViewProps)
     }
   };
 
+  const completedSteps = steps.filter(s => s.status === 'complete').length;
+  const overallProgress = Math.round((completedSteps / steps.length) * 100);
+
   return (
     <div className="w-full max-w-xl mx-auto fade-in">
-      <div className="text-center mb-8">
+      <div className="text-center mb-6">
         <h3 className="text-2xl font-semibold text-foreground mb-2">
-          Processing Your Video
+          Generating Your Notes
         </h3>
-        {videoTitle && (
-          <p className="text-muted-foreground truncate max-w-md mx-auto">
-            {videoTitle}
-          </p>
-        )}
+        <p className="text-muted-foreground">
+          {overallProgress}% complete
+        </p>
       </div>
 
+      {videoInfo && (
+        <div className="mb-6">
+          <VideoPreview video={videoInfo} />
+        </div>
+      )}
+
       <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
+        {/* Overall progress bar */}
+        <div className="mb-6">
+          <div className="h-2 bg-muted rounded-full overflow-hidden">
+            <div 
+              className="h-full bg-primary rounded-full transition-all duration-500"
+              style={{ width: `${overallProgress}%` }}
+            />
+          </div>
+        </div>
+
         <div className="space-y-1">
           {steps.map((step, index) => (
             <div key={step.id}>
@@ -75,19 +93,18 @@ const ProcessingView = ({ steps, currentStep, videoTitle }: ProcessingViewProps)
                     <div className="mt-3">
                       <div className="h-1.5 bg-muted rounded-full overflow-hidden">
                         <div 
-                          className="h-full bg-primary rounded-full transition-all duration-500"
+                          className="h-full bg-primary/70 rounded-full transition-all duration-100"
                           style={{ width: `${step.progress}%` }}
                         />
                       </div>
-                      <p className="text-xs text-muted-foreground mt-1.5">
-                        {step.progress}% complete
-                      </p>
                     </div>
                   )}
                 </div>
               </div>
               {index < steps.length - 1 && (
-                <div className="ml-5 h-4 border-l-2 border-border" />
+                <div className={`ml-5 h-4 border-l-2 transition-colors duration-300 ${
+                  step.status === 'complete' ? 'border-success' : 'border-border'
+                }`} />
               )}
             </div>
           ))}
