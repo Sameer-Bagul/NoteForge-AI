@@ -1,8 +1,8 @@
 import express from 'express';
 import cors from 'cors';
-import youtubeRoutes from './routes/youtube';
-import processRoutes from './routes/process';
-import { llmService } from './services/llm.service';
+import youtubeRoutes from './routes/youtube.js';
+import processRoutes from './routes/process.js';
+import { llmService } from './services/llm.service.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
