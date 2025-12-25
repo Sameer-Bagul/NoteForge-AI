@@ -4,7 +4,10 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { HelmetProvider } from "react-helmet-async";
-import Index from "./pages/Index";
+import Layout from "./components/Layout";
+import Create from "./pages/Create";
+import Library from "./pages/Library";
+import NotebookView from "./pages/NotebookView";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -17,9 +20,12 @@ const App = () => (
         <Sonner />
         <BrowserRouter>
           <Routes>
-            <Route path="/" element={<Index />} />
-            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-            <Route path="*" element={<NotFound />} />
+            <Route element={<Layout />}>
+              <Route path="/" element={<Create />} />
+              <Route path="/library" element={<Library />} />
+              <Route path="/notebook/:id" element={<NotebookView />} />
+              <Route path="*" element={<NotFound />} />
+            </Route>
           </Routes>
         </BrowserRouter>
       </TooltipProvider>

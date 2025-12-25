@@ -1,12 +1,11 @@
 import { Helmet } from 'react-helmet-async';
-import Header from '@/components/Header';
 import UrlInput from '@/components/UrlInput';
 import ProcessingView from '@/components/ProcessingView';
 import ResultsView from '@/components/ResultsView';
 import { IndexReview } from '@/components/IndexReview';
 import { useProcessing } from '@/hooks/useProcessing';
 
-const Index = () => {
+const Create = () => {
   const { state, startProcessing, approveIndex, reset } = useProcessing();
 
   const renderContent = () => {
@@ -72,12 +71,8 @@ const Index = () => {
         <meta name="description" content="Turn any YouTube video or playlist into beautiful, organized notes. Extract transcripts, generate topic indexes, and create book-like documentation." />
       </Helmet>
       
-      <div className="min-h-screen bg-background">
-        <Header />
-        
-        <main className="container mx-auto px-4 py-12 md:py-16">
-          {renderContent()}
-        </main>
+      <div className="w-full max-w-5xl mx-auto">
+        {renderContent()}
 
         {/* Background decoration */}
         <div className="fixed inset-0 -z-10 overflow-hidden pointer-events-none">
@@ -89,4 +84,4 @@ const Index = () => {
   );
 };
 
-export default Index;
+export default Create;

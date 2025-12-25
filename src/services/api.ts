@@ -1,3 +1,14 @@
+import { 
+  VideoInfo, 
+  ProcessingStep, 
+  UnifiedIndex, 
+  Notebook, 
+  TopicNode, 
+  TopicNotes, 
+  NoteSection,
+  JobStatus
+} from '@/types';
+
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
 const ENABLE_DEBUG = import.meta.env.VITE_ENABLE_DEBUG_LOGS === 'true';
 
@@ -6,80 +17,6 @@ const log = (...args: any[]) => {
     console.log('[API]', ...args);
   }
 };
-
-export interface VideoInfo {
-  id: string;
-  title: string;
-  description: string;
-  thumbnail: string;
-  duration: string;
-  channelTitle: string;
-}
-
-export interface ProcessingStep {
-  id: string;
-  label: string;
-  description: string;
-  status: 'pending' | 'active' | 'complete' | 'error';
-  progress?: number;
-}
-
-export interface NoteSection {
-  type: 'paragraph' | 'bullets' | 'code' | 'mermaid' | 'special' | 'heading';
-  content: string;
-  language?: string;
-  level?: number;
-}
-
-export interface TopicNotes {
-  topicId: string;
-  topicTitle: string;
-  sections: NoteSection[];
-  keyTakeaways: string[];
-  relatedTopics: string[];
-}
-
-export interface TopicNode {
-  id: string;
-  title: string;
-  description: string;
-  subtopics: { id: string; title: string; description: string }[];
-  videoSources: string[];
-  order: number;
-}
-
-export interface UnifiedIndex {
-  id: string;
-  title: string;
-  description: string;
-  topics: TopicNode[];
-  createdAt: string;
-  videoCount: number;
-}
-
-export interface Notebook {
-  id: string;
-  title: string;
-  description: string;
-  index: UnifiedIndex;
-  notes: TopicNotes[];
-  createdAt: string;
-  wordCount: number;
-  readingTime: number;
-}
-
-export interface JobStatus {
-  id: string;
-  status: string;
-  type: 'video' | 'playlist';
-  currentStep: number;
-  steps: ProcessingStep[];
-  videoInfo?: VideoInfo;
-  error?: string;
-  notebook?: Notebook;
-  createdAt: string;
-  updatedAt: string;
-}
 
 export const api = {
   async validateUrl(url: string): Promise<{ valid: boolean; type: string; videoId?: string }> {
@@ -138,6 +75,28 @@ export const api = {
     const data = await response.json();
     log('Approve response:', data);
     return data;
+  },
+
+  async getJobs(): Promise<JobStatus[]> {
+    log('Getting all jobs');
+    const response = await fetch(`${API_BASE}/process/jobs`);
+    if (!response.ok) {
+      console.error('API Error: Failed to get jobs');
+      throw new Error('Failed to get jobs');
+    }
+    const result = await response.json();
+    return result.data || [];
+  },
+
+  async getNotebook(notebookId: string): Promise<Notebook> {
+    log('Getting notebook:', notebookId);
+    const response = await fetch(`${API_BASE}/process/notebook/${notebookId}`);
+    if (!response.ok) {
+      console.error('API Error: Failed to get notebook');
+      throw new Error('Failed to get notebook');
+    }
+    const result = await response.json();
+    return result.data;
   },
 
   async checkHealth(): Promise<{ status: string; services: { llm: string } }> {
