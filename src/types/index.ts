@@ -1,4 +1,4 @@
-export type ProcessingStatus = 'idle' | 'extracting' | 'indexing' | 'generating' | 'assembling' | 'complete' | 'error';
+export type ProcessingStatus = 'idle' | 'extracting' | 'indexing' | 'awaiting-approval' | 'generating' | 'assembling' | 'complete' | 'error';
 
 export interface VideoInfo {
   id: string;
@@ -16,6 +16,32 @@ export interface TopicIndex {
   id: string;
   title: string;
   subtopics?: string[];
+}
+
+export interface SubTopic {
+  id: string;
+  title: string;
+  description?: string;
+  videoSources: string[];
+}
+
+export interface TopicNode {
+  id: string;
+  title: string;
+  description?: string;
+  subtopics: SubTopic[];
+  videoSources: string[];
+  order: number;
+}
+
+export interface UnifiedIndex {
+  id: string;
+  title: string;
+  topics: TopicNode[];
+  createdAt: string;
+  updatedAt: string;
+  videoCount: number;
+  topicCount: number;
 }
 
 export interface TopicNotes {
@@ -38,6 +64,13 @@ export interface ProcessingStep {
   description: string;
   status: 'pending' | 'active' | 'complete' | 'error';
   progress?: number;
+  details?: string;
+  metadata?: {
+    currentItem?: number;
+    totalItems?: number;
+    itemName?: string;
+    subProgress?: string;
+  };
 }
 
 export interface ProcessingState {
@@ -45,7 +78,10 @@ export interface ProcessingState {
   currentStep: number;
   steps: ProcessingStep[];
   videoInfo?: VideoInfo;
+  index?: UnifiedIndex;  // For approval workflow
   topicIndex?: TopicIndex[];
   notes?: VideoNotes;
   error?: string;
+  videoCount?: number;  // Total videos in playlist
+  processedVideos?: number;  // Videos processed so far
 }

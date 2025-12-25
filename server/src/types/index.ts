@@ -135,6 +135,7 @@ export type ProcessingStatus =
   | 'extracting-transcripts'
   | 'analyzing-content'
   | 'generating-index'
+  | 'awaiting-approval'  // NEW: waiting for user to approve index
   | 'generating-notes'
   | 'assembling-notebook'
   | 'complete'

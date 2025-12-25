@@ -214,10 +214,18 @@ export class TranscriptService {
       const transcripts: VideoTranscript[] = [];
       let successCount = 0;
       
-      for (let i = 0; i < Math.min(playlist.videos.length, 10); i++) { // Limit to 10 videos for testing
+      // Get max videos from environment or use all videos
+      const maxVideos = process.env.MAX_PLAYLIST_VIDEOS 
+        ? parseInt(process.env.MAX_PLAYLIST_VIDEOS, 10) 
+        : playlist.videos.length; // Process ALL videos by default
+      
+      const videosToProcess = Math.min(playlist.videos.length, maxVideos);
+      console.log(`📊 Processing ${videosToProcess} out of ${playlist.videoCount} videos`);
+      
+      for (let i = 0; i < videosToProcess; i++) {
         const video = playlist.videos[i];
         try {
-          console.log(`[${i + 1}/${Math.min(playlist.videoCount, 10)}] Fetching: ${video.title}`);
+          console.log(`[${i + 1}/${videosToProcess}] Fetching: ${video.title}`);
           const transcript = await this.fetchTranscript(video.id);
           transcripts.push(transcript);
           successCount++;
@@ -229,7 +237,7 @@ export class TranscriptService {
         }
       }
 
-      console.log(`\n✅ Successfully fetched ${successCount}/${Math.min(playlist.videoCount, 10)} transcripts\n`);
+      console.log(`\n✅ Successfully fetched ${successCount}/${videosToProcess} transcripts\n`);
 
       if (transcripts.length === 0) {
         throw new Error('No transcripts could be fetched from the playlist');

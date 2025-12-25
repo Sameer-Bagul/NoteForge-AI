@@ -93,9 +93,10 @@ router.get('/status/:jobId', (req: Request, res: Response) => {
         error: job.error,
         createdAt: job.createdAt,
         updatedAt: job.updatedAt,
+        // Include index if available (for approval)
+        ...(job.index && { index: job.index }),
         // Include results if complete
         ...(job.status === 'complete' && {
-          index: job.index,
           notebook: job.notebook
         })
       }
@@ -105,6 +106,52 @@ router.get('/status/:jobId', (req: Request, res: Response) => {
     res.status(500).json({
       success: false,
       error: 'Failed to get job status'
+    });
+  }
+});
+
+// Update and approve index
+router.put('/:jobId/approve-index', async (req: Request, res: Response) => {
+  try {
+    const { jobId } = req.params;
+    const { index } = req.body;
+
+    console.log(`\n📋 Index approval request for job: ${jobId}`);
+    
+    if (!index) {
+      return res.status(400).json({
+        success: false,
+        error: 'Index is required'
+      });
+    }
+
+    // Update the index if modified
+    const updated = jobService.updateIndex(jobId, index);
+    
+    if (!updated) {
+      return res.status(400).json({
+        success: false,
+        error: 'Job not found or not awaiting approval'
+      });
+    }
+
+    console.log(`✅ Index updated successfully`);
+    console.log(`🚀 Starting notes generation...`);
+
+    // Continue processing in background
+    jobService.continueAfterApproval(jobId).catch(err => {
+      console.error(`❌ Failed to continue job ${jobId}:`, err);
+    });
+
+    res.json({
+      success: true,
+      message: 'Index approved, continuing with notes generation'
+    });
+  } catch (error) {
+    console.error(`❌ Error approving index:`, error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to approve index'
     });
   }
 });

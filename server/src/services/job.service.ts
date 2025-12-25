@@ -129,6 +129,71 @@ export class JobService {
       this.updateStep(jobId, 2, 'complete', `Generated index with ${index.topicCount} topics`);
       console.log(`✅ Step 3 complete: Generated index with ${index.topicCount} topics`);
 
+      // PAUSE HERE - Wait for user approval
+      console.log(`⏸️  Pausing for user approval of index...`);
+      this.updateJob(jobId, { status: 'awaiting-approval', currentStep: 3 });
+      console.log(`📋 Index ready for review. Waiting for approval via /api/process/${jobId}/approve-index`);
+      
+      // Processing will continue when continueAfterApproval() is called
+    } catch (error) {
+      console.error(`Job ${jobId} failed:`, error);
+      
+      const currentStep = job.currentStep;
+      this.updateStep(jobId, currentStep, 'error', error instanceof Error ? error.message : 'Unknown error');
+      this.updateJob(jobId, { 
+        status: 'error',
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  }
+
+  // Get all jobs (for admin/debugging)
+  getAllJobs(): ProcessingJob[] {
+    return Array.from(jobs.values());
+  }
+
+  // Delete a job
+  deleteJob(jobId: string): boolean {
+    return jobs.delete(jobId);
+  }
+
+  // Update index after user modifications
+  updateIndex(jobId: string, updatedIndex: UnifiedIndex): boolean {
+    const job = jobs.get(jobId);
+    if (!job || job.status !== 'awaiting-approval') {
+      return false;
+    }
+
+    console.log(`📝 Updating index for job ${jobId}`);
+    console.log(`   Topics: ${updatedIndex.topicCount}`);
+    
+    this.updateJob(jobId, { index: updatedIndex });
+    return true;
+  }
+
+  // Continue processing after index approval
+  async continueAfterApproval(jobId: string): Promise<void> {
+    const job = this.getJob(jobId);
+    
+    if (!job) {
+      throw new Error('Job not found');
+    }
+    
+    if (job.status !== 'awaiting-approval') {
+      throw new Error(`Job is not awaiting approval (current status: ${job.status})`);
+    }
+
+    if (!job.index || !job.transcripts) {
+      throw new Error('Job missing index or transcripts');
+    }
+
+    console.log(`\n✅ Index approved for job ${jobId}`);
+    console.log(`📝 Continuing with notes generation...`);
+
+    const { index, transcripts } = job;
+    const title = index.title;
+
+    try {
       // Step 4: Generate notes for each topic
       console.log(`📝 Step 4: Generating notes for ${index.topicCount} topics...`);
       this.updateStep(jobId, 3, 'active');
@@ -161,7 +226,7 @@ export class JobService {
       console.log(`\n🎉 Job ${jobId} completed successfully!\n`);
 
     } catch (error) {
-      console.error(`Job ${jobId} failed:`, error);
+      console.error(`Job ${jobId} continuation failed:`, error);
       
       const currentStep = job.currentStep;
       this.updateStep(jobId, currentStep, 'error', error instanceof Error ? error.message : 'Unknown error');
@@ -169,17 +234,8 @@ export class JobService {
         status: 'error',
         error: error instanceof Error ? error.message : 'Unknown error'
       });
+      throw error;
     }
-  }
-
-  // Get all jobs (for admin/debugging)
-  getAllJobs(): ProcessingJob[] {
-    return Array.from(jobs.values());
-  }
-
-  // Delete a job
-  deleteJob(jobId: string): boolean {
-    return jobs.delete(jobId);
   }
 
   private delay(ms: number): Promise<void> {

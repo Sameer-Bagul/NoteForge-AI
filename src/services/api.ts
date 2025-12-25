@@ -123,6 +123,23 @@ export const api = {
     return result.data || result;
   },
 
+  async approveIndex(jobId: string, index: any): Promise<{ success: boolean; message: string }> {
+    log('Approving index for job:', jobId);
+    const response = await fetch(`${API_BASE}/process/${jobId}/approve-index`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ index }),
+    });
+    if (!response.ok) {
+      const error = await response.text();
+      console.error('API Error:', error);
+      throw new Error('Failed to approve index');
+    }
+    const data = await response.json();
+    log('Approve response:', data);
+    return data;
+  },
+
   async checkHealth(): Promise<{ status: string; services: { llm: string } }> {
     const response = await fetch(`${API_BASE}/health`);
     if (!response.ok) throw new Error('Health check failed');

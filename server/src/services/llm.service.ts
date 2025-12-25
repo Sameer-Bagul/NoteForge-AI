@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { jsonrepair } from 'jsonrepair';
 import { LLMConfig, LLMMessage, LLMResponse } from '../types';
 
 const DEFAULT_CONFIG: LLMConfig = {
@@ -66,8 +67,19 @@ export class LLMService {
   }
 
   // Generate with structured output (JSON)
-  async generateJSON<T>(prompt: string, systemPrompt?: string): Promise<T> {
-    const jsonSystemPrompt = `${systemPrompt || ''}\n\nIMPORTANT: You must respond ONLY with valid JSON. No explanations, no markdown, no comments, just pure JSON.`;
+  async generateJSON<T>(prompt: string, systemPrompt?: string, retryCount = 0): Promise<T> {
+    const strictRules = `
+
+CRITICAL JSON RULES:
+- Return ONLY valid JSON
+- No comments (// or /* */)
+- No markdown or code blocks
+- No trailing commas
+- Strings must use double quotes only
+- If a list is empty, return []
+- Do NOT add explanations or text outside the JSON`;
+    
+    const jsonSystemPrompt = `${systemPrompt || ''}${strictRules}`;
     
     const response = await this.generate(prompt, jsonSystemPrompt);
     
@@ -86,33 +98,41 @@ export class LLMService {
     
     jsonStr = jsonStr.trim();
 
-    // Attempt to parse with progressive cleanup
+    // Attempt 1: Direct parse
     try {
       return JSON.parse(jsonStr) as T;
     } catch (firstError) {
-      log('First JSON parse failed, attempting cleanup...');
+      log('First JSON parse failed, attempting repair...');
       
+      // Attempt 2: Use jsonrepair library
       try {
-        // Remove JavaScript-style comments (// and /* */)
-        let cleaned = jsonStr
-          .replace(/\/\/.*$/gm, '')  // Remove // comments
-          .replace(/\/\*[\s\S]*?\*\//g, '')  // Remove /* */ comments
-          .trim();
+        const repaired = jsonrepair(jsonStr);
+        log('JSON repaired successfully');
+        return JSON.parse(repaired) as T;
+      } catch (repairError) {
+        log('JSON repair failed, attempting manual cleanup...');
         
-        // Fix common LLM mistakes
-        cleaned = cleaned
-          .replace(/,\s*([}\]])/g, '$1')  // Remove trailing commas
-          .replace(/(['"])(.*?)\1/g, (match, quote, content) => {
-            // Fix unescaped quotes inside strings
-            const fixed = content.replace(/"/g, '\\"');
-            return `"${fixed}"`;
-          });
-        
-        return JSON.parse(cleaned) as T;
-      } catch (secondError) {
-        console.error('Failed to parse JSON response after cleanup:');
-        console.error('Original:', jsonStr);
-        throw new Error('LLM returned invalid JSON');
+        // Attempt 3: Manual cleanup
+        try {
+          let cleaned = jsonStr
+            .replace(/\/\/.*$/gm, '')  // Remove // comments
+            .replace(/\/\*[\s\S]*?\*\//g, '')  // Remove /* */ comments
+            .replace(/,\s*([}\]])/g, '$1')  // Remove trailing commas
+            .trim();
+          
+          return JSON.parse(cleaned) as T;
+        } catch (cleanupError) {
+          // Attempt 4: Retry with stricter prompt (only once)
+          if (retryCount === 0) {
+            console.warn('All JSON parsing attempts failed. Retrying with stricter prompt...');
+            const retryPrompt = `${prompt}\n\n⚠️ IMPORTANT: The previous output was invalid JSON. Please produce the SAME content again, but as strictly valid JSON with no comments or extra text.`;
+            return this.generateJSON<T>(retryPrompt, systemPrompt, 1);
+          }
+          
+          console.error('Failed to parse JSON response after all attempts:');
+          console.error('Original:', jsonStr);
+          throw new Error('LLM returned invalid JSON after multiple attempts');
+        }
       }
     }
   }

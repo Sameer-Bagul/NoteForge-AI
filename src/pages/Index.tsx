@@ -3,12 +3,15 @@ import Header from '@/components/Header';
 import UrlInput from '@/components/UrlInput';
 import ProcessingView from '@/components/ProcessingView';
 import ResultsView from '@/components/ResultsView';
+import { IndexReview } from '@/components/IndexReview';
 import { useProcessing } from '@/hooks/useProcessing';
 
 const Index = () => {
-  const { state, startProcessing, reset } = useProcessing();
+  const { state, startProcessing, approveIndex, reset } = useProcessing();
 
   const renderContent = () => {
+    console.log('🎨 Rendering content for status:', state.status);
+    
     switch (state.status) {
       case 'idle':
         return (
@@ -18,19 +21,37 @@ const Index = () => {
           />
         );
       
+      case 'extracting-transcripts':
+      case 'analyzing-content':
+      case 'generating-index':
       case 'extracting':
       case 'indexing':
+      case 'generating-notes':
+      case 'assembling-notebook':
       case 'generating':
       case 'assembling':
+        console.log('📊 Showing ProcessingView with', state.steps.length, 'steps');
         return (
           <ProcessingView 
             steps={state.steps}
             currentStep={state.currentStep}
             videoInfo={state.videoInfo}
+            videoCount={state.videoCount}
+            processedVideos={state.processedVideos}
           />
         );
       
+      case 'awaiting-approval':
+        console.log('📋 Showing IndexReview, index available:', !!state.index);
+        return state.index ? (
+          <IndexReview
+            index={state.index}
+            onApprove={approveIndex}
+          />
+        ) : null;
+      
       case 'complete':
+        console.log('✅ Showing ResultsView, notes available:', !!state.notes);
         return state.notes ? (
           <ResultsView 
             notes={state.notes}
@@ -39,6 +60,7 @@ const Index = () => {
         ) : null;
       
       default:
+        console.log('⚠️ Unknown status:', state.status);
         return null;
     }
   };

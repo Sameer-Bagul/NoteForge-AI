@@ -93,22 +93,29 @@ Transcript:
 ${chunk}
 """
 
-Return a JSON array of topics with this structure:
+Return a JSON array of topics. EXAMPLE FORMAT:
 [
   {
-    "title": "Topic Title",
-    "description": "Brief description of what this topic covers",
-    "subtopics": ["Subtopic 1", "Subtopic 2"]
+    "title": "JavaScript Execution Context",
+    "description": "How JavaScript code is executed in the browser",
+    "subtopics": ["Memory Allocation", "Code Execution Phase"]
   }
 ]
 
-Only include topics that are substantively discussed, not just briefly mentioned.`;
+IMPORTANT:
+- Only include topics that are substantively discussed, not just mentioned
+- Return an empty array [] if no clear topics are found
+- Ensure all strings are properly quoted
+- Do not add comments in the JSON`;
 
       try {
         console.log(`    Chunk ${i + 1}/${chunks.length}...`);
-        const topics = await llmService.generateJSON<RawTopic[]>(prompt, systemPrompt);
-        allTopics.push(...topics);
-        console.log(`    ✓ Found ${topics.length} topic(s) in chunk ${i + 1}`);
+        const rawTopics = await llmService.generateJSON<RawTopic[]>(prompt, systemPrompt);
+        
+        // Normalize topics to handle malformed data
+        const normalizedTopics = this.normalizeRawTopics(rawTopics);
+        allTopics.push(...normalizedTopics);
+        console.log(`    ✓ Found ${normalizedTopics.length} topic(s) in chunk ${i + 1}`);
       } catch (error) {
         console.warn(`    ⚠️ Failed to extract topics from chunk ${i + 1}:`, error instanceof Error ? error.message : 'Unknown error');
       }
@@ -160,7 +167,7 @@ Only include topics that are substantively discussed, not just briefly mentioned
 Topics:
 ${allTopicTitles.map((t, i) => `${i + 1}. ${t}`).join('\n')}
 
-Return a JSON object mapping topic indices (1-based) that should be merged:
+Return a JSON object mapping topic indices (1-based) that should be merged. EXAMPLE:
 {
   "merges": [
     { "keep": 1, "merge": [3, 7] },
@@ -168,33 +175,62 @@ Return a JSON object mapping topic indices (1-based) that should be merged:
   ]
 }
 
-Only merge topics that clearly cover the same concept. If no merges needed, return {"merges": []}`;
+RULES:
+- Only merge topics that clearly cover the same concept
+- If no merges needed, return {"merges": []}
+- Ensure valid JSON with proper quotes and commas
+- Do not include comments in JSON`;
 
       try {
         const mergeResult = await llmService.generateJSON<{ merges: { keep: number; merge: number[] }[] }>(mergePrompt);
         
-        // Apply merges
-        for (const merge of mergeResult.merges) {
-          const keepTitle = allTopicTitles[merge.keep - 1];
-          const keepKey = this.normalizeTopicTitle(keepTitle);
-          const keepTopic = topicMap.get(keepKey);
+        // Validate the merge result structure
+        if (!mergeResult || typeof mergeResult !== 'object') {
+          console.warn('⚠️ Invalid merge result: not an object');
+        } else if (!Array.isArray(mergeResult.merges)) {
+          console.warn('⚠️ Invalid merge result: merges is not an array', mergeResult);
+        } else {
+          console.log(`📊 Applying ${mergeResult.merges.length} topic merge(s)...`);
           
-          if (keepTopic) {
-            for (const mergeIdx of merge.merge) {
-              const mergeTitle = allTopicTitles[mergeIdx - 1];
-              const mergeKey = this.normalizeTopicTitle(mergeTitle);
-              const mergeTopic = topicMap.get(mergeKey);
-              
-              if (mergeTopic) {
-                mergeTopic.videoSources.forEach(vs => keepTopic.videoSources.add(vs));
-                mergeTopic.subtopics.forEach(st => keepTopic.subtopics.add(st));
-                topicMap.delete(mergeKey);
+          // Apply merges
+          for (const merge of mergeResult.merges) {
+            if (!merge || typeof merge.keep !== 'number' || !Array.isArray(merge.merge)) {
+              console.warn('⚠️ Skipping invalid merge entry:', merge);
+              continue;
+            }
+            
+            const keepTitle = allTopicTitles[merge.keep - 1];
+            if (!keepTitle) {
+              console.warn(`⚠️ Invalid keep index: ${merge.keep}`);
+              continue;
+            }
+            
+            const keepKey = this.normalizeTopicTitle(keepTitle);
+            const keepTopic = topicMap.get(keepKey);
+            
+            if (keepTopic) {
+              for (const mergeIdx of merge.merge) {
+                if (typeof mergeIdx !== 'number' || mergeIdx < 1 || mergeIdx > allTopicTitles.length) {
+                  console.warn(`⚠️ Invalid merge index: ${mergeIdx}`);
+                  continue;
+                }
+                
+                const mergeTitle = allTopicTitles[mergeIdx - 1];
+                const mergeKey = this.normalizeTopicTitle(mergeTitle);
+                const mergeTopic = topicMap.get(mergeKey);
+                
+                if (mergeTopic) {
+                  console.log(`  ✓ Merging "${mergeTitle}" into "${keepTitle}"`);
+                  mergeTopic.videoSources.forEach(vs => keepTopic.videoSources.add(vs));
+                  mergeTopic.subtopics.forEach(st => keepTopic.subtopics.add(st));
+                  topicMap.delete(mergeKey);
+                }
               }
             }
           }
         }
       } catch (error) {
-        console.warn('Topic merge failed, using original topics:', error);
+        console.warn('❌ Topic merge failed, using original topics:', error instanceof Error ? error.message : 'Unknown error');
       }
     }
 
@@ -259,6 +295,25 @@ Return a JSON array of the topic numbers in the correct order:
   // Normalize topic title for comparison
   private normalizeTopicTitle(title: string): string {
     return title.toLowerCase().replace(/[^a-z0-9]/g, '');
+  }
+
+  // Normalize raw topics to ensure they have all required fields
+  private normalizeRawTopics(topics: any): RawTopic[] {
+    if (!Array.isArray(topics)) {
+      console.warn('Topics is not an array, returning empty array');
+      return [];
+    }
+
+    return topics
+      .filter(topic => topic && typeof topic === 'object')
+      .map(topic => ({
+        title: topic.title || topic.name || 'Untitled Topic',
+        description: topic.description || topic.desc || '',
+        subtopics: Array.isArray(topic.subtopics) 
+          ? topic.subtopics.filter((st: any) => typeof st === 'string' && st.trim().length > 0)
+          : []
+      }))
+      .filter(topic => topic.title !== 'Untitled Topic' && topic.title.trim().length > 0);
   }
 
   // Deduplicate raw topics
