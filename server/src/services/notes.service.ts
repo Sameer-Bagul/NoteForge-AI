@@ -167,14 +167,14 @@ Format the response as markdown with rich formatting.`;
     return notebook;
   }
 
-  // Extract relevant transcript excerpts for a topic
+  // Extract relevant transcript excerpts for a topic using cleaned fullText
   private extractRelevantExcerpts(
     topic: TopicNode, 
     transcripts: VideoTranscript[]
   ): Array<{ videoId: string; videoTitle: string; text: string; timestamps: number[] }> {
     const excerpts: Array<{ videoId: string; videoTitle: string; text: string; timestamps: number[] }> = [];
     
-    // Keywords to search for
+    // Keywords to search for relevant content
     const keywords = [
       topic.title.toLowerCase(),
       ...topic.subtopics.map(st => st.title.toLowerCase())
@@ -186,38 +186,57 @@ Format the response as markdown with rich formatting.`;
         continue;
       }
 
-      const relevantSegments: { text: string; start: number }[] = [];
-      
-      for (const segment of transcript.segments) {
-        const segmentLower = segment.text.toLowerCase();
-        
-        // Check if segment contains any topic keywords
-        if (keywords.some(kw => segmentLower.includes(kw))) {
-          relevantSegments.push({
-            text: segment.text,
-            start: segment.start
-          });
-        }
+      // Use the clean fullText (already processed with buildCleanTranscript)
+      const fullText = transcript.fullText;
+      if (!fullText || fullText.length < 100) {
+        continue;
       }
 
-      if (relevantSegments.length > 0) {
-        excerpts.push({
-          videoId: transcript.videoId,
-          videoTitle: transcript.videoInfo.title,
-          text: relevantSegments.map(s => s.text).join(' '),
-          timestamps: relevantSegments.map(s => s.start)
-        });
-      } else {
-        // If no keyword matches, include a portion of the transcript
-        const fullText = transcript.fullText;
-        if (fullText.length > 500) {
+      const fullTextLower = fullText.toLowerCase();
+      
+      // Check if transcript contains topic keywords
+      const hasKeywords = keywords.some(kw => fullTextLower.includes(kw));
+      
+      if (hasKeywords) {
+        // Extract keyword-relevant sentences
+        const sentences = fullText.split(/[.!?]+\s+/);
+        const relevantSentences: string[] = [];
+        
+        for (const sentence of sentences) {
+          if (sentence.length < 10) continue; // Skip very short fragments
+          
+          const sentenceLower = sentence.toLowerCase();
+          if (keywords.some(kw => sentenceLower.includes(kw))) {
+            relevantSentences.push(sentence.trim());
+          }
+        }
+        
+        if (relevantSentences.length > 0) {
+          // Join relevant sentences and limit to 5000 chars to avoid token overflow
+          const relevantText = relevantSentences.join('. ') + '.';
           excerpts.push({
             videoId: transcript.videoId,
             videoTitle: transcript.videoInfo.title,
-            text: fullText.substring(0, 2000),
+            text: relevantText.length > 5000 ? relevantText.substring(0, 5000) + '...' : relevantText,
+            timestamps: [] // fullText doesn't preserve exact timestamps
+          });
+        } else {
+          // Fallback: use beginning of transcript
+          excerpts.push({
+            videoId: transcript.videoId,
+            videoTitle: transcript.videoInfo.title,
+            text: fullText.substring(0, 4000) + (fullText.length > 4000 ? '...' : ''),
             timestamps: []
           });
         }
+      } else {
+        // No keyword matches - include a representative portion
+        excerpts.push({
+          videoId: transcript.videoId,
+          videoTitle: transcript.videoInfo.title,
+          text: fullText.substring(0, 4000) + (fullText.length > 4000 ? '...' : ''),
+          timestamps: []
+        });
       }
     }
 

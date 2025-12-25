@@ -11,7 +11,12 @@ router.post('/start', async (req: Request, res: Response) => {
   try {
     const { url, title } = req.body;
     
+    console.log(`\n📨 Received processing request:`);
+    console.log(`   URL: ${url}`);
+    console.log(`   Title: ${title || 'N/A'}`);
+    
     if (!url) {
+      console.log(`❌ Error: URL is required`);
       return res.status(400).json({
         success: false,
         error: 'URL is required'
@@ -19,7 +24,10 @@ router.post('/start', async (req: Request, res: Response) => {
     }
 
     // Check LLM availability
+    console.log(`🔍 Checking LLM availability...`);
     const llmAvailable = await llmService.checkHealth();
+    console.log(`   LLM Status: ${llmAvailable ? '✅ Available' : '❌ Not Available'}`);
+    
     if (!llmAvailable) {
       return res.status(503).json({
         success: false,
@@ -29,12 +37,15 @@ router.post('/start', async (req: Request, res: Response) => {
 
     // Create job
     const job = jobService.createJob(url);
+    console.log(`✅ Job created with ID: ${job.id}`);
     
     // Start processing in background
+    console.log(`🚀 Starting background processing...`);
     jobService.processUrl(job.id, url, title).catch(err => {
-      console.error(`Background job ${job.id} failed:`, err);
+      console.error(`❌ Background job ${job.id} failed:`, err);
     });
 
+    console.log(`✅ Responding to client with job ID\n`);
     res.json({
       success: true,
       data: {
@@ -44,6 +55,7 @@ router.post('/start', async (req: Request, res: Response) => {
       }
     });
   } catch (error) {
+    console.error(`❌ Error in /start endpoint:`, error);
     res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : 'Failed to start processing'
@@ -55,15 +67,20 @@ router.post('/start', async (req: Request, res: Response) => {
 router.get('/status/:jobId', (req: Request, res: Response) => {
   try {
     const { jobId } = req.params;
+    console.log(`📊 Status request for job: ${jobId}`);
+    
     const job = jobService.getJob(jobId);
     
     if (!job) {
+      console.log(`❌ Job not found: ${jobId}`);
       return res.status(404).json({
         success: false,
         error: 'Job not found'
       });
     }
 
+    console.log(`✅ Job status: ${job.status} (Step ${job.currentStep}/${job.steps.length})`);
+    
     res.json({
       success: true,
       data: {
@@ -72,6 +89,7 @@ router.get('/status/:jobId', (req: Request, res: Response) => {
         currentStep: job.currentStep,
         steps: job.steps,
         videos: job.videos,
+        videoInfo: job.videos.length > 0 ? job.videos[0] : undefined,
         error: job.error,
         createdAt: job.createdAt,
         updatedAt: job.updatedAt,
@@ -83,6 +101,7 @@ router.get('/status/:jobId', (req: Request, res: Response) => {
       }
     });
   } catch (error) {
+    console.error(`❌ Error getting job status:`, error);
     res.status(500).json({
       success: false,
       error: 'Failed to get job status'

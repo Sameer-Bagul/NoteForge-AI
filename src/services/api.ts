@@ -1,4 +1,11 @@
-const API_BASE = 'http://localhost:3001/api';
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
+const ENABLE_DEBUG = import.meta.env.VITE_ENABLE_DEBUG_LOGS === 'true';
+
+const log = (...args: any[]) => {
+  if (ENABLE_DEBUG) {
+    console.log('[API]', ...args);
+  }
+};
 
 export interface VideoInfo {
   id: string;
@@ -86,19 +93,34 @@ export const api = {
   },
 
   async startProcessing(url: string): Promise<{ jobId: string; status: string }> {
+    log('Starting processing for:', url);
     const response = await fetch(`${API_BASE}/process/start`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ url }),
     });
-    if (!response.ok) throw new Error('Failed to start processing');
-    return response.json();
+    if (!response.ok) {
+      const error = await response.text();
+      console.error('API Error:', error);
+      throw new Error('Failed to start processing');
+    }
+    const data = await response.json();
+    log('Response:', data);
+    // Backend returns {success: true, data: {jobId, status}}
+    return data.data || data;
   },
 
   async getJobStatus(jobId: string): Promise<JobStatus> {
+    log('Getting job status for:', jobId);
     const response = await fetch(`${API_BASE}/process/status/${jobId}`);
-    if (!response.ok) throw new Error('Failed to get job status');
-    return response.json();
+    if (!response.ok) {
+      console.error('API Error: Failed to get job status');
+      throw new Error('Failed to get job status');
+    }
+    const result = await response.json();
+    log('Job status response:', result);
+    // Backend returns {success: true, data: {...}}
+    return result.data || result;
   },
 
   async checkHealth(): Promise<{ status: string; services: { llm: string } }> {

@@ -1,3 +1,6 @@
+// Load environment variables first
+require('dotenv').config();
+
 import express from 'express';
 import cors from 'cors';
 import youtubeRoutes from './routes/youtube.js';
@@ -6,9 +9,13 @@ import { llmService } from './services/llm.service.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+const CORS_ORIGIN = process.env.CORS_ORIGIN || 'http://localhost:8080';
 
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: CORS_ORIGIN,
+  credentials: true,
+}));
 app.use(express.json());
 
 // Routes
@@ -61,8 +68,8 @@ app.listen(PORT, () => {
 ║                                                           ║
 ║   🚀 NoteForge Server Started                             ║
 ║                                                           ║
-║   Server:  http://localhost:${PORT}                         ║
-║   API:     http://localhost:${PORT}/api                     ║
+║   Server:  http://localhost:${PORT}                          ║
+║   API:     http://localhost:${PORT}/api                      ║
 ║                                                           ║
 ║   Ensure Ollama is running:                               ║
 ║   $ ollama run mistral                                    ║

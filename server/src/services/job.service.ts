@@ -71,6 +71,7 @@ export class JobService {
 
   // Process a URL (video or playlist)
   async processUrl(jobId: string, url: string, title?: string): Promise<void> {
+    console.log(`\n🚀 Starting job ${jobId} for URL: ${url}`);
     const job = this.getJob(jobId);
     if (!job) {
       throw new Error('Job not found');
@@ -78,6 +79,7 @@ export class JobService {
 
     try {
       // Step 1: Extract transcripts
+      console.log(`📝 Step 1: Extracting transcripts...`);
       this.updateStep(jobId, 0, 'active');
       this.updateJob(jobId, { status: 'extracting-transcripts', currentStep: 0 });
 
@@ -105,31 +107,39 @@ export class JobService {
 
       this.updateJob(jobId, { transcripts });
       this.updateStep(jobId, 0, 'complete', `Extracted ${transcripts.length} transcript(s)`);
+      console.log(`✅ Step 1 complete: Extracted ${transcripts.length} transcript(s)`);
 
       // Step 2: Analyze content
+      console.log(`🔍 Step 2: Analyzing content...`);
       this.updateStep(jobId, 1, 'active');
       this.updateJob(jobId, { status: 'analyzing-content', currentStep: 1 });
       
       // Brief analysis delay (content analysis happens as part of indexing)
       await this.delay(1000);
       this.updateStep(jobId, 1, 'complete', 'Content analysis complete');
+      console.log(`✅ Step 2 complete: Content analyzed`);
 
       // Step 3: Generate unified index
+      console.log(`📚 Step 3: Generating unified index...`);
       this.updateStep(jobId, 2, 'active');
       this.updateJob(jobId, { status: 'generating-index', currentStep: 2 });
 
       const index = await indexService.generateUnifiedIndex(transcripts, title || 'Untitled');
       this.updateJob(jobId, { index });
       this.updateStep(jobId, 2, 'complete', `Generated index with ${index.topicCount} topics`);
+      console.log(`✅ Step 3 complete: Generated index with ${index.topicCount} topics`);
 
       // Step 4: Generate notes for each topic
+      console.log(`📝 Step 4: Generating notes for ${index.topicCount} topics...`);
       this.updateStep(jobId, 3, 'active');
       this.updateJob(jobId, { status: 'generating-notes', currentStep: 3 });
 
       const allNotes = await notesService.generateAllNotes(index, transcripts);
       this.updateStep(jobId, 3, 'complete', `Generated notes for ${allNotes.length} topics`);
+      console.log(`✅ Step 4 complete: Generated notes for ${allNotes.length} topics`);
 
       // Step 5: Assemble notebook
+      console.log(`📖 Step 5: Assembling notebook...`);
       this.updateStep(jobId, 4, 'active');
       this.updateJob(jobId, { status: 'assembling-notebook', currentStep: 4 });
 
@@ -146,8 +156,9 @@ export class JobService {
         currentStep: 5
       });
       this.updateStep(jobId, 4, 'complete', 'Notebook assembled successfully');
+      console.log(`✅ Step 5 complete: Notebook assembled`);
 
-      console.log(`Job ${jobId} completed successfully`);
+      console.log(`\n🎉 Job ${jobId} completed successfully!\n`);
 
     } catch (error) {
       console.error(`Job ${jobId} failed:`, error);

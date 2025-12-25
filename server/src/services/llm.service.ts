@@ -2,10 +2,18 @@ import axios from 'axios';
 import { LLMConfig, LLMMessage, LLMResponse } from '../types';
 
 const DEFAULT_CONFIG: LLMConfig = {
-  model: 'mistral',
-  baseUrl: 'http://localhost:11434',
-  temperature: 0.2,
-  maxTokens: 4096
+  model: process.env.OLLAMA_MODEL || 'mistral',
+  baseUrl: process.env.OLLAMA_BASE_URL || 'http://localhost:11434',
+  temperature: parseFloat(process.env.OLLAMA_TEMPERATURE || '0.7'),
+  maxTokens: parseInt(process.env.OLLAMA_MAX_TOKENS || '4000', 10)
+};
+
+const ENABLE_DEBUG = process.env.ENABLE_DEBUG_LOGS === 'true';
+
+const log = (...args: any[]) => {
+  if (ENABLE_DEBUG) {
+    console.log('[LLM]', ...args);
+  }
 };
 
 export class LLMService {
@@ -30,6 +38,8 @@ export class LLMService {
   // Chat with context
   async chat(messages: LLMMessage[]): Promise<LLMResponse> {
     try {
+      log(`Sending request to ${this.config.baseUrl}/api/chat with model ${this.config.model}`);
+      
       const response = await axios.post(`${this.config.baseUrl}/api/chat`, {
         model: this.config.model,
         messages: messages.map(m => ({
@@ -43,6 +53,8 @@ export class LLMService {
         }
       });
 
+      log(`Received response, tokens used: ${response.data.eval_count}`);
+
       return {
         content: response.data.message?.content || '',
         tokensUsed: response.data.eval_count
@@ -55,7 +67,7 @@ export class LLMService {
 
   // Generate with structured output (JSON)
   async generateJSON<T>(prompt: string, systemPrompt?: string): Promise<T> {
-    const jsonSystemPrompt = `${systemPrompt || ''}\n\nIMPORTANT: You must respond ONLY with valid JSON. No explanations, no markdown, just pure JSON.`;
+    const jsonSystemPrompt = `${systemPrompt || ''}\n\nIMPORTANT: You must respond ONLY with valid JSON. No explanations, no markdown, no comments, just pure JSON.`;
     
     const response = await this.generate(prompt, jsonSystemPrompt);
     
@@ -74,11 +86,34 @@ export class LLMService {
     
     jsonStr = jsonStr.trim();
 
+    // Attempt to parse with progressive cleanup
     try {
       return JSON.parse(jsonStr) as T;
-    } catch (error) {
-      console.error('Failed to parse JSON response:', jsonStr);
-      throw new Error('LLM returned invalid JSON');
+    } catch (firstError) {
+      log('First JSON parse failed, attempting cleanup...');
+      
+      try {
+        // Remove JavaScript-style comments (// and /* */)
+        let cleaned = jsonStr
+          .replace(/\/\/.*$/gm, '')  // Remove // comments
+          .replace(/\/\*[\s\S]*?\*\//g, '')  // Remove /* */ comments
+          .trim();
+        
+        // Fix common LLM mistakes
+        cleaned = cleaned
+          .replace(/,\s*([}\]])/g, '$1')  // Remove trailing commas
+          .replace(/(['"])(.*?)\1/g, (match, quote, content) => {
+            // Fix unescaped quotes inside strings
+            const fixed = content.replace(/"/g, '\\"');
+            return `"${fixed}"`;
+          });
+        
+        return JSON.parse(cleaned) as T;
+      } catch (secondError) {
+        console.error('Failed to parse JSON response after cleanup:');
+        console.error('Original:', jsonStr);
+        throw new Error('LLM returned invalid JSON');
+      }
     }
   }
 

@@ -58,24 +58,84 @@ export function getThumbnailUrl(videoId: string, quality: 'default' | 'medium' |
 export function cleanTranscriptText(text: string): string {
   return text
     .replace(/\[.*?\]/g, '') // Remove [Music], [Applause], etc.
+    .replace(/\(.*?\)/g, '') // Remove (laughing), (coughing), etc.
     .replace(/\s+/g, ' ')    // Normalize whitespace
+    .replace(/[\u200B-\u200D\uFEFF]/g, '') // Remove zero-width spaces
     .trim();
 }
 
-// Split text into chunks for LLM processing
+// Build clean continuous transcript from subtitle segments
+export function buildCleanTranscript(segments: Array<{ text: string }>): string {
+  if (!segments || segments.length === 0) {
+    return '';
+  }
+
+  // Merge all segment text
+  let fullText = segments
+    .map(s => s.text)
+    .join(' ')
+    .trim();
+
+  // Clean up the text
+  fullText = fullText
+    .replace(/\[.*?\]/g, '')  // Remove [Music], [Applause], etc.
+    .replace(/\(.*?\)/g, '')  // Remove (laughing), etc.
+    .replace(/\s+/g, ' ')      // Normalize whitespace
+    .replace(/([.!?])\s*([A-Z])/g, '$1 $2')  // Ensure space after sentence ends
+    .trim();
+
+  return fullText;
+}
+
+// Split text into chunks for LLM processing (smarter sentence-based chunking)
 export function chunkText(text: string, maxChunkSize: number = 4000): string[] {
-  const sentences = text.match(/[^.!?]+[.!?]+/g) || [text];
+  if (!text || text.length === 0) {
+    return [];
+  }
+
+  if (text.length <= maxChunkSize) {
+    return [text];
+  }
+
+  // Split by sentences (improved regex)
+  const sentences = text.match(/[^.!?]+[.!?]+(?:\s|$)/g) || [text];
   const chunks: string[] = [];
   let currentChunk = '';
 
   for (const sentence of sentences) {
-    if ((currentChunk + sentence).length > maxChunkSize) {
+    const trimmedSentence = sentence.trim();
+    
+    // If single sentence exceeds max size, split it by clauses
+    if (trimmedSentence.length > maxChunkSize) {
+      if (currentChunk) {
+        chunks.push(currentChunk.trim());
+        currentChunk = '';
+      }
+      
+      // Split long sentence by commas or semicolons
+      const parts = trimmedSentence.split(/[,;]/);
+      let longChunk = '';
+      
+      for (const part of parts) {
+        if ((longChunk + part).length > maxChunkSize) {
+          if (longChunk) chunks.push(longChunk.trim());
+          longChunk = part;
+        } else {
+          longChunk += (longChunk ? ', ' : '') + part;
+        }
+      }
+      if (longChunk) chunks.push(longChunk.trim());
+      continue;
+    }
+
+    // Would adding this sentence exceed the limit?
+    if ((currentChunk + ' ' + trimmedSentence).length > maxChunkSize) {
       if (currentChunk) {
         chunks.push(currentChunk.trim());
       }
-      currentChunk = sentence;
+      currentChunk = trimmedSentence;
     } else {
-      currentChunk += ' ' + sentence;
+      currentChunk += (currentChunk ? ' ' : '') + trimmedSentence;
     }
   }
 
@@ -83,7 +143,8 @@ export function chunkText(text: string, maxChunkSize: number = 4000): string[] {
     chunks.push(currentChunk.trim());
   }
 
-  return chunks;
+  // Filter out empty chunks
+  return chunks.filter(chunk => chunk.length > 0);
 }
 
 // Estimate reading time in minutes

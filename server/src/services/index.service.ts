@@ -78,11 +78,14 @@ Focus on:
 - Best practices and common mistakes
 - Tools and technologies discussed`;
 
-    // Chunk transcript if too long
-    const chunks = chunkText(transcript.fullText, 6000);
+    // Chunk transcript if too long (use smaller chunks for better LLM processing)
+    const chunks = chunkText(transcript.fullText, 4000);
     const allTopics: RawTopic[] = [];
+    
+    console.log(`  📄 Processing ${chunks.length} chunk(s) from transcript`);
 
-    for (const chunk of chunks) {
+    for (let i = 0; i < chunks.length; i++) {
+      const chunk = chunks[i];
       const prompt = `Analyze this video transcript excerpt and extract the main topics discussed.
 
 Transcript:
@@ -102,10 +105,12 @@ Return a JSON array of topics with this structure:
 Only include topics that are substantively discussed, not just briefly mentioned.`;
 
       try {
+        console.log(`    Chunk ${i + 1}/${chunks.length}...`);
         const topics = await llmService.generateJSON<RawTopic[]>(prompt, systemPrompt);
         allTopics.push(...topics);
+        console.log(`    ✓ Found ${topics.length} topic(s) in chunk ${i + 1}`);
       } catch (error) {
-        console.warn('Failed to extract topics from chunk:', error);
+        console.warn(`    ⚠️ Failed to extract topics from chunk ${i + 1}:`, error instanceof Error ? error.message : 'Unknown error');
       }
     }
 
