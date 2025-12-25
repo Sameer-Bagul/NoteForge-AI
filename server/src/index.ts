@@ -1,0 +1,74 @@
+import express from 'express';
+import cors from 'cors';
+import youtubeRoutes from './routes/youtube';
+import processRoutes from './routes/process';
+import { llmService } from './services/llm.service';
+
+const app = express();
+const PORT = process.env.PORT || 3001;
+
+// Middleware
+app.use(cors());
+app.use(express.json());
+
+// Routes
+app.use('/api/youtube', youtubeRoutes);
+app.use('/api/process', processRoutes);
+
+// Health check
+app.get('/api/health', async (req, res) => {
+  const llmHealthy = await llmService.checkHealth();
+  
+  res.json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    services: {
+      llm: llmHealthy ? 'connected' : 'disconnected'
+    }
+  });
+});
+
+// Root endpoint
+app.get('/', (req, res) => {
+  res.json({
+    name: 'NoteForge API',
+    version: '1.0.0',
+    endpoints: {
+      health: '/api/health',
+      youtube: {
+        validate: 'POST /api/youtube/validate',
+        transcript: 'POST /api/youtube/transcript',
+        playlist: 'POST /api/youtube/playlist',
+        videoInfo: 'GET /api/youtube/video/:videoId'
+      },
+      process: {
+        start: 'POST /api/process/start',
+        status: 'GET /api/process/status/:jobId',
+        jobs: 'GET /api/process/jobs',
+        notebook: 'GET /api/process/notebook/:notebookId',
+        index: 'GET /api/process/index/:indexId',
+        llmHealth: 'GET /api/process/llm/health',
+        llmConfig: 'POST /api/process/llm/config'
+      }
+    }
+  });
+});
+
+// Start server
+app.listen(PORT, () => {
+  console.log(`
+╔═══════════════════════════════════════════════════════════╗
+║                                                           ║
+║   🚀 NoteForge Server Started                             ║
+║                                                           ║
+║   Server:  http://localhost:${PORT}                         ║
+║   API:     http://localhost:${PORT}/api                     ║
+║                                                           ║
+║   Ensure Ollama is running:                               ║
+║   $ ollama run mistral                                    ║
+║                                                           ║
+╚═══════════════════════════════════════════════════════════╝
+  `);
+});
+
+export default app;

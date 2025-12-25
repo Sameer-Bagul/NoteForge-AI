@@ -1,0 +1,179 @@
+import { v4 as uuidv4 } from 'uuid';
+import { 
+  ProcessingJob, 
+  ProcessingStep, 
+  ProcessingStatus,
+  VideoTranscript,
+  UnifiedIndex,
+  Notebook
+} from '../types';
+import { transcriptService } from './transcript.service';
+import { indexService } from './index.service';
+import { notesService } from './notes.service';
+import { isPlaylistUrl, extractVideoId } from '../utils/youtube';
+
+// In-memory job storage (use Redis for production)
+const jobs = new Map<string, ProcessingJob>();
+
+const PROCESSING_STEPS: Omit<ProcessingStep, 'status'>[] = [
+  { id: 'extract', label: 'Extracting Transcripts', description: 'Fetching video transcripts from YouTube' },
+  { id: 'analyze', label: 'Analyzing Content', description: 'Analyzing transcript content and structure' },
+  { id: 'index', label: 'Generating Index', description: 'Creating unified topic index' },
+  { id: 'notes', label: 'Generating Notes', description: 'Writing detailed notes for each topic' },
+  { id: 'assemble', label: 'Assembling Notebook', description: 'Compiling final notebook' }
+];
+
+export class JobService {
+
+  // Create a new processing job
+  createJob(url: string): ProcessingJob {
+    const job: ProcessingJob = {
+      id: uuidv4(),
+      status: 'idle',
+      steps: PROCESSING_STEPS.map(step => ({ ...step, status: 'pending' as const })),
+      currentStep: 0,
+      videos: [],
+      transcripts: [],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    jobs.set(job.id, job);
+    return job;
+  }
+
+  // Get job by ID
+  getJob(jobId: string): ProcessingJob | null {
+    return jobs.get(jobId) || null;
+  }
+
+  // Update job status
+  private updateJob(jobId: string, updates: Partial<ProcessingJob>): void {
+    const job = jobs.get(jobId);
+    if (job) {
+      Object.assign(job, updates, { updatedAt: new Date().toISOString() });
+      jobs.set(jobId, job);
+    }
+  }
+
+  // Update step status
+  private updateStep(jobId: string, stepIndex: number, status: 'pending' | 'active' | 'complete' | 'error', details?: string): void {
+    const job = jobs.get(jobId);
+    if (job && job.steps[stepIndex]) {
+      job.steps[stepIndex].status = status;
+      if (details) {
+        job.steps[stepIndex].details = details;
+      }
+      job.updatedAt = new Date().toISOString();
+      jobs.set(jobId, job);
+    }
+  }
+
+  // Process a URL (video or playlist)
+  async processUrl(jobId: string, url: string, title?: string): Promise<void> {
+    const job = this.getJob(jobId);
+    if (!job) {
+      throw new Error('Job not found');
+    }
+
+    try {
+      // Step 1: Extract transcripts
+      this.updateStep(jobId, 0, 'active');
+      this.updateJob(jobId, { status: 'extracting-transcripts', currentStep: 0 });
+
+      let transcripts: VideoTranscript[];
+
+      if (isPlaylistUrl(url)) {
+        const { playlist, transcripts: playlistTranscripts } = await transcriptService.fetchPlaylist(url);
+        transcripts = playlistTranscripts;
+        title = title || playlist.title;
+        this.updateJob(jobId, { 
+          videos: playlist.videos 
+        });
+      } else {
+        const videoId = extractVideoId(url);
+        if (!videoId) {
+          throw new Error('Invalid YouTube URL');
+        }
+        const transcript = await transcriptService.fetchTranscript(videoId);
+        transcripts = [transcript];
+        title = title || transcript.videoInfo.title;
+        this.updateJob(jobId, { 
+          videos: [transcript.videoInfo] 
+        });
+      }
+
+      this.updateJob(jobId, { transcripts });
+      this.updateStep(jobId, 0, 'complete', `Extracted ${transcripts.length} transcript(s)`);
+
+      // Step 2: Analyze content
+      this.updateStep(jobId, 1, 'active');
+      this.updateJob(jobId, { status: 'analyzing-content', currentStep: 1 });
+      
+      // Brief analysis delay (content analysis happens as part of indexing)
+      await this.delay(1000);
+      this.updateStep(jobId, 1, 'complete', 'Content analysis complete');
+
+      // Step 3: Generate unified index
+      this.updateStep(jobId, 2, 'active');
+      this.updateJob(jobId, { status: 'generating-index', currentStep: 2 });
+
+      const index = await indexService.generateUnifiedIndex(transcripts, title || 'Untitled');
+      this.updateJob(jobId, { index });
+      this.updateStep(jobId, 2, 'complete', `Generated index with ${index.topicCount} topics`);
+
+      // Step 4: Generate notes for each topic
+      this.updateStep(jobId, 3, 'active');
+      this.updateJob(jobId, { status: 'generating-notes', currentStep: 3 });
+
+      const allNotes = await notesService.generateAllNotes(index, transcripts);
+      this.updateStep(jobId, 3, 'complete', `Generated notes for ${allNotes.length} topics`);
+
+      // Step 5: Assemble notebook
+      this.updateStep(jobId, 4, 'active');
+      this.updateJob(jobId, { status: 'assembling-notebook', currentStep: 4 });
+
+      const notebook = await notesService.assembleNotebook(
+        title || 'Untitled Notebook',
+        index,
+        allNotes,
+        transcripts
+      );
+
+      this.updateJob(jobId, { 
+        notebook,
+        status: 'complete',
+        currentStep: 5
+      });
+      this.updateStep(jobId, 4, 'complete', 'Notebook assembled successfully');
+
+      console.log(`Job ${jobId} completed successfully`);
+
+    } catch (error) {
+      console.error(`Job ${jobId} failed:`, error);
+      
+      const currentStep = job.currentStep;
+      this.updateStep(jobId, currentStep, 'error', error instanceof Error ? error.message : 'Unknown error');
+      this.updateJob(jobId, { 
+        status: 'error',
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  }
+
+  // Get all jobs (for admin/debugging)
+  getAllJobs(): ProcessingJob[] {
+    return Array.from(jobs.values());
+  }
+
+  // Delete a job
+  deleteJob(jobId: string): boolean {
+    return jobs.delete(jobId);
+  }
+
+  private delay(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+}
+
+export const jobService = new JobService();
