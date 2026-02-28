@@ -10,11 +10,11 @@ const router = Router();
 router.post('/start', async (req: Request, res: Response) => {
   try {
     const { url, title } = req.body;
-    
+
     console.log(`\n📨 Received processing request:`);
     console.log(`   URL: ${url}`);
     console.log(`   Title: ${title || 'N/A'}`);
-    
+
     if (!url) {
       console.log(`❌ Error: URL is required`);
       return res.status(400).json({
@@ -27,7 +27,7 @@ router.post('/start', async (req: Request, res: Response) => {
     console.log(`🔍 Checking LLM availability...`);
     const llmAvailable = await llmService.checkHealth();
     console.log(`   LLM Status: ${llmAvailable ? '✅ Available' : '❌ Not Available'}`);
-    
+
     if (!llmAvailable) {
       return res.status(503).json({
         success: false,
@@ -38,7 +38,7 @@ router.post('/start', async (req: Request, res: Response) => {
     // Create job
     const job = jobService.createJob(url);
     console.log(`✅ Job created with ID: ${job.id}`);
-    
+
     // Start processing in background
     console.log(`🚀 Starting background processing...`);
     jobService.processUrl(job.id, url, title).catch(err => {
@@ -68,9 +68,9 @@ router.get('/status/:jobId', (req: Request, res: Response) => {
   try {
     const { jobId } = req.params;
     console.log(`📊 Status request for job: ${jobId}`);
-    
+
     const job = jobService.getJob(jobId);
-    
+
     if (!job) {
       console.log(`❌ Job not found: ${jobId}`);
       return res.status(404).json({
@@ -80,7 +80,7 @@ router.get('/status/:jobId', (req: Request, res: Response) => {
     }
 
     console.log(`✅ Job status: ${job.status} (Step ${job.currentStep}/${job.steps.length})`);
-    
+
     res.json({
       success: true,
       data: {
@@ -117,7 +117,7 @@ router.put('/:jobId/approve-index', async (req: Request, res: Response) => {
     const { index } = req.body;
 
     console.log(`\n📋 Index approval request for job: ${jobId}`);
-    
+
     if (!index) {
       return res.status(400).json({
         success: false,
@@ -127,7 +127,7 @@ router.put('/:jobId/approve-index', async (req: Request, res: Response) => {
 
     // Update the index if modified
     const updated = jobService.updateIndex(jobId, index);
-    
+
     if (!updated) {
       return res.status(400).json({
         success: false,
@@ -159,20 +159,55 @@ router.put('/:jobId/approve-index', async (req: Request, res: Response) => {
 // Get all jobs
 router.get('/jobs', (req: Request, res: Response) => {
   try {
-    const jobs = jobService.getAllJobs();
-    
+    const activeJobs = jobService.getAllJobs();
+    const allNotebooks = notesService.getAllNotebooks();
+
+    // Create a map of notebook IDs associated with active jobs to avoid duplicates
+    const activeNotebookIds = new Set(
+      activeJobs
+        .filter(j => j.notebook)
+        .map(j => j.notebook!.id)
+    );
+
+    // Map active jobs to required format
+    const jobList = activeJobs.map(job => ({
+      id: job.id,
+      status: job.status,
+      currentStep: job.currentStep,
+      steps: job.steps,
+      videoCount: job.videos.length,
+      videoInfo: job.videos[0], // Primary video for thumbnail
+      notebook: job.notebook,
+      createdAt: job.createdAt,
+      updatedAt: job.updatedAt,
+      error: job.error
+    }));
+
+    // Add notebooks from disk that aren't in active jobs
+    const historicalJobs = allNotebooks
+      .filter(nb => !activeNotebookIds.has(nb.id))
+      .map(nb => ({
+        id: nb.id,
+        status: 'complete' as const,
+        currentStep: 5,
+        videoCount: nb.metadata.totalVideos,
+        videoInfo: nb.metadata.sourceVideos[0],
+        notebook: nb,
+        createdAt: nb.createdAt,
+        updatedAt: nb.updatedAt
+      }));
+
+    // Combine and sort by date (newest first)
+    const combined = [...jobList, ...historicalJobs].sort((a, b) =>
+      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+
     res.json({
       success: true,
-      data: jobs.map(job => ({
-        id: job.id,
-        status: job.status,
-        currentStep: job.currentStep,
-        videoCount: job.videos.length,
-        createdAt: job.createdAt,
-        updatedAt: job.updatedAt
-      }))
+      data: combined
     });
   } catch (error) {
+    console.error('Failed to get jobs:', error);
     res.status(500).json({
       success: false,
       error: 'Failed to get jobs'
@@ -185,7 +220,7 @@ router.delete('/job/:jobId', (req: Request, res: Response) => {
   try {
     const { jobId } = req.params;
     const deleted = jobService.deleteJob(jobId);
-    
+
     if (!deleted) {
       return res.status(404).json({
         success: false,
@@ -210,7 +245,7 @@ router.get('/notebook/:notebookId', (req: Request, res: Response) => {
   try {
     const { notebookId } = req.params;
     const notebook = notesService.loadNotebook(notebookId);
-    
+
     if (!notebook) {
       return res.status(404).json({
         success: false,
@@ -235,7 +270,7 @@ router.get('/index/:indexId', (req: Request, res: Response) => {
   try {
     const { indexId } = req.params;
     const index = indexService.loadIndex(indexId);
-    
+
     if (!index) {
       return res.status(404).json({
         success: false,
@@ -260,7 +295,7 @@ router.get('/llm/health', async (req: Request, res: Response) => {
   try {
     const healthy = await llmService.checkHealth();
     const models = healthy ? await llmService.listModels() : [];
-    
+
     res.json({
       success: true,
       data: {
@@ -281,7 +316,7 @@ router.get('/llm/health', async (req: Request, res: Response) => {
 router.post('/llm/config', (req: Request, res: Response) => {
   try {
     const { model, temperature, maxTokens, baseUrl } = req.body;
-    
+
     llmService.updateConfig({
       ...(model && { model }),
       ...(temperature !== undefined && { temperature }),

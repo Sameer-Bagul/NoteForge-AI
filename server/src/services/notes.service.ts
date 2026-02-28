@@ -1,9 +1,9 @@
 import { v4 as uuidv4 } from 'uuid';
-import { 
-  VideoTranscript, 
-  UnifiedIndex, 
-  TopicNode, 
-  TopicNotes, 
+import {
+  VideoTranscript,
+  UnifiedIndex,
+  TopicNode,
+  TopicNotes,
   NoteSection,
   Notebook,
   Chapter,
@@ -11,6 +11,7 @@ import {
   VideoSourceReference
 } from '../types';
 import { llmService } from './llm.service';
+import { ragService } from './rag.service';
 import { countWords, estimateReadingTime } from '../utils/youtube';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -29,14 +30,15 @@ export class NotesService {
 
   // Generate notes for a single topic
   async generateTopicNotes(
-    topic: TopicNode, 
-    transcripts: VideoTranscript[]
+    topic: TopicNode,
+    transcripts: VideoTranscript[],
+    onSubProgress?: (detail: string) => void
   ): Promise<TopicNotes> {
     console.log(`Generating notes for topic: ${topic.title}`);
 
-    // Get relevant transcript excerpts for this topic
-    const relevantExcerpts = this.extractRelevantExcerpts(topic, transcripts);
-    
+    // ADVANCED RAG: Use semantic retrieval instead of keyword search
+    const sourceMaterial = await ragService.retrieveContext(topic.title, transcripts, onSubProgress);
+
     const systemPrompt = `You are a technical writer creating comprehensive study notes. Your notes should be:
 
 1. **Detailed and Educational**: Explain concepts thoroughly, including fundamentals and advanced aspects
@@ -59,9 +61,9 @@ Topic Description: ${topic.description || 'No description provided'}
 Subtopics to cover:
 ${topic.subtopics.map(st => `- ${st.title}`).join('\n')}
 
-Source Material:
+Source Material from Video Transcripts:
 """
-${relevantExcerpts.map(e => `[From: ${e.videoTitle}]\n${e.text}`).join('\n\n---\n\n')}
+${sourceMaterial}
 """
 
 Create detailed notes that:
@@ -75,21 +77,27 @@ Create detailed notes that:
 Format the response as markdown with rich formatting.`;
 
     try {
-      const response = await llmService.generate(prompt, systemPrompt);
-      const sections = this.parseMarkdownToSections(response.content);
-      const keyTakeaways = this.extractKeyTakeaways(response.content);
+      // Step 1: Generate initial notes
+      const initialResponse = await llmService.generate(prompt, systemPrompt);
+
+      // Step 2: MASTER RAG - Apply Self-Correction Loop for Grounding
+      console.log(`[RAG] Applying self-correction for: ${topic.title}`);
+      const groundedContent = await ragService.generateGroundedNotes(
+        `Verify and refine these notes about ${topic.title} based on the transcript context. Draft: ${initialResponse.content}`,
+        transcripts,
+        onSubProgress
+      );
+
+      const sections = this.parseMarkdownToSections(groundedContent);
+      const keyTakeaways = this.extractKeyTakeaways(groundedContent);
 
       const notes: TopicNotes = {
         topicId: topic.id,
         topicTitle: topic.title,
-        summary: this.generateSummary(response.content),
+        summary: this.generateSummary(groundedContent),
         sections,
         keyTakeaways,
-        videoSources: relevantExcerpts.map(e => ({
-          videoId: e.videoId,
-          videoTitle: e.videoTitle,
-          timestamps: e.timestamps
-        })),
+        videoSources: [], // Managed by RAG service now, could be derived from docs
         generatedAt: new Date().toISOString()
       };
 
@@ -105,16 +113,40 @@ Format the response as markdown with rich formatting.`;
 
   // Generate all notes for an index
   async generateAllNotes(
-    index: UnifiedIndex, 
-    transcripts: VideoTranscript[]
+    index: UnifiedIndex,
+    transcripts: VideoTranscript[],
+    onProgress?: (progress: { currentItem: number; totalItems: number; itemName: string; subProgress?: string }) => void
   ): Promise<TopicNotes[]> {
     const allNotes: TopicNotes[] = [];
 
-    for (const topic of index.topics) {
+    // Clear RAG index to ensure fresh context for this specific job
+    ragService.clearIndex();
+
+    for (let i = 0; i < index.topics.length; i++) {
+      const topic = index.topics[i];
       try {
-        const notes = await this.generateTopicNotes(topic, transcripts);
+        if (onProgress) {
+          onProgress({
+            currentItem: i + 1,
+            totalItems: index.topics.length,
+            itemName: 'Topic',
+            subProgress: `Generating notes for: ${topic.title}`
+          });
+        }
+
+        const notes = await this.generateTopicNotes(topic, transcripts, (subProgress) => {
+          if (onProgress) {
+            onProgress({
+              currentItem: i + 1,
+              totalItems: index.topics.length,
+              itemName: 'Topic',
+              subProgress: `${topic.title}: ${subProgress}`
+            });
+          }
+        });
+
         allNotes.push(notes);
-        
+
         // Small delay between topics
         await this.delay(1000);
       } catch (error) {
@@ -138,7 +170,7 @@ Format the response as markdown with rich formatting.`;
     const chapters = await this.organizeChapters(index.topics, topicNotes);
 
     // Calculate metadata
-    const allContent = topicNotes.map(n => 
+    const allContent = topicNotes.map(n =>
       n.sections.map(s => s.content).join(' ')
     ).join(' ');
 
@@ -169,11 +201,11 @@ Format the response as markdown with rich formatting.`;
 
   // Extract relevant transcript excerpts for a topic using cleaned fullText
   private extractRelevantExcerpts(
-    topic: TopicNode, 
+    topic: TopicNode,
     transcripts: VideoTranscript[]
   ): Array<{ videoId: string; videoTitle: string; text: string; timestamps: number[] }> {
     const excerpts: Array<{ videoId: string; videoTitle: string; text: string; timestamps: number[] }> = [];
-    
+
     // Keywords to search for relevant content
     const keywords = [
       topic.title.toLowerCase(),
@@ -193,24 +225,24 @@ Format the response as markdown with rich formatting.`;
       }
 
       const fullTextLower = fullText.toLowerCase();
-      
+
       // Check if transcript contains topic keywords
       const hasKeywords = keywords.some(kw => fullTextLower.includes(kw));
-      
+
       if (hasKeywords) {
         // Extract keyword-relevant sentences
         const sentences = fullText.split(/[.!?]+\s+/);
         const relevantSentences: string[] = [];
-        
+
         for (const sentence of sentences) {
           if (sentence.length < 10) continue; // Skip very short fragments
-          
+
           const sentenceLower = sentence.toLowerCase();
           if (keywords.some(kw => sentenceLower.includes(kw))) {
             relevantSentences.push(sentence.trim());
           }
         }
-        
+
         if (relevantSentences.length > 0) {
           // Join relevant sentences and limit to 5000 chars to avoid token overflow
           const relevantText = relevantSentences.join('. ') + '.';
@@ -247,7 +279,7 @@ Format the response as markdown with rich formatting.`;
   private parseMarkdownToSections(markdown: string): NoteSection[] {
     const sections: NoteSection[] = [];
     const lines = markdown.split('\n');
-    
+
     let currentSection: Partial<NoteSection> | null = null;
     let currentContent: string[] = [];
     let inCodeBlock = false;
@@ -280,7 +312,7 @@ Format the response as markdown with rich formatting.`;
         mermaidContent = [];
         continue;
       }
-      
+
       if (line.startsWith('```') && inMermaid) {
         sections.push({
           id: uuidv4(),
@@ -342,10 +374,10 @@ Format the response as markdown with rich formatting.`;
       // Handle special notes (tips, warnings, etc.)
       if (line.match(/>\s*\*\*(💡|⚠️|📌|ℹ️)/)) {
         flushSection();
-        const noteType = line.includes('💡') ? 'tip' 
+        const noteType = line.includes('💡') ? 'tip'
           : line.includes('⚠️') ? 'warning'
-          : line.includes('📌') ? 'important'
-          : 'info';
+            : line.includes('📌') ? 'important'
+              : 'info';
         sections.push({
           id: uuidv4(),
           type: 'special',
@@ -412,10 +444,10 @@ Format the response as markdown with rich formatting.`;
   // Extract key takeaways from content
   private extractKeyTakeaways(content: string): string[] {
     const takeaways: string[] = [];
-    
+
     // Look for sections marked as takeaways
     const takeawaySection = content.match(/key takeaways?:?([\s\S]*?)(?=\n##|\n\*\*|$)/i);
-    
+
     if (takeawaySection) {
       const bullets = takeawaySection[1].match(/[-*]\s+(.+)/g);
       if (bullets) {
@@ -427,7 +459,7 @@ Format the response as markdown with rich formatting.`;
     if (takeaways.length === 0) {
       const importantMatches = content.match(/>\s*\*\*(💡|📌)[^*]+\*\*:?\s*(.+)/g);
       if (importantMatches) {
-        takeaways.push(...importantMatches.map(m => 
+        takeaways.push(...importantMatches.map(m =>
           m.replace(/>\s*\*\*[^*]+\*\*:?\s*/, '').trim()
         ).slice(0, 5));
       }
@@ -441,11 +473,11 @@ Format the response as markdown with rich formatting.`;
     // Extract first paragraph or introduction
     const firstPara = content.split('\n\n')[0];
     const cleanPara = firstPara.replace(/^#+\s+/, '').replace(/\*\*/g, '').trim();
-    
+
     if (cleanPara.length > 200) {
       return cleanPara.substring(0, 200) + '...';
     }
-    
+
     return cleanPara;
   }
 
@@ -453,24 +485,24 @@ Format the response as markdown with rich formatting.`;
   private async organizeChapters(topics: TopicNode[], notes: TopicNotes[]): Promise<Chapter[]> {
     const notesMap = new Map(notes.map(n => [n.topicId, n]));
     const chapters: Chapter[] = [];
-    
+
     // Group into chapters of 3-4 topics each
     const topicsPerChapter = 4;
     let chapterIndex = 0;
-    
+
     for (let i = 0; i < topics.length; i += topicsPerChapter) {
       const chapterTopics = topics.slice(i, i + topicsPerChapter);
       const chapterNotes = chapterTopics
         .map(t => notesMap.get(t.id))
         .filter((n): n is TopicNotes => n !== undefined);
-      
+
       chapters.push({
         id: uuidv4(),
         title: `Chapter ${chapterIndex + 1}: ${chapterTopics[0].title}`,
         order: chapterIndex,
         topics: chapterNotes
       });
-      
+
       chapterIndex++;
     }
 
@@ -495,6 +527,17 @@ Format the response as markdown with rich formatting.`;
       return JSON.parse(fs.readFileSync(filePath, 'utf-8'));
     }
     return null;
+  }
+
+  // Get all stored notebooks
+  getAllNotebooks(): Notebook[] {
+    if (!fs.existsSync(NOTEBOOKS_DIR)) return [];
+
+    const files = fs.readdirSync(NOTEBOOKS_DIR).filter(f => f.endsWith('.json'));
+    return files.map(file => {
+      const data = fs.readFileSync(path.join(NOTEBOOKS_DIR, file), 'utf-8');
+      return JSON.parse(data) as Notebook;
+    });
   }
 
   private delay(ms: number): Promise<void> {

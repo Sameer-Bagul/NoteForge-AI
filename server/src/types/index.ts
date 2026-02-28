@@ -130,7 +130,7 @@ export interface NotebookMetadata {
 }
 
 // Processing Types
-export type ProcessingStatus = 
+export type ProcessingStatus =
   | 'idle'
   | 'extracting-transcripts'
   | 'analyzing-content'
@@ -148,6 +148,12 @@ export interface ProcessingStep {
   status: 'pending' | 'active' | 'complete' | 'error';
   progress?: number;
   details?: string;
+  metadata?: {
+    currentItem?: number;
+    totalItems?: number;
+    itemName?: string;
+    subProgress?: string;
+  };
 }
 
 export interface ProcessingJob {

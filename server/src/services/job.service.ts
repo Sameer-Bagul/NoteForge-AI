@@ -1,7 +1,7 @@
 import { v4 as uuidv4 } from 'uuid';
-import { 
-  ProcessingJob, 
-  ProcessingStep, 
+import {
+  ProcessingJob,
+  ProcessingStep,
   ProcessingStatus,
   VideoTranscript,
   UnifiedIndex,
@@ -57,12 +57,24 @@ export class JobService {
   }
 
   // Update step status
-  private updateStep(jobId: string, stepIndex: number, status: 'pending' | 'active' | 'complete' | 'error', details?: string): void {
+  public updateStep(
+    jobId: string,
+    stepIndex: number,
+    status: 'pending' | 'active' | 'complete' | 'error',
+    details?: string,
+    metadata?: ProcessingStep['metadata']
+  ): void {
     const job = jobs.get(jobId);
     if (job && job.steps[stepIndex]) {
       job.steps[stepIndex].status = status;
       if (details) {
         job.steps[stepIndex].details = details;
+      }
+      if (metadata) {
+        job.steps[stepIndex].metadata = {
+          ...job.steps[stepIndex].metadata,
+          ...metadata
+        };
       }
       job.updatedAt = new Date().toISOString();
       jobs.set(jobId, job);
@@ -86,11 +98,13 @@ export class JobService {
       let transcripts: VideoTranscript[];
 
       if (isPlaylistUrl(url)) {
-        const { playlist, transcripts: playlistTranscripts } = await transcriptService.fetchPlaylist(url);
+        const { playlist, transcripts: playlistTranscripts } = await transcriptService.fetchPlaylist(url, (progress) => {
+          this.updateStep(jobId, 0, 'active', undefined, progress);
+        });
         transcripts = playlistTranscripts;
         title = title || playlist.title;
-        this.updateJob(jobId, { 
-          videos: playlist.videos 
+        this.updateJob(jobId, {
+          videos: playlist.videos
         });
       } else {
         const videoId = extractVideoId(url);
@@ -100,8 +114,8 @@ export class JobService {
         const transcript = await transcriptService.fetchTranscript(videoId);
         transcripts = [transcript];
         title = title || transcript.videoInfo.title;
-        this.updateJob(jobId, { 
-          videos: [transcript.videoInfo] 
+        this.updateJob(jobId, {
+          videos: [transcript.videoInfo]
         });
       }
 
@@ -113,7 +127,7 @@ export class JobService {
       console.log(`🔍 Step 2: Analyzing content...`);
       this.updateStep(jobId, 1, 'active');
       this.updateJob(jobId, { status: 'analyzing-content', currentStep: 1 });
-      
+
       // Brief analysis delay (content analysis happens as part of indexing)
       await this.delay(1000);
       this.updateStep(jobId, 1, 'complete', 'Content analysis complete');
@@ -133,14 +147,14 @@ export class JobService {
       console.log(`⏸️  Pausing for user approval of index...`);
       this.updateJob(jobId, { status: 'awaiting-approval', currentStep: 3 });
       console.log(`📋 Index ready for review. Waiting for approval via /api/process/${jobId}/approve-index`);
-      
+
       // Processing will continue when continueAfterApproval() is called
     } catch (error) {
       console.error(`Job ${jobId} failed:`, error);
-      
+
       const currentStep = job.currentStep;
       this.updateStep(jobId, currentStep, 'error', error instanceof Error ? error.message : 'Unknown error');
-      this.updateJob(jobId, { 
+      this.updateJob(jobId, {
         status: 'error',
         error: error instanceof Error ? error.message : 'Unknown error'
       });
@@ -166,7 +180,7 @@ export class JobService {
 
     console.log(`📝 Updating index for job ${jobId}`);
     console.log(`   Topics: ${updatedIndex.topicCount}`);
-    
+
     this.updateJob(jobId, { index: updatedIndex });
     return true;
   }
@@ -174,11 +188,11 @@ export class JobService {
   // Continue processing after index approval
   async continueAfterApproval(jobId: string): Promise<void> {
     const job = this.getJob(jobId);
-    
+
     if (!job) {
       throw new Error('Job not found');
     }
-    
+
     if (job.status !== 'awaiting-approval') {
       throw new Error(`Job is not awaiting approval (current status: ${job.status})`);
     }
@@ -199,7 +213,9 @@ export class JobService {
       this.updateStep(jobId, 3, 'active');
       this.updateJob(jobId, { status: 'generating-notes', currentStep: 3 });
 
-      const allNotes = await notesService.generateAllNotes(index, transcripts);
+      const allNotes = await notesService.generateAllNotes(index, transcripts, (progress) => {
+        this.updateStep(jobId, 3, 'active', undefined, progress);
+      });
       this.updateStep(jobId, 3, 'complete', `Generated notes for ${allNotes.length} topics`);
       console.log(`✅ Step 4 complete: Generated notes for ${allNotes.length} topics`);
 
@@ -215,7 +231,7 @@ export class JobService {
         transcripts
       );
 
-      this.updateJob(jobId, { 
+      this.updateJob(jobId, {
         notebook,
         status: 'complete',
         currentStep: 5
@@ -227,10 +243,10 @@ export class JobService {
 
     } catch (error) {
       console.error(`Job ${jobId} continuation failed:`, error);
-      
+
       const currentStep = job.currentStep;
       this.updateStep(jobId, currentStep, 'error', error instanceof Error ? error.message : 'Unknown error');
-      this.updateJob(jobId, { 
+      this.updateJob(jobId, {
         status: 'error',
         error: error instanceof Error ? error.message : 'Unknown error'
       });

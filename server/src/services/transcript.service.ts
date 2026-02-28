@@ -47,14 +47,14 @@ if (!fs.existsSync(STORAGE_DIR)) {
 }
 
 export class TranscriptService {
-  
+
   // Fetch transcript for a single video using yt-dlp
   async fetchTranscript(videoIdOrUrl: string): Promise<VideoTranscript> {
     const videoId = extractVideoId(videoIdOrUrl) || videoIdOrUrl;
     const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
-    
+
     console.log(`Fetching transcript for video: ${videoId}`);
-    
+
     try {
       // Fetch video metadata
       const metadataStdout = await ytDlpWrap.execPromise([
@@ -64,7 +64,7 @@ export class TranscriptService {
         '--no-warnings'
       ]);
       const metadata = JSON.parse(metadataStdout);
-      
+
       const videoInfo: VideoInfo = {
         id: videoId,
         title: metadata.title || `Video ${videoId}`,
@@ -81,7 +81,7 @@ export class TranscriptService {
 
       try {
         const tempFile = path.join(STORAGE_DIR, `temp_${videoId}`);
-        
+
         // Download subtitles
         await ytDlpWrap.execPromise([
           videoUrl,
@@ -93,14 +93,14 @@ export class TranscriptService {
           '--output', tempFile,
           '--no-warnings'
         ]);
-        
+
         // Look for subtitle files
         const possibleFiles = [
           `${tempFile}.en.json3`,
           `${tempFile}.en-US.json3`,
           `${tempFile}.en-GB.json3`
         ];
-        
+
         let subsData: YtDlpSubtitleData | null = null;
         for (const filename of possibleFiles) {
           if (fs.existsSync(filename)) {
@@ -160,9 +160,12 @@ export class TranscriptService {
   }
 
   // Fetch playlist info and all video transcripts using yt-dlp
-  async fetchPlaylist(playlistUrl: string): Promise<{ playlist: PlaylistInfo; transcripts: VideoTranscript[] }> {
+  async fetchPlaylist(
+    playlistUrl: string,
+    onProgress?: (progress: { currentItem: number; totalItems: number; itemName: string; subProgress?: string }) => void
+  ): Promise<{ playlist: PlaylistInfo; transcripts: VideoTranscript[] }> {
     const playlistId = extractPlaylistId(playlistUrl);
-    
+
     if (!playlistId) {
       throw new Error('Invalid playlist URL');
     }
@@ -177,17 +180,17 @@ export class TranscriptService {
         '--dump-single-json',
         '--no-warnings'
       ]).then(stdout => JSON.parse(stdout) as YtDlpPlaylistData);
-      
+
       console.log(`  🔍 Playlist data received, processing...`);
-      
+
       // Extract video entries
       const entries = playlistData.entries || playlistData.items || [];
-      
+
       if (!Array.isArray(entries)) {
         console.error('Unexpected playlist structure:', playlistData);
         throw new Error('Playlist entries is not an array');
       }
-      
+
       const videos: VideoInfo[] = entries.map((entry) => ({
         id: entry.id || entry.url?.split('v=')[1] || '',
         title: entry.title || `Video ${entry.id || 'unknown'}`,
@@ -195,7 +198,7 @@ export class TranscriptService {
         thumbnail: entry.thumbnail || entry.thumbnails?.[0]?.url || getThumbnailUrl(entry.id || ''),
         channelName: entry.uploader || entry.channel || entry.uploader_id
       })).filter((v: VideoInfo) => v.id); // Filter out any invalid entries
-      
+
       const playlist: PlaylistInfo = {
         id: playlistId,
         title: playlistData.title || playlistData.playlist_title || 'Unknown Playlist',
@@ -213,23 +216,32 @@ export class TranscriptService {
       // Fetch transcripts for all videos
       const transcripts: VideoTranscript[] = [];
       let successCount = 0;
-      
+
       // Get max videos from environment or use all videos
-      const maxVideos = process.env.MAX_PLAYLIST_VIDEOS 
-        ? parseInt(process.env.MAX_PLAYLIST_VIDEOS, 10) 
+      const maxVideos = process.env.MAX_PLAYLIST_VIDEOS
+        ? parseInt(process.env.MAX_PLAYLIST_VIDEOS, 10)
         : playlist.videos.length; // Process ALL videos by default
-      
+
       const videosToProcess = Math.min(playlist.videos.length, maxVideos);
       console.log(`📊 Processing ${videosToProcess} out of ${playlist.videoCount} videos`);
-      
+
       for (let i = 0; i < videosToProcess; i++) {
         const video = playlist.videos[i];
         try {
+          if (onProgress) {
+            onProgress({
+              currentItem: i + 1,
+              totalItems: videosToProcess,
+              itemName: 'Video',
+              subProgress: `Fetching: ${video.title}`
+            });
+          }
+
           console.log(`[${i + 1}/${videosToProcess}] Fetching: ${video.title}`);
           const transcript = await this.fetchTranscript(video.id);
           transcripts.push(transcript);
           successCount++;
-          
+
           // Small delay to avoid rate limiting
           await this.delay(1500);
         } catch (error) {
@@ -260,12 +272,12 @@ export class TranscriptService {
   // Load transcript from disk
   loadTranscript(videoId: string): VideoTranscript | null {
     const filePath = path.join(STORAGE_DIR, `${videoId}.json`);
-    
+
     if (fs.existsSync(filePath)) {
       const data = fs.readFileSync(filePath, 'utf-8');
       return JSON.parse(data) as VideoTranscript;
     }
-    
+
     return null;
   }
 
