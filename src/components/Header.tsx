@@ -1,7 +1,8 @@
-import { BookOpen, PlusCircle, Library, Settings } from 'lucide-react';
+import { BookOpen, PlusCircle, Library, Settings, Moon, Sun } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 import { Button } from './ui/button';
 import { useSettings } from '@/context/SettingsContext';
+import { useTheme } from '@/context/ThemeContext';
 import {
   Tooltip,
   TooltipContent,
@@ -11,6 +12,7 @@ import {
 const Header = () => {
   const location = useLocation();
   const { openSettings, settings } = useSettings();
+  const { theme, toggleTheme } = useTheme();
 
   const enabledCount = settings.providers.filter(p => p.enabled).length;
 
@@ -40,6 +42,16 @@ const Header = () => {
               Library
             </Button>
           </Link>
+
+          {/* Theme Toggle */}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={toggleTheme}
+            aria-label="Toggle theme"
+          >
+            {theme === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
+          </Button>
 
           {/* Settings */}
           <Tooltip>
