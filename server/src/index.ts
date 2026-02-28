@@ -5,6 +5,8 @@ import express from 'express';
 import cors from 'cors';
 import youtubeRoutes from './routes/youtube.js';
 import processRoutes from './routes/process.js';
+import settingsRoutes from './routes/settings.js';
+import { multiLlmService } from './services/multi-llm.service.js';
 import { llmService } from './services/llm.service.js';
 
 const app = express();
@@ -21,16 +23,19 @@ app.use(express.json());
 // Routes
 app.use('/api/youtube', youtubeRoutes);
 app.use('/api/process', processRoutes);
+app.use('/api/settings', settingsRoutes);
 
 // Health check
 app.get('/api/health', async (req, res) => {
-  const llmHealthy = await llmService.checkHealth();
-  
+  const llmHealth = await multiLlmService.checkHealth();
+
   res.json({
     status: 'ok',
     timestamp: new Date().toISOString(),
     services: {
-      llm: llmHealthy ? 'connected' : 'disconnected'
+      llm: llmHealth.healthy ? 'connected' : 'disconnected',
+      activeProvider: llmHealth.provider,
+      ...(llmHealth.error && { llmError: llmHealth.error }),
     }
   });
 });

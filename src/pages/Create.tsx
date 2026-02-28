@@ -10,16 +10,16 @@ const Create = () => {
 
   const renderContent = () => {
     console.log('🎨 Rendering content for status:', state.status);
-    
+
     switch (state.status) {
       case 'idle':
         return (
-          <UrlInput 
-            onSubmit={startProcessing} 
+          <UrlInput
+            onSubmit={(url, userNotes, creativityLevel) => startProcessing(url, userNotes, creativityLevel)}
             isLoading={false}
           />
         );
-      
+
       case 'extracting-transcripts':
       case 'analyzing-content':
       case 'generating-index':
@@ -31,7 +31,7 @@ const Create = () => {
       case 'assembling':
         console.log('📊 Showing ProcessingView with', state.steps.length, 'steps');
         return (
-          <ProcessingView 
+          <ProcessingView
             steps={state.steps}
             currentStep={state.currentStep}
             videoInfo={state.videoInfo}
@@ -39,7 +39,7 @@ const Create = () => {
             processedVideos={state.processedVideos}
           />
         );
-      
+
       case 'awaiting-approval':
         console.log('📋 Showing IndexReview, index available:', !!state.index);
         return state.index ? (
@@ -48,16 +48,16 @@ const Create = () => {
             onApprove={approveIndex}
           />
         ) : null;
-      
+
       case 'complete':
         console.log('✅ Showing ResultsView, notes available:', !!state.notes);
         return state.notes ? (
-          <ResultsView 
+          <ResultsView
             notes={state.notes}
             onReset={reset}
           />
         ) : null;
-      
+
       default:
         console.log('⚠️ Unknown status:', state.status);
         return null;
@@ -70,7 +70,7 @@ const Create = () => {
         <title>NoteForge - Transform YouTube Videos into Structured Notes</title>
         <meta name="description" content="Turn any YouTube video or playlist into beautiful, organized notes. Extract transcripts, generate topic indexes, and create book-like documentation." />
       </Helmet>
-      
+
       <div className="w-full max-w-5xl mx-auto">
         {renderContent()}
 

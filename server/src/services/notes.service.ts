@@ -8,9 +8,10 @@ import {
   Notebook,
   Chapter,
   NotebookMetadata,
-  VideoSourceReference
+  VideoSourceReference,
+  JobOptions
 } from '../types';
-import { llmService } from './llm.service';
+import { multiLlmService as llmService } from './multi-llm.service';
 import { ragService } from './rag.service';
 import { countWords, estimateReadingTime } from '../utils/youtube';
 import * as fs from 'fs';
@@ -32,29 +33,41 @@ export class NotesService {
   async generateTopicNotes(
     topic: TopicNode,
     transcripts: VideoTranscript[],
-    onSubProgress?: (detail: string) => void
+    onSubProgress?: (detail: string) => void,
+    options?: JobOptions
   ): Promise<TopicNotes> {
     console.log(`Generating notes for topic: ${topic.title}`);
+
+    const level = options?.creativityLevel ?? 2;
+    const userNotesSection = options?.userNotes
+      ? `\n\nUSER INSTRUCTIONS (follow these throughout):\n"""\n${options.userNotes}\n"""`
+      : '';
+
+    // Build creativity-aware writer persona
+    const creativityGuidance =
+      level === 1
+        ? `STRICT MODE: Write notes based STRICTLY on what is said in the transcript. Do NOT add any information, examples, or explanations not explicitly present in the source material. If an idea is not in the transcript, do not include it.`
+        : level === 2
+          ? `BALANCED MODE: Primarily use transcript content. You may add brief clarifications or definitions where a term is used but not explained. Keep additions minimal and clearly grounded in the topic.`
+          : level === 3
+            ? `ENHANCED MODE: Use the transcript as the foundation, but enrich the notes with related concepts, practical examples, and diagrams (mermaid) that help explain the topic more fully. Additions should feel natural extensions of what's discussed.`
+            : `CREATIVE MODE: Use the transcript as a starting point. Write comprehensive, deeply detailed notes enriched with your full knowledge of the subject — include background theory, advanced insights, real-world applications, comparisons with alternatives, and detailed code examples. Make the notes publication-quality.`;
 
     // ADVANCED RAG: Use semantic retrieval instead of keyword search
     const sourceMaterial = await ragService.retrieveContext(topic.title, transcripts, onSubProgress);
 
-    const systemPrompt = `You are a technical writer creating comprehensive study notes. Your notes should be:
+    const systemPrompt = `You are a technical writer creating comprehensive study notes.
 
-1. **Detailed and Educational**: Explain concepts thoroughly, including fundamentals and advanced aspects
-2. **Well-Structured**: Use clear headings, paragraphs, bullet points, and numbered lists
-3. **Practical**: Include code examples, architecture diagrams (as mermaid), and real-world applications
-4. **Rich in Content**: Use special callout boxes for tips, warnings, and important notes
+${creativityGuidance}
 
-Output Format Requirements:
-- Use markdown formatting
+Formatting requirements:
+- Use markdown (headings, paragraphs, bullets, numbered lists)
 - Include code blocks with language specification
-- Add mermaid diagrams for architecture/flow explanations
+- Add mermaid diagrams for architectures or processes
 - Use blockquotes for important quotes or definitions
-- Include bullet points for lists of features/steps
-- Add special notes using: > **💡 Tip:** or > **⚠️ Warning:** or > **📌 Important:**`;
+- Add callouts: > **💡 Tip:**, > **⚠️ Warning:**, > **📌 Important:**${userNotesSection}`;
 
-    const prompt = `Create comprehensive study notes for the topic: "${topic.title}"
+    const prompt = `Create study notes for the topic: "${topic.title}"${userNotesSection}
 
 Topic Description: ${topic.description || 'No description provided'}
 
@@ -115,7 +128,8 @@ Format the response as markdown with rich formatting.`;
   async generateAllNotes(
     index: UnifiedIndex,
     transcripts: VideoTranscript[],
-    onProgress?: (progress: { currentItem: number; totalItems: number; itemName: string; subProgress?: string }) => void
+    onProgress?: (progress: { currentItem: number; totalItems: number; itemName: string; subProgress?: string }) => void,
+    options?: JobOptions
   ): Promise<TopicNotes[]> {
     const allNotes: TopicNotes[] = [];
 
@@ -143,7 +157,7 @@ Format the response as markdown with rich formatting.`;
               subProgress: `${topic.title}: ${subProgress}`
             });
           }
-        });
+        }, options);
 
         allNotes.push(notes);
 

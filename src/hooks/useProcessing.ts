@@ -16,7 +16,7 @@ export const useProcessing = () => {
     currentStep: 0,
     steps: initialSteps,
   });
-  
+
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const currentJobIdRef = useRef<string | null>(null);
 
@@ -25,7 +25,7 @@ export const useProcessing = () => {
       console.log('📊 Polling job status for:', jobId);
       const jobStatus: JobStatus = await api.getJobStatus(jobId);
       console.log('📥 Job status received:', jobStatus);
-      
+
       // Map backend status to frontend status
       const mapStatus = (backendStatus: string): string => {
         switch (backendStatus) {
@@ -48,14 +48,14 @@ export const useProcessing = () => {
             return backendStatus;
         }
       };
-      
+
       // Update steps based on backend status
       const updatedSteps = jobStatus.steps || initialSteps;
       const mappedStatus = mapStatus(jobStatus.status);
-      
+
       console.log(`🔄 Status: ${jobStatus.status} → ${mappedStatus}, Step: ${jobStatus.currentStep}/${updatedSteps.length}`)
       console.log('📝 Steps:', updatedSteps.map(s => `${s.label}: ${s.status}`).join(', '));
-      
+
       setState(prev => ({
         ...prev,
         status: mappedStatus as any,
@@ -83,7 +83,7 @@ export const useProcessing = () => {
         console.log('🎉 Job complete! Notebook:', jobStatus.notebook);
         console.log('📚 Chapters:', jobStatus.notebook.chapters?.length);
         console.log('📑 Topics:', jobStatus.notebook.index?.topicCount);
-        
+
         if (pollingIntervalRef.current) {
           clearInterval(pollingIntervalRef.current);
           pollingIntervalRef.current = null;
@@ -133,7 +133,7 @@ export const useProcessing = () => {
           notes,
         }));
       }
-      
+
       // If job failed, stop polling
       if (jobStatus.status === 'error') {
         console.error('Job failed:', jobStatus.error);
@@ -147,26 +147,26 @@ export const useProcessing = () => {
     }
   }, []);
 
-  const startProcessing = useCallback(async (url: string) => {
+  const startProcessing = useCallback(async (url: string, userNotes?: string, creativityLevel?: number) => {
     console.log('🚀 Starting processing for URL:', url);
-    
+
     try {
       // Reset state
       setState({
         status: 'extracting',
         currentStep: 0,
-        steps: initialSteps.map((s, i) => ({ 
-          ...s, 
+        steps: initialSteps.map((s, i) => ({
+          ...s,
           status: i === 0 ? 'active' : 'pending',
         })),
       });
 
       console.log('📡 Calling API to start processing...');
       // Start processing job
-      const response = await api.startProcessing(url);
+      const response = await api.startProcessing(url, userNotes, creativityLevel);
       console.log('✅ Processing started:', response);
       console.log('🆔 Job ID:', response.jobId);
-      
+
       const jobId = response.jobId;
       currentJobIdRef.current = jobId;
 
@@ -177,7 +177,7 @@ export const useProcessing = () => {
 
       // Do initial poll immediately
       pollJobStatus(jobId);
-      
+
     } catch (error) {
       console.error('Error starting processing:', error);
       setState(prev => ({
@@ -190,13 +190,13 @@ export const useProcessing = () => {
 
   const reset = useCallback(() => {
     console.log('Resetting processing state');
-    
+
     // Clear polling interval if active
     if (pollingIntervalRef.current) {
       clearInterval(pollingIntervalRef.current);
       pollingIntervalRef.current = null;
     }
-    
+
     setState({
       status: 'idle',
       currentStep: 0,
@@ -206,35 +206,35 @@ export const useProcessing = () => {
 
   const approveIndex = useCallback(async (updatedIndex: any) => {
     const jobId = currentJobIdRef.current;
-    
+
     if (!jobId) {
       console.error('No job ID available');
       return;
     }
-    
+
     console.log('Approving index for job:', jobId);
-    
+
     try {
       // Send approval to backend
       await api.approveIndex(jobId, updatedIndex);
-      
+
       console.log('Index approved, resuming polling');
-      
+
       // Update state to show processing continuing
       setState(prev => ({
         ...prev,
         status: 'generating',
         index: updatedIndex,
       }));
-      
+
       // Resume polling to track notes generation
       pollingIntervalRef.current = setInterval(() => {
         pollJobStatus(jobId);
       }, 2000);
-      
+
       // Do initial poll
       pollJobStatus(jobId);
-      
+
     } catch (error) {
       console.error('Error approving index:', error);
       setState(prev => ({

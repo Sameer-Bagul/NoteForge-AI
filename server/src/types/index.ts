@@ -135,11 +135,24 @@ export type ProcessingStatus =
   | 'extracting-transcripts'
   | 'analyzing-content'
   | 'generating-index'
-  | 'awaiting-approval'  // NEW: waiting for user to approve index
+  | 'awaiting-approval'
   | 'generating-notes'
   | 'assembling-notebook'
   | 'complete'
   | 'error';
+
+/**
+ * 1 = Strict      – only transcript content, no AI additions
+ * 2 = Balanced    – transcript + brief clarifications
+ * 3 = Enhanced    – transcript + related concepts & diagrams
+ * 4 = Creative    – full AI knowledge, deep dives, extras
+ */
+export type CreativityLevel = 1 | 2 | 3 | 4;
+
+export interface JobOptions {
+  userNotes?: string;        // Extra context/instructions from the user
+  creativityLevel?: CreativityLevel;
+}
 
 export interface ProcessingStep {
   id: string;
@@ -166,6 +179,7 @@ export interface ProcessingJob {
   index?: UnifiedIndex;
   notebook?: Notebook;
   error?: string;
+  options?: JobOptions;   // User-provided notes + creativity level
   createdAt: string;
   updatedAt: string;
 }
@@ -176,6 +190,22 @@ export interface LLMConfig {
   baseUrl: string;
   temperature: number;
   maxTokens: number;
+}
+
+// AI Provider Settings
+export type AIProvider = 'gemini' | 'grok' | 'lmstudio' | 'ollama';
+
+export interface ProviderConfig {
+  provider: AIProvider;
+  enabled: boolean;
+  apiKeys: string[];   // Multiple keys; tried in order on failure
+  model: string;
+  baseUrl?: string;   // For local providers (Ollama, LM Studio)
+  priority: number;   // Lower number = tried first
+}
+
+export interface AppSettings {
+  providers: ProviderConfig[];
 }
 
 export interface LLMMessage {

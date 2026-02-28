@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
-import { VideoTranscript, UnifiedIndex, TopicNode, SubTopic } from '../types';
-import { llmService } from './llm.service';
+import { VideoTranscript, UnifiedIndex, TopicNode, SubTopic, JobOptions, CreativityLevel } from '../types';
+import { multiLlmService as llmService } from './multi-llm.service';
 import { chunkText } from '../utils/youtube';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -26,15 +26,17 @@ interface VideoTopics {
 export class IndexService {
 
   // Generate unified index from multiple video transcripts
-  async generateUnifiedIndex(transcripts: VideoTranscript[], title: string): Promise<UnifiedIndex> {
+  async generateUnifiedIndex(transcripts: VideoTranscript[], title: string, options?: JobOptions): Promise<UnifiedIndex> {
     console.log(`Generating unified index for ${transcripts.length} videos...`);
+    if (options?.userNotes) console.log(`  User notes: ${options.userNotes.slice(0, 80)}`);
+    if (options?.creativityLevel) console.log(`  Creativity level: ${options.creativityLevel}`);
 
     // Step 1: Extract topics from each video
     const videoTopicsList: VideoTopics[] = [];
-    
+
     for (const transcript of transcripts) {
       console.log(`Analyzing topics in: ${transcript.videoInfo.title}`);
-      const topics = await this.extractVideoTopics(transcript);
+      const topics = await this.extractVideoTopics(transcript, options);
       videoTopicsList.push({
         videoId: transcript.videoId,
         topics
@@ -66,8 +68,22 @@ export class IndexService {
   }
 
   // Extract topics from a single video transcript
-  private async extractVideoTopics(transcript: VideoTranscript): Promise<RawTopic[]> {
+  private async extractVideoTopics(transcript: VideoTranscript, options?: JobOptions): Promise<RawTopic[]> {
+    const level = options?.creativityLevel ?? 2;
+
+    const creativityInstruction =
+      level === 1 ? 'STRICT MODE: Only extract topics that are EXPLICITLY stated in the transcript. Do NOT infer or add topics not clearly mentioned.'
+        : level === 2 ? 'BALANCED MODE: Extract topics clearly discussed. You may group closely related ideas together.'
+          : level === 3 ? 'ENHANCED MODE: Extract topics discussed, and also identify related sub-topics that would logically follow from the content.'
+            : 'CREATIVE MODE: Extract all topics and freely identify implicit themes and related areas even if only briefly mentioned.';
+
+    const userNotesSection = options?.userNotes
+      ? `\n\nUSER INSTRUCTIONS (apply these when selecting topics):\n"""\n${options.userNotes}\n"""`
+      : '';
+
     const systemPrompt = `You are a technical content analyzer. Your job is to identify the main topics and subtopics discussed in video transcripts.
+
+${creativityInstruction}
 
 Extract topics that represent distinct concepts, techniques, or ideas. Each topic should be substantial enough to have its own section in a technical book.
 
@@ -81,12 +97,12 @@ Focus on:
     // Chunk transcript if too long (use smaller chunks for better LLM processing)
     const chunks = chunkText(transcript.fullText, 4000);
     const allTopics: RawTopic[] = [];
-    
+
     console.log(`  📄 Processing ${chunks.length} chunk(s) from transcript`);
 
     for (let i = 0; i < chunks.length; i++) {
       const chunk = chunks[i];
-      const prompt = `Analyze this video transcript excerpt and extract the main topics discussed.
+      const prompt = `Analyze this video transcript excerpt and extract the main topics discussed.${userNotesSection}
 
 Transcript:
 """
@@ -111,7 +127,7 @@ IMPORTANT:
       try {
         console.log(`    Chunk ${i + 1}/${chunks.length}...`);
         const rawTopics = await llmService.generateJSON<RawTopic[]>(prompt, systemPrompt);
-        
+
         // Normalize topics to handle malformed data
         const normalizedTopics = this.normalizeRawTopics(rawTopics);
         allTopics.push(...normalizedTopics);
@@ -138,7 +154,7 @@ IMPORTANT:
     for (const vt of videoTopicsList) {
       for (const topic of vt.topics) {
         const key = this.normalizeTopicTitle(topic.title);
-        
+
         if (topicMap.has(key)) {
           const existing = topicMap.get(key)!;
           existing.videoSources.add(vt.videoId);
@@ -160,7 +176,7 @@ IMPORTANT:
 
     // Use LLM to intelligently merge similar topics
     const allTopicTitles = Array.from(topicMap.values()).map(t => t.title);
-    
+
     if (allTopicTitles.length > 5) {
       const mergePrompt = `Given these topic titles from a technical video series, identify topics that should be merged because they cover the same concept:
 
@@ -183,7 +199,7 @@ RULES:
 
       try {
         const mergeResult = await llmService.generateJSON<{ merges: { keep: number; merge: number[] }[] }>(mergePrompt);
-        
+
         // Validate the merge result structure
         if (!mergeResult || typeof mergeResult !== 'object') {
           console.warn('⚠️ Invalid merge result: not an object');
@@ -191,34 +207,34 @@ RULES:
           console.warn('⚠️ Invalid merge result: merges is not an array', mergeResult);
         } else {
           console.log(`📊 Applying ${mergeResult.merges.length} topic merge(s)...`);
-          
+
           // Apply merges
           for (const merge of mergeResult.merges) {
             if (!merge || typeof merge.keep !== 'number' || !Array.isArray(merge.merge)) {
               console.warn('⚠️ Skipping invalid merge entry:', merge);
               continue;
             }
-            
+
             const keepTitle = allTopicTitles[merge.keep - 1];
             if (!keepTitle) {
               console.warn(`⚠️ Invalid keep index: ${merge.keep}`);
               continue;
             }
-            
+
             const keepKey = this.normalizeTopicTitle(keepTitle);
             const keepTopic = topicMap.get(keepKey);
-            
+
             if (keepTopic) {
               for (const mergeIdx of merge.merge) {
                 if (typeof mergeIdx !== 'number' || mergeIdx < 1 || mergeIdx > allTopicTitles.length) {
                   console.warn(`⚠️ Invalid merge index: ${mergeIdx}`);
                   continue;
                 }
-                
+
                 const mergeTitle = allTopicTitles[mergeIdx - 1];
                 const mergeKey = this.normalizeTopicTitle(mergeTitle);
                 const mergeTopic = topicMap.get(mergeKey);
-                
+
                 if (mergeTopic) {
                   console.log(`  ✓ Merging "${mergeTitle}" into "${keepTitle}"`);
                   mergeTopic.videoSources.forEach(vs => keepTopic.videoSources.add(vs));
@@ -236,7 +252,7 @@ RULES:
 
     // Convert to TopicNode array
     const transcriptMap = new Map(transcripts.map(t => [t.videoId, t]));
-    
+
     return Array.from(topicMap.values()).map((topic, index): TopicNode => ({
       id: uuidv4(),
       title: topic.title,
@@ -268,7 +284,7 @@ Return a JSON array of the topic numbers in the correct order:
 
     try {
       const result = await llmService.generateJSON<{ order: number[] }>(prompt, systemPrompt);
-      
+
       const orderedTopics: TopicNode[] = [];
       for (let i = 0; i < result.order.length; i++) {
         const originalIndex = result.order[i] - 1;
@@ -277,14 +293,14 @@ Return a JSON array of the topic numbers in the correct order:
           orderedTopics.push(topic);
         }
       }
-      
+
       // Add any missing topics at the end
       for (const topic of topics) {
         if (!orderedTopics.find(t => t.id === topic.id)) {
           orderedTopics.push({ ...topic, order: orderedTopics.length });
         }
       }
-      
+
       return orderedTopics;
     } catch (error) {
       console.warn('Topic ordering failed, using original order:', error);
@@ -309,7 +325,7 @@ Return a JSON array of the topic numbers in the correct order:
       .map(topic => ({
         title: topic.title || topic.name || 'Untitled Topic',
         description: topic.description || topic.desc || '',
-        subtopics: Array.isArray(topic.subtopics) 
+        subtopics: Array.isArray(topic.subtopics)
           ? topic.subtopics.filter((st: any) => typeof st === 'string' && st.trim().length > 0)
           : []
       }))
@@ -319,7 +335,7 @@ Return a JSON array of the topic numbers in the correct order:
   // Deduplicate raw topics
   private deduplicateRawTopics(topics: RawTopic[]): RawTopic[] {
     const seen = new Map<string, RawTopic>();
-    
+
     for (const topic of topics) {
       const key = this.normalizeTopicTitle(topic.title);
       if (!seen.has(key)) {
@@ -334,7 +350,7 @@ Return a JSON array of the topic numbers in the correct order:
         });
       }
     }
-    
+
     return Array.from(seen.values());
   }
 
@@ -348,12 +364,12 @@ Return a JSON array of the topic numbers in the correct order:
   // Load index from disk
   loadIndex(indexId: string): UnifiedIndex | null {
     const filePath = path.join(STORAGE_DIR, `${indexId}.json`);
-    
+
     if (fs.existsSync(filePath)) {
       const data = fs.readFileSync(filePath, 'utf-8');
       return JSON.parse(data) as UnifiedIndex;
     }
-    
+
     return null;
   }
 }

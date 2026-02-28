@@ -5,7 +5,8 @@ import {
   ProcessingStatus,
   VideoTranscript,
   UnifiedIndex,
-  Notebook
+  Notebook,
+  JobOptions
 } from '../types';
 import { transcriptService } from './transcript.service';
 import { indexService } from './index.service';
@@ -26,7 +27,7 @@ const PROCESSING_STEPS: Omit<ProcessingStep, 'status'>[] = [
 export class JobService {
 
   // Create a new processing job
-  createJob(url: string): ProcessingJob {
+  createJob(url: string, options?: JobOptions): ProcessingJob {
     const job: ProcessingJob = {
       id: uuidv4(),
       status: 'idle',
@@ -34,6 +35,7 @@ export class JobService {
       currentStep: 0,
       videos: [],
       transcripts: [],
+      options,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
@@ -138,7 +140,7 @@ export class JobService {
       this.updateStep(jobId, 2, 'active');
       this.updateJob(jobId, { status: 'generating-index', currentStep: 2 });
 
-      const index = await indexService.generateUnifiedIndex(transcripts, title || 'Untitled');
+      const index = await indexService.generateUnifiedIndex(transcripts, title || 'Untitled', job.options);
       this.updateJob(jobId, { index });
       this.updateStep(jobId, 2, 'complete', `Generated index with ${index.topicCount} topics`);
       console.log(`✅ Step 3 complete: Generated index with ${index.topicCount} topics`);
@@ -215,7 +217,7 @@ export class JobService {
 
       const allNotes = await notesService.generateAllNotes(index, transcripts, (progress) => {
         this.updateStep(jobId, 3, 'active', undefined, progress);
-      });
+      }, job.options);
       this.updateStep(jobId, 3, 'complete', `Generated notes for ${allNotes.length} topics`);
       console.log(`✅ Step 4 complete: Generated notes for ${allNotes.length} topics`);
 

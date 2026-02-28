@@ -1,13 +1,14 @@
-import { 
-  VideoInfo, 
-  ProcessingStep, 
-  UnifiedIndex, 
-  Notebook, 
-  TopicNode, 
-  TopicNotes, 
+import {
+  VideoInfo,
+  ProcessingStep,
+  UnifiedIndex,
+  Notebook,
+  TopicNode,
+  TopicNotes,
   NoteSection,
   JobStatus
 } from '@/types';
+import { AppSettings } from '@/types/settings';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
 const ENABLE_DEBUG = import.meta.env.VITE_ENABLE_DEBUG_LOGS === 'true';
@@ -29,12 +30,12 @@ export const api = {
     return response.json();
   },
 
-  async startProcessing(url: string): Promise<{ jobId: string; status: string }> {
+  async startProcessing(url: string, userNotes?: string, creativityLevel?: number): Promise<{ jobId: string; status: string }> {
     log('Starting processing for:', url);
     const response = await fetch(`${API_BASE}/process/start`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url }),
+      body: JSON.stringify({ url, userNotes, creativityLevel }),
     });
     if (!response.ok) {
       const error = await response.text();
@@ -99,9 +100,30 @@ export const api = {
     return result.data;
   },
 
-  async checkHealth(): Promise<{ status: string; services: { llm: string } }> {
+  async checkHealth(): Promise<{ status: string; services: { llm: string; activeProvider?: string } }> {
     const response = await fetch(`${API_BASE}/health`);
     if (!response.ok) throw new Error('Health check failed');
     return response.json();
+  },
+
+  // ─── Settings API ──────────────────────────────────────────────────────────
+
+  async updateSettings(settings: AppSettings): Promise<{ success: boolean }> {
+    log('Updating settings');
+    const response = await fetch(`${API_BASE}/settings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(settings),
+    });
+    if (!response.ok) throw new Error('Failed to update settings');
+    return response.json();
+  },
+
+  async getSettings(): Promise<AppSettings> {
+    log('Getting settings (full)');
+    const response = await fetch(`${API_BASE}/settings/full`);
+    if (!response.ok) throw new Error('Failed to get settings');
+    const result = await response.json();
+    return result.data;
   },
 };

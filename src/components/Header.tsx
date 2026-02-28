@@ -1,9 +1,18 @@
-import { BookOpen, PlusCircle, Library } from 'lucide-react';
+import { BookOpen, PlusCircle, Library, Settings } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 import { Button } from './ui/button';
+import { useSettings } from '@/context/SettingsContext';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from './ui/tooltip';
 
 const Header = () => {
   const location = useLocation();
+  const { openSettings, settings } = useSettings();
+
+  const enabledCount = settings.providers.filter(p => p.enabled).length;
 
   return (
     <header className="w-full border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-50">
@@ -17,8 +26,8 @@ const Header = () => {
             <p className="text-xs text-muted-foreground">YouTube → Knowledge</p>
           </div>
         </Link>
-        
-        <nav className="flex items-center gap-4">
+
+        <nav className="flex items-center gap-2">
           <Link to="/">
             <Button variant={location.pathname === '/' ? 'default' : 'ghost'} size="sm" className="gap-2">
               <PlusCircle className="w-4 h-4" />
@@ -31,6 +40,28 @@ const Header = () => {
               Library
             </Button>
           </Link>
+
+          {/* Settings */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="relative"
+                onClick={openSettings}
+                aria-label="Open AI Provider Settings"
+              >
+                <Settings className="w-4 h-4" />
+                {enabledCount === 0 && (
+                  <span className="absolute top-1 right-1 w-2 h-2 bg-destructive rounded-full" />
+                )}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              <p>AI Provider Settings</p>
+              {enabledCount === 0 && <p className="text-destructive text-xs">⚠ No providers enabled</p>}
+            </TooltipContent>
+          </Tooltip>
         </nav>
       </div>
     </header>
@@ -38,3 +69,4 @@ const Header = () => {
 };
 
 export default Header;
+

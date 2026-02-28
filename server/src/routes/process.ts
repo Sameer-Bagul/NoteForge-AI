@@ -3,17 +3,20 @@ import { jobService } from '../services/job.service';
 import { indexService } from '../services/index.service';
 import { notesService } from '../services/notes.service';
 import { llmService } from '../services/llm.service';
+import { multiLlmService } from '../services/multi-llm.service';
 
 const router = Router();
 
 // Start a new processing job
 router.post('/start', async (req: Request, res: Response) => {
   try {
-    const { url, title } = req.body;
+    const { url, title, userNotes, creativityLevel } = req.body;
 
     console.log(`\n📨 Received processing request:`);
     console.log(`   URL: ${url}`);
     console.log(`   Title: ${title || 'N/A'}`);
+    console.log(`   User Notes: ${userNotes ? userNotes.slice(0, 60) + '...' : 'None'}`);
+    console.log(`   Creativity Level: ${creativityLevel ?? 2}`);
 
     if (!url) {
       console.log(`❌ Error: URL is required`);
@@ -25,18 +28,23 @@ router.post('/start', async (req: Request, res: Response) => {
 
     // Check LLM availability
     console.log(`🔍 Checking LLM availability...`);
-    const llmAvailable = await llmService.checkHealth();
-    console.log(`   LLM Status: ${llmAvailable ? '✅ Available' : '❌ Not Available'}`);
+    const llmAvailable = await multiLlmService.checkHealth();
+    console.log(`   LLM Status: ${llmAvailable.healthy ? '✅ Available' : '❌ Not Available'} (${llmAvailable.provider})`);
 
-    if (!llmAvailable) {
+    if (!llmAvailable.healthy) {
       return res.status(503).json({
         success: false,
-        error: 'LLM service (Ollama) is not available. Please ensure Ollama is running.'
+        error: `No AI provider is available. ${llmAvailable.error || 'Please configure a provider in Settings.'}`
       });
     }
 
+    const options = {
+      userNotes: typeof userNotes === 'string' && userNotes.trim() ? userNotes.trim() : undefined,
+      creativityLevel: [1, 2, 3, 4].includes(creativityLevel) ? creativityLevel : 2,
+    };
+
     // Create job
-    const job = jobService.createJob(url);
+    const job = jobService.createJob(url, options);
     console.log(`✅ Job created with ID: ${job.id}`);
 
     // Start processing in background
