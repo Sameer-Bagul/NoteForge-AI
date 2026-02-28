@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef } from 'react';
-import { ProcessingState, ProcessingStep, VideoNotes, TopicIndex } from '@/types';
-import { api, JobStatus } from '@/services/api';
+import { ProcessingState, ProcessingStep, VideoNotes, TopicIndex, JobStatus } from '@/types';
+import { api } from '@/services/api';
 
 const initialSteps: ProcessingStep[] = [
   { id: 'extract', label: 'Extracting Transcripts', description: 'Fetching video transcripts from YouTube', status: 'pending' },
@@ -109,18 +109,37 @@ export const useProcessing = () => {
         console.log('Extracted topic notes:', allTopicNotes);
 
         // Convert to frontend format
+        // Build fullContent from sections so RunningNotesViewer gets proper markdown
+        const buildContent = (note: any): string => {
+          if (!note.sections?.length) return note.summary || '';
+          return note.sections.map((s: any) => {
+            if (s.type === 'heading') return `${'#'.repeat((s.level || 2) + 1)} ${s.content}`;
+            if (s.type === 'code') return `\`\`\`${s.codeSnippet?.language || ''}\n${s.codeSnippet?.code || s.content}\n\`\`\``;
+            if (s.type === 'bullets') return s.items?.map((i: string) => `- ${i}`).join('\n') || s.content;
+            if (s.type === 'numbered') return s.items?.map((i: string, idx: number) => `${idx + 1}. ${i}`).join('\n') || s.content;
+            if (s.type === 'quote' || s.type === 'special') return `> ${s.specialNote?.content || s.content}`;
+            return s.content || '';
+          }).join('\n\n');
+        };
+
         const notes: VideoNotes = {
           videoId: jobStatus.videoInfo?.id || 'unknown',
           title: jobStatus.notebook.title,
           index: topicIndex,
           notes: allTopicNotes.map((note: any) => ({
             topicId: note.topicId,
+            topicTitle: note.topicTitle,
+            summary: note.summary || '',
+            sections: note.sections || [],
+            keyTakeaways: note.keyTakeaways || [],
+            videoSources: note.videoSources || [],
+            generatedAt: note.generatedAt || new Date().toISOString(),
+            // Extra flattened content for RunningNotesViewer
+            content: buildContent(note),
             title: note.topicTitle,
-            content: note.sections?.map((s: any) => s.content).join('\n\n') || note.summary || '',
-          })),
+          })) as any,
           fullContent: allTopicNotes.map((note: any) => {
-            const sections = note.sections?.map((s: any) => s.content).join('\n\n') || '';
-            return `# ${note.topicTitle}\n\n${sections}`;
+            return `## ${note.topicTitle}\n\n${buildContent(note)}`;
           }).join('\n\n---\n\n'),
         };
 

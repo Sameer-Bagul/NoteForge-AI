@@ -126,4 +126,39 @@ export const api = {
     const result = await response.json();
     return result.data;
   },
+
+  // ─── Generation API ────────────────────────────────────────────────────────
+
+  async generateMindMap(topicTitle: string, subtopics: string[], notesContent: string): Promise<{ nodes: any[]; edges: any[] }> {
+    const response = await fetch(`${API_BASE}/generate/mindmap`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ topicTitle, subtopics, notesContent }),
+    });
+    if (!response.ok) throw new Error('Mind map generation failed');
+    const result = await response.json();
+    return result.data;
+  },
+
+  async generateQuiz(topicTitles: string[], fullContent: string): Promise<any[]> {
+    const response = await fetch(`${API_BASE}/generate/quiz`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ topicTitles, fullContent }),
+    });
+    if (!response.ok) throw new Error('Quiz generation failed');
+    const result = await response.json();
+    return result.data;
+  },
+
+  async generateInterview(topicTitles: string[], fullContent: string): Promise<any[]> {
+    const response = await fetch(`${API_BASE}/generate/interview`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ topicTitles, fullContent }),
+    });
+    if (!response.ok) throw new Error('Interview Q&A generation failed');
+    const result = await response.json();
+    return result.data;
+  },
 };

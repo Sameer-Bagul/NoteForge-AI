@@ -6,6 +6,7 @@ import cors from 'cors';
 import youtubeRoutes from './routes/youtube.js';
 import processRoutes from './routes/process.js';
 import settingsRoutes from './routes/settings.js';
+import generateRoutes from './routes/generate.js';
 import { multiLlmService } from './services/multi-llm.service.js';
 import { llmService } from './services/llm.service.js';
 
@@ -24,6 +25,7 @@ app.use(express.json());
 app.use('/api/youtube', youtubeRoutes);
 app.use('/api/process', processRoutes);
 app.use('/api/settings', settingsRoutes);
+app.use('/api/generate', generateRoutes);
 
 // Health check
 app.get('/api/health', async (req, res) => {

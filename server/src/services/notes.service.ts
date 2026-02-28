@@ -46,68 +46,125 @@ export class NotesService {
     // Build creativity-aware writer persona
     const creativityGuidance =
       level === 1
-        ? `STRICT MODE: Write notes based STRICTLY on what is said in the transcript. Do NOT add any information, examples, or explanations not explicitly present in the source material. If an idea is not in the transcript, do not include it.`
+        ? `STRICT MODE: Write notes based STRICTLY on what is said in the transcript. Do NOT add any information not explicitly present in the source material.`
         : level === 2
-          ? `BALANCED MODE: Primarily use transcript content. You may add brief clarifications or definitions where a term is used but not explained. Keep additions minimal and clearly grounded in the topic.`
+          ? `BALANCED MODE: Primarily use transcript content. Add brief clarifications of unclear terms — keep additions minimal and clearly grounded.`
           : level === 3
-            ? `ENHANCED MODE: Use the transcript as the foundation, but enrich the notes with related concepts, practical examples, and diagrams (mermaid) that help explain the topic more fully. Additions should feel natural extensions of what's discussed.`
-            : `CREATIVE MODE: Use the transcript as a starting point. Write comprehensive, deeply detailed notes enriched with your full knowledge of the subject — include background theory, advanced insights, real-world applications, comparisons with alternatives, and detailed code examples. Make the notes publication-quality.`;
+            ? `ENHANCED MODE: Use the transcript as the foundation. Enrich with related concepts, practical examples, and diagrams (mermaid) to deepen understanding. Additions should feel like natural extensions.`
+            : `CREATIVE MODE: Use the transcript as a starting point. Write deeply detailed notes enriched with full subject knowledge — background theory, advanced insights, real-world applications, code examples. Make it publication-quality.`;
 
-    // ADVANCED RAG: Use semantic retrieval instead of keyword search
-    const sourceMaterial = await ragService.retrieveContext(topic.title, transcripts, onSubProgress);
+    // Running notes format guidance
+    const runningNotesGuidance = `RUNNING NOTES FORMAT:
+Write like a very attentive, knowledgeable student taking comprehensive class notes in real-time:
+- Open with a brief framing paragraph ("In this section we explore...")
+- Write in flowing, connected prose with smooth transitions between ideas
+- Use headings (##, ###) to break major sections, but write WITHIN sections in paragraphs
+- Reserve bullet points only for genuinely list-like content (steps, comparisons, feature lists)
+- Highlight key terms in **bold** when first introduced
+- Add inline \`code\` for technical identifiers
+- End each major section with a brief connector to the next
+- Close the entire topic with a "## Key Takeaways" section in bullet form
+- AIM FOR LENGTH: write at least 600-1000 words per topic — comprehensive beats concise`;
 
-    const systemPrompt = `You are a technical writer creating comprehensive study notes.
+    const systemPrompt = `You are an expert technical writer producing premium, long-form study notes.
 
 ${creativityGuidance}
 
+${runningNotesGuidance}
+
 Formatting requirements:
-- Use markdown (headings, paragraphs, bullets, numbered lists)
-- Include code blocks with language specification
-- Add mermaid diagrams for architectures or processes
-- Use blockquotes for important quotes or definitions
-- Add callouts: > **💡 Tip:**, > **⚠️ Warning:**, > **📌 Important:**${userNotesSection}`;
+- Use markdown (##/### headings, flowing paragraphs, bullets only when truly list-like)
+- Code blocks with language tag: \`\`\`javascript ... \`\`\`
+- Mermaid diagrams for architectures/flows: \`\`\`mermaid ... \`\`\`
+- Callouts: > **💡 Tip:** ..., > **⚠️ Warning:** ..., > **📌 Important:** ...
+- Bold for key terms on first mention${userNotesSection}`;
 
-    const prompt = `Create study notes for the topic: "${topic.title}"${userNotesSection}
+    try {
+      const isCloud = llmService.isPrimaryCloudProvider();
+      const provider = llmService.getPrimaryProvider();
+      let generatedContent: string;
 
-Topic Description: ${topic.description || 'No description provided'}
+      if (isCloud) {
+        // ─── CLOUD PATH (Gemini / Grok) ──────────────────────────────────────────
+        // Send the FULL transcript directly — bypass Ollama RAG entirely.
+        // Cloud LLMs have 1M+ context windows, so they can handle the full text.
+        if (onSubProgress) onSubProgress(`Sending full transcript to ${provider} (8192 token output)...`);
+        console.log(`[Notes] Cloud mode (${provider}): using full transcript for ${topic.title}`);
+
+        // Merge all transcripts into one text (capped at 400k chars to stay well within 1M tokens)
+        const fullTranscriptText = transcripts
+          .map(t => `### Source: ${t.videoInfo?.title || t.videoId}\n\n${t.fullText}`)
+          .join('\n\n---\n\n')
+          .slice(0, 400_000);
+
+        const prompt = `Write comprehensive, detailed running notes for: "${topic.title}"${userNotesSection}
+
+Topic Description: ${topic.description || ''}
+
+Subtopics to cover (cover each one deeply):
+${topic.subtopics.map(st => `- ${st.title}${st.description ? ': ' + st.description : ''}`).join('\n')}
+
+Full Video Transcript (use this as your primary source material):
+"""
+${fullTranscriptText}
+"""
+
+Write flowing, deeply detailed notes that:
+1. Open with a framing paragraph contextualising this topic
+2. Cover each subtopic with multiple connected paragraphs (not just bullets)
+3. Include relevant code examples with explanations
+4. Add mermaid diagrams where they clarify architecture or flows
+5. Weave in practical insights and common pitfalls
+6. Close with a "## Key Takeaways" section
+
+Be comprehensive and thorough — aim for at least 800 words of rich, educational content.
+Format as markdown.`;
+
+        const response = await llmService.generateNotesContent(prompt, systemPrompt);
+        generatedContent = response.content;
+
+      } else {
+        // ─── LOCAL PATH (Ollama / LMStudio) ──────────────────────────────────────
+        // Use RAG retrieval (Ollama embeddings) to find the most relevant chunks,
+        // then generate notes from them. Also runs the self-correction loop.
+        if (onSubProgress) onSubProgress(`Retrieving context via RAG for ${topic.title}...`);
+        console.log(`[Notes] Local mode (${provider}): using RAG for ${topic.title}`);
+
+        const sourceMaterial = await ragService.retrieveContext(topic.title, transcripts, onSubProgress);
+
+        const prompt = `Write comprehensive running notes for: "${topic.title}"${userNotesSection}
+
+Topic Description: ${topic.description || ''}
 
 Subtopics to cover:
 ${topic.subtopics.map(st => `- ${st.title}`).join('\n')}
 
-Source Material from Video Transcripts:
+Primary source material (from video transcript):
 """
 ${sourceMaterial}
 """
 
-Create detailed notes that:
-1. Start with an overview/introduction
-2. Cover each subtopic in depth
-3. Include code examples where relevant (use proper code blocks)
-4. Add mermaid diagrams for architectures or processes
-5. Include practical tips and common pitfalls
-6. End with key takeaways
+Write flowing, connected notes that cover all subtopics with transitions. Start with a short framing paragraph, expand each subtopic in prose, and close with Key Takeaways bullets.
+Format as markdown. Keep it rich, educational, and readable.`;
 
-Format the response as markdown with rich formatting.`;
+        const initialResponse = await llmService.generate(prompt, systemPrompt);
 
-    try {
-      // Step 1: Generate initial notes
-      const initialResponse = await llmService.generate(prompt, systemPrompt);
+        // Self-correction pass (Ollama is fast enough locally)
+        if (onSubProgress) onSubProgress(`Self-correcting draft for ${topic.title}...`);
+        generatedContent = await ragService.generateGroundedNotes(
+          `Verify and refine these notes about ${topic.title} based on the transcript context. Draft: ${initialResponse.content}`,
+          transcripts,
+          onSubProgress
+        );
+      }
 
-      // Step 2: MASTER RAG - Apply Self-Correction Loop for Grounding
-      console.log(`[RAG] Applying self-correction for: ${topic.title}`);
-      const groundedContent = await ragService.generateGroundedNotes(
-        `Verify and refine these notes about ${topic.title} based on the transcript context. Draft: ${initialResponse.content}`,
-        transcripts,
-        onSubProgress
-      );
-
-      const sections = this.parseMarkdownToSections(groundedContent);
-      const keyTakeaways = this.extractKeyTakeaways(groundedContent);
+      const sections = this.parseMarkdownToSections(generatedContent);
+      const keyTakeaways = this.extractKeyTakeaways(generatedContent);
 
       const notes: TopicNotes = {
         topicId: topic.id,
         topicTitle: topic.title,
-        summary: this.generateSummary(groundedContent),
+        summary: this.generateSummary(generatedContent),
         sections,
         keyTakeaways,
         videoSources: [], // Managed by RAG service now, could be derived from docs
@@ -160,9 +217,6 @@ Format the response as markdown with rich formatting.`;
         }, options);
 
         allNotes.push(notes);
-
-        // Small delay between topics
-        await this.delay(1000);
       } catch (error) {
         console.warn(`Skipping notes for ${topic.title}:`, error);
       }

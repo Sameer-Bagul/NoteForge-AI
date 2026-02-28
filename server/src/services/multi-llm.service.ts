@@ -1,6 +1,8 @@
 import axios from 'axios';
 import { jsonrepair } from 'jsonrepair';
 import { AIProvider, AppSettings, LLMMessage, LLMResponse, ProviderConfig } from '../types';
+import * as fs from 'fs';
+import * as path from 'path';
 
 // ─── Default Settings ──────────────────────────────────────────────────────────
 
@@ -26,7 +28,8 @@ const DEFAULT_SETTINGS: AppSettings = {
             provider: 'gemini',
             enabled: false,
             apiKeys: process.env.GEMINI_API_KEYS ? process.env.GEMINI_API_KEYS.split(',').map(k => k.trim()) : [],
-            model: 'gemini-1.5-flash',
+            model: process.env.GEMINI_MODEL || 'gemini-2.0-flash',
+            baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
             priority: 1,
         },
         {
@@ -40,9 +43,51 @@ const DEFAULT_SETTINGS: AppSettings = {
     ],
 };
 
+// ─── Settings File Persistence ────────────────────────────────────────────────
+
+const SETTINGS_FILE = path.join(__dirname, '../../storage/settings.json');
+
+function loadSettingsFromFile(): AppSettings {
+    try {
+        if (fs.existsSync(SETTINGS_FILE)) {
+            const raw = fs.readFileSync(SETTINGS_FILE, 'utf-8');
+            const saved = JSON.parse(raw) as AppSettings;
+            // Merge: start from defaults, overlay saved values so new providers/fields always appear
+            const defaultMap = new Map(DEFAULT_SETTINGS.providers.map(p => [p.provider, p]));
+            const savedMap = new Map(saved.providers.map(p => [p.provider, p]));
+            const merged = Array.from(defaultMap.keys()).map(key => {
+                const def = defaultMap.get(key)!;
+                const sv = savedMap.get(key as AIProvider);
+                if (!sv) return def;
+                return {
+                    ...def,
+                    ...sv,
+                    model: sv.model || def.model,
+                    baseUrl: sv.baseUrl || def.baseUrl,
+                };
+            });
+            console.log('[MultiLLM] Loaded settings from file:', merged.map(p => `${p.provider}(${p.enabled ? 'ON' : 'off'})`).join(', '));
+            return { providers: merged };
+        }
+    } catch (e) {
+        console.warn('[MultiLLM] Could not read settings file, using defaults:', e);
+    }
+    return DEFAULT_SETTINGS;
+}
+
+function saveSettingsToFile(settings: AppSettings): void {
+    try {
+        const dir = path.dirname(SETTINGS_FILE);
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2), 'utf-8');
+    } catch (e) {
+        console.warn('[MultiLLM] Could not save settings file:', e);
+    }
+}
+
 // ─── In-memory Settings Store ──────────────────────────────────────────────────
 
-let currentSettings: AppSettings = JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
+let currentSettings: AppSettings = loadSettingsFromFile();
 
 export function getSettings(): AppSettings {
     return JSON.parse(JSON.stringify(currentSettings));
@@ -50,7 +95,25 @@ export function getSettings(): AppSettings {
 
 export function updateSettings(settings: AppSettings): void {
     currentSettings = JSON.parse(JSON.stringify(settings));
-    console.log('[MultiLLM] Settings updated:', settings.providers.map(p => `${p.provider}(${p.enabled ? 'on' : 'off'},${p.apiKeys.length} keys,prio=${p.priority})`).join(', '));
+    saveSettingsToFile(currentSettings);
+    console.log('[MultiLLM] Settings updated & saved:', settings.providers.map(p => `${p.provider}(${p.enabled ? 'on' : 'off'},prio=${p.priority})`).join(', '));
+}
+
+// ─── Rate Limiter (for cloud providers on free tier) ──────────────────────────
+// Gemini free = 15 RPM → enforce 4s minimum between calls
+
+const lastCallTime = new Map<string, number>();
+
+async function enforceRateLimit(provider: string, isCloud: boolean): Promise<void> {
+    if (!isCloud) return;
+    const minGapMs = 4200; // 14 RPM effective (safe under 15 RPM limit)
+    const last = lastCallTime.get(provider) || 0;
+    const wait = minGapMs - (Date.now() - last);
+    if (wait > 0) {
+        console.log(`[MultiLLM] Rate limiting ${provider} — waiting ${Math.round(wait)}ms`);
+        await new Promise(r => setTimeout(r, wait));
+    }
+    lastCallTime.set(provider, Date.now());
 }
 
 // ─── Provider Call Implementations ────────────────────────────────────────────
@@ -64,7 +127,7 @@ async function callOllama(
         model: config.model,
         messages: messages.map(m => ({ role: m.role, content: m.content })),
         stream: false,
-        options: { temperature: 0.7, num_predict: 4000 },
+        options: { temperature: 0.7, num_predict: 3000 },
     }, { timeout: 120000 });
 
     return {
@@ -82,7 +145,7 @@ async function callLMStudio(
         model: config.model,
         messages: messages.map(m => ({ role: m.role, content: m.content })),
         temperature: 0.7,
-        max_tokens: 4000,
+        max_tokens: 3000,
         stream: false,
     }, { timeout: 120000 });
 
@@ -111,10 +174,11 @@ async function callGemini(
     if (systemMsg) {
         body.systemInstruction = { parts: [{ text: systemMsg.content }] };
     }
-    body.generationConfig = { temperature: 0.7, maxOutputTokens: 4000 };
+    body.generationConfig = { temperature: 0.7, maxOutputTokens: 3000 };
 
-    const model = config.model || 'gemini-1.5-flash';
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+    const model = config.model || 'gemini-2.0-flash';
+    const baseUrl = config.baseUrl || 'https://generativelanguage.googleapis.com/v1beta';
+    const url = `${baseUrl}/models/${model}:generateContent?key=${apiKey}`;
 
     const response = await axios.post(url, body, { timeout: 120000 });
     const text = response.data.candidates?.[0]?.content?.parts?.[0]?.text || '';
@@ -133,7 +197,7 @@ async function callGrok(
         model: config.model || 'grok-beta',
         messages: messages.map(m => ({ role: m.role, content: m.content })),
         temperature: 0.7,
-        max_tokens: 4000,
+        max_tokens: 3000,
     }, {
         headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
         timeout: 120000,
@@ -148,11 +212,15 @@ async function callGrok(
 
 // ─── Dispatcher ────────────────────────────────────────────────────────────────
 
+const CLOUD_PROVIDERS = new Set(['gemini', 'grok']);
+
 async function callProvider(
     messages: LLMMessage[],
     config: ProviderConfig,
     apiKey: string
 ): Promise<LLMResponse> {
+    const isCloud = CLOUD_PROVIDERS.has(config.provider);
+    await enforceRateLimit(config.provider, isCloud);
     switch (config.provider) {
         case 'ollama': return callOllama(messages, config);
         case 'lmstudio': return callLMStudio(messages, config);
@@ -181,6 +249,7 @@ export class MultiLLMService {
         const errors: string[] = [];
 
         for (const provider of providers) {
+            const isCloud = CLOUD_PROVIDERS.has(provider.provider);
             // Local providers (ollama, lmstudio) don't need API keys
             const keys = (provider.provider === 'ollama' || provider.provider === 'lmstudio')
                 ? ['']
@@ -200,8 +269,25 @@ export class MultiLLMService {
                     return result;
                 } catch (err) {
                     const msg = err instanceof Error ? err.message : String(err);
-                    console.warn(`[MultiLLM] ❌ ${provider.provider} key ${i + 1} failed: ${msg}`);
-                    errors.push(`${provider.provider}[key${i + 1}]: ${msg}`);
+                    const is429 = msg.includes('429') || msg.includes('Too Many Requests') || msg.includes('RESOURCE_EXHAUSTED');
+
+                    if (is429 && isCloud) {
+                        // On 429: wait 60s then retry the SAME key once before moving on
+                        console.warn(`[MultiLLM] ⏳ ${provider.provider} key ${i + 1} hit rate limit (429). Waiting 60s...`);
+                        await new Promise(r => setTimeout(r, 60_000));
+                        try {
+                            const retry = await callProvider(messages, provider, keys[i]);
+                            console.log(`[MultiLLM] ✅ Retry succeeded for ${provider.provider} key ${i + 1}`);
+                            return retry;
+                        } catch (retryErr) {
+                            const retryMsg = retryErr instanceof Error ? retryErr.message : String(retryErr);
+                            console.warn(`[MultiLLM] ❌ ${provider.provider} key ${i + 1} still failing after retry: ${retryMsg}`);
+                            errors.push(`${provider.provider}[key${i + 1}][retry]: ${retryMsg}`);
+                        }
+                    } else {
+                        console.warn(`[MultiLLM] ❌ ${provider.provider} key ${i + 1} failed: ${msg}`);
+                        errors.push(`${provider.provider}[key${i + 1}]: ${msg}`);
+                    }
                 }
             }
         }
@@ -214,6 +300,80 @@ export class MultiLLMService {
         if (systemPrompt) messages.push({ role: 'system', content: systemPrompt });
         messages.push({ role: 'user', content: prompt });
         return this.chat(messages);
+    }
+
+    /**
+     * generateLocal — forces Ollama/LMStudio ONLY.
+     * Use for cheap repetitive tasks (topic extraction, query rewriting)
+     * to avoid burning cloud API rate limits.
+     */
+    async generateLocal(prompt: string, systemPrompt?: string): Promise<LLMResponse> {
+        const settings = getSettings();
+        const localProviders = settings.providers
+            .filter(p => p.enabled && (p.provider === 'ollama' || p.provider === 'lmstudio'))
+            .sort((a, b) => a.priority - b.priority);
+
+        if (localProviders.length === 0) {
+            // No local provider configured — fall back to full chat (uses cloud)
+            console.warn('[MultiLLM] No local provider available, falling back to cloud for local task');
+            return this.generate(prompt, systemPrompt);
+        }
+
+        const messages: LLMMessage[] = [];
+        if (systemPrompt) messages.push({ role: 'system', content: systemPrompt });
+        messages.push({ role: 'user', content: prompt });
+
+        const errors: string[] = [];
+        for (const provider of localProviders) {
+            try {
+                console.log(`[MultiLLM] Local task → ${provider.provider} (${provider.model})`);
+                const result = await callProvider(messages, provider, '');
+                return result;
+            } catch (err) {
+                const msg = err instanceof Error ? err.message : String(err);
+                console.warn(`[MultiLLM] ❌ Local ${provider.provider} failed: ${msg}`);
+                errors.push(`${provider.provider}: ${msg}`);
+            }
+        }
+
+        // Local failed — fall back to cloud with a warning
+        console.warn('[MultiLLM] All local providers failed, falling back to cloud');
+        return this.generate(prompt, systemPrompt);
+    }
+
+    /**
+     * generateJSONLocal — forces Ollama/LMStudio ONLY for JSON tasks.
+     * Uses the same repair/cleanup logic as generateJSON.
+     */
+    async generateJSONLocal<T>(prompt: string, systemPrompt?: string, retryCount = 0): Promise<T> {
+        const strictRules = `
+CRITICAL JSON RULES:
+- Return ONLY valid JSON
+- No comments
+- No markdown code blocks
+- No explanations`;
+
+        const jsonSystemPrompt = `${systemPrompt || ''}${strictRules}`;
+        const response = await this.generateLocal(prompt, jsonSystemPrompt);
+
+        let jsonStr = response.content.trim();
+        if (jsonStr.startsWith('```json')) jsonStr = jsonStr.slice(7);
+        else if (jsonStr.startsWith('```')) jsonStr = jsonStr.slice(3);
+        if (jsonStr.endsWith('```')) jsonStr = jsonStr.slice(0, -3);
+        jsonStr = jsonStr.trim();
+
+        try {
+            return JSON.parse(jsonStr) as T;
+        } catch {
+            try {
+                return JSON.parse(jsonrepair(jsonStr)) as T;
+            } catch {
+                if (retryCount === 0) {
+                    return this.generateJSONLocal<T>(prompt, systemPrompt, 1);
+                }
+                throw new Error('Local LLM returned invalid JSON for topic extraction');
+            }
+        }
     }
 
     async generateJSON<T>(prompt: string, systemPrompt?: string, retryCount = 0): Promise<T> {
@@ -293,6 +453,160 @@ CRITICAL JSON RULES:
 
     getActiveProviders(): ProviderConfig[] {
         return getSettings().providers.filter(p => p.enabled).sort((a, b) => a.priority - b.priority);
+    }
+
+    /** Returns true if the primary active provider is a cloud provider (Gemini, Grok) */
+    isPrimaryCloudProvider(): boolean {
+        const first = this.getActiveProviders()[0];
+        return !!first && CLOUD_PROVIDERS.has(first.provider);
+    }
+
+    /** Returns the primary active provider name */
+    getPrimaryProvider(): string | null {
+        return this.getActiveProviders()[0]?.provider ?? null;
+    }
+
+    /**
+     * Specialized note generation call — uses 8192 output tokens for cloud providers
+     * (vs. the standard 3000 used for topic extraction).
+     */
+    async generateNotesContent(prompt: string, systemPrompt?: string): Promise<LLMResponse> {
+        const settings = getSettings();
+        const providers = settings.providers
+            .filter(p => p.enabled)
+            .sort((a, b) => a.priority - b.priority);
+
+        if (providers.length === 0) {
+            throw new Error('No AI providers are enabled. Please configure at least one provider in Settings.');
+        }
+
+        const errors: string[] = [];
+        const messages: LLMMessage[] = [];
+        if (systemPrompt) messages.push({ role: 'system', content: systemPrompt });
+        messages.push({ role: 'user', content: prompt });
+
+        for (const provider of providers) {
+            const isCloud = CLOUD_PROVIDERS.has(provider.provider);
+            const keys = (provider.provider === 'ollama' || provider.provider === 'lmstudio')
+                ? ['']
+                : provider.apiKeys.filter(k => k.trim().length > 0);
+
+            if (keys.length === 0 && isCloud) {
+                errors.push(`${provider.provider}: no API keys`);
+                continue;
+            }
+
+            for (let i = 0; i < keys.length; i++) {
+                try {
+                    await enforceRateLimit(provider.provider, isCloud);
+
+                    let result: LLMResponse;
+
+                    if (provider.provider === 'gemini') {
+                        // Gemini: 8192 tokens for rich detailed notes
+                        const systemMsg = messages.find(m => m.role === 'system');
+                        const userMsgs = messages.filter(m => m.role !== 'system');
+                        const contents = userMsgs.map(m => ({
+                            role: m.role === 'assistant' ? 'model' : 'user',
+                            parts: [{ text: m.content }],
+                        }));
+                        const body: Record<string, unknown> = { contents };
+                        if (systemMsg) body.systemInstruction = { parts: [{ text: systemMsg.content }] };
+                        body.generationConfig = { temperature: 0.8, maxOutputTokens: 8192 };
+                        const model = provider.model || 'gemini-2.0-flash';
+                        const baseUrl = provider.baseUrl || 'https://generativelanguage.googleapis.com/v1beta';
+                        const url = `${baseUrl}/models/${model}:generateContent?key=${keys[i]}`;
+                        const response = await axios.post(url, body, { timeout: 180000 });
+                        const text = response.data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+                        result = { content: text, tokensUsed: response.data.usageMetadata?.candidatesTokenCount };
+                    } else if (provider.provider === 'grok') {
+                        const baseUrl = provider.baseUrl || 'https://api.x.ai/v1';
+                        const response = await axios.post(`${baseUrl}/chat/completions`, {
+                            model: provider.model || 'grok-beta',
+                            messages: messages.map(m => ({ role: m.role, content: m.content })),
+                            temperature: 0.8,
+                            max_tokens: 8192,
+                        }, {
+                            headers: { Authorization: `Bearer ${keys[i]}`, 'Content-Type': 'application/json' },
+                            timeout: 180000,
+                        });
+                        result = { content: response.data.choices?.[0]?.message?.content || '', tokensUsed: response.data.usage?.completion_tokens };
+                    } else {
+                        // Local fallback: use standard generate
+                        result = await callProvider(messages, provider, keys[i]);
+                    }
+
+                    console.log(`[MultiLLM] ✅ Notes generated with ${provider.provider} (key ${i + 1}), tokens: ${result.tokensUsed ?? '?'}`);
+                    return result;
+                } catch (err) {
+                    const msg = err instanceof Error ? err.message : String(err);
+                    const is429 = msg.includes('429') || msg.includes('Too Many Requests') || msg.includes('RESOURCE_EXHAUSTED');
+
+                    if (is429 && isCloud) {
+                        // On 429: wait 60s then retry the SAME key once
+                        console.warn(`[MultiLLM] ⏳ ${provider.provider} notes key ${i + 1} hit rate limit (429). Waiting 60s...`);
+                        await new Promise(r => setTimeout(r, 60_000));
+                        try {
+                            const model = provider.model || 'gemini-2.0-flash';
+                            const baseUrl = provider.baseUrl || 'https://generativelanguage.googleapis.com/v1beta';
+
+                            const retry = await axios.post(
+                                provider.provider === 'gemini'
+                                    ? `${baseUrl}/models/${model}:generateContent?key=${keys[i]}`
+                                    : `${provider.baseUrl || 'https://api.x.ai/v1'}/chat/completions`,
+                                provider.provider === 'gemini'
+                                    ? {
+                                        contents: messages.filter(m => m.role !== 'system').map(m => ({
+                                            role: m.role === 'assistant' ? 'model' : 'user',
+                                            parts: [{ text: m.content }],
+                                        })),
+                                        systemInstruction: messages.find(m => m.role === 'system')
+                                            ? { parts: [{ text: messages.find(m => m.role === 'system')!.content }] }
+                                            : undefined,
+                                        generationConfig: { temperature: 0.8, maxOutputTokens: 8192 }
+                                    }
+                                    : {
+                                        model: provider.model || 'grok-beta',
+                                        messages: messages.map(m => ({ role: m.role, content: m.content })),
+                                        temperature: 0.8,
+                                        max_tokens: 8192,
+                                    },
+                                {
+                                    headers: provider.provider === 'grok'
+                                        ? { Authorization: `Bearer ${keys[i]}`, 'Content-Type': 'application/json' }
+                                        : undefined,
+                                    timeout: 180000
+                                }
+                            );
+
+                            let retryRes: LLMResponse;
+                            if (provider.provider === 'gemini') {
+                                retryRes = {
+                                    content: retry.data.candidates?.[0]?.content?.parts?.[0]?.text || '',
+                                    tokensUsed: retry.data.usageMetadata?.candidatesTokenCount
+                                };
+                            } else {
+                                retryRes = {
+                                    content: retry.data.choices?.[0]?.message?.content || '',
+                                    tokensUsed: retry.data.usage?.completion_tokens
+                                };
+                            }
+                            console.log(`[MultiLLM] ✅ Retry succeeded for ${provider.provider} notes key ${i + 1}`);
+                            return retryRes;
+                        } catch (retryErr) {
+                            const retryMsg = retryErr instanceof Error ? retryErr.message : String(retryErr);
+                            console.warn(`[MultiLLM] ❌ ${provider.provider} notes key ${i + 1} still failing after retry: ${retryMsg}`);
+                            errors.push(`${provider.provider}[key${i + 1}][retry]: ${retryMsg}`);
+                        }
+                    } else {
+                        console.warn(`[MultiLLM] ❌ ${provider.provider} key ${i + 1} failed: ${msg}`);
+                        errors.push(`${provider.provider}[key${i + 1}]: ${msg}`);
+                    }
+                }
+            }
+        }
+
+        throw new Error(`All providers failed for note generation:\n${errors.map(e => `  • ${e}`).join('\n')}`);
     }
 }
 

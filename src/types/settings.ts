@@ -28,14 +28,14 @@ export const PROVIDER_DESCRIPTIONS: Record<AIProvider, string> = {
 };
 
 export const DEFAULT_MODELS: Record<AIProvider, string> = {
-    gemini: 'gemini-1.5-flash',
+    gemini: 'gemini-2.0-flash',
     grok: 'grok-beta',
     lmstudio: 'local-model',
-    ollama: 'mistral',
+    ollama: 'qwen2.5-coder:7b',
 };
 
 export const DEFAULT_BASE_URLS: Record<AIProvider, string | undefined> = {
-    gemini: undefined,
+    gemini: 'https://generativelanguage.googleapis.com/v1beta',
     grok: 'https://api.x.ai/v1',
     lmstudio: 'http://localhost:1234',
     ollama: 'http://localhost:11434',
@@ -51,11 +51,20 @@ export const IS_LOCAL_PROVIDER: Record<AIProvider, boolean> = {
 export const DEFAULT_SETTINGS: AppSettings = {
     providers: [
         {
-            provider: 'gemini',
-            enabled: false,
+            provider: 'ollama',
+            enabled: true,
             apiKeys: [],
-            model: 'gemini-1.5-flash',
+            model: 'qwen2.5-coder:7b',
+            baseUrl: 'http://localhost:11434',
             priority: 1,
+        },
+        {
+            provider: 'gemini',
+            enabled: true,
+            apiKeys: [],
+            model: 'gemini-2.0-flash',
+            baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
+            priority: 2,
         },
         {
             provider: 'grok',
@@ -63,7 +72,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
             apiKeys: [],
             model: 'grok-beta',
             baseUrl: 'https://api.x.ai/v1',
-            priority: 2,
+            priority: 3,
         },
         {
             provider: 'lmstudio',
@@ -71,14 +80,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
             apiKeys: [],
             model: 'local-model',
             baseUrl: 'http://localhost:1234',
-            priority: 3,
-        },
-        {
-            provider: 'ollama',
-            enabled: true,
-            apiKeys: [],
-            model: 'mistral',
-            baseUrl: 'http://localhost:11434',
             priority: 4,
         },
     ],

@@ -1,4 +1,5 @@
-export type ProcessingStatus = 'idle' | 'extracting' | 'indexing' | 'awaiting-approval' | 'generating' | 'assembling' | 'complete' | 'error';
+export type ProcessingStatus = 'idle' | 'extracting' | 'indexing' | 'awaiting-approval' | 'generating' | 'assembling' | 'complete' | 'error'
+  | 'extracting-transcripts' | 'analyzing-content' | 'generating-index' | 'generating-notes' | 'assembling-notebook';
 
 export interface VideoInfo {
   id: string;
@@ -158,6 +159,8 @@ export interface JobStatus {
   currentStep: number;
   steps: ProcessingStep[];
   videoInfo?: VideoInfo;
+  videos?: VideoInfo[];
+  index?: UnifiedIndex;
   error?: string;
   notebook?: Notebook;
   createdAt: string;

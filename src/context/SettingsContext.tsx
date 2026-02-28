@@ -22,15 +22,27 @@ function loadFromStorage(): AppSettings {
         const raw = localStorage.getItem(STORAGE_KEY);
         if (!raw) return DEFAULT_SETTINGS;
         const parsed = JSON.parse(raw) as AppSettings;
-        // Merge with defaults to handle new providers added in later versions
-        const existingProviders = new Set(parsed.providers.map(p => p.provider));
-        const merged = { ...parsed };
-        DEFAULT_SETTINGS.providers.forEach(dp => {
-            if (!existingProviders.has(dp.provider)) {
-                merged.providers.push(dp);
-            }
+
+        // Merge each provider: start from the current default then overlay saved values.
+        // This ensures new fields (model, baseUrl) are always pre-filled even for
+        // providers that were already saved before the defaults changed.
+        const defaultMap = new Map(DEFAULT_SETTINGS.providers.map(p => [p.provider, p]));
+        const savedMap = new Map(parsed.providers.map(p => [p.provider, p]));
+
+        const mergedProviders = Array.from(defaultMap.keys()).map(key => {
+            const def = defaultMap.get(key)!;
+            const saved = savedMap.get(key as any);
+            if (!saved) return def;
+            return {
+                ...def,         // start with full defaults (model, baseUrl, etc.)
+                ...saved,       // overlay user's saved values (enabled, apiKeys, priority)
+                // Always keep default model/baseUrl if the saved value is empty/missing
+                model: saved.model || def.model,
+                baseUrl: saved.baseUrl || def.baseUrl,
+            };
         });
-        return merged;
+
+        return { providers: mergedProviders };
     } catch {
         return DEFAULT_SETTINGS;
     }

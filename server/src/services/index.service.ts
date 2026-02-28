@@ -126,7 +126,7 @@ IMPORTANT:
 
       try {
         console.log(`    Chunk ${i + 1}/${chunks.length}...`);
-        const rawTopics = await llmService.generateJSON<RawTopic[]>(prompt, systemPrompt);
+        const rawTopics = await llmService.generateJSONLocal<RawTopic[]>(prompt, systemPrompt);
 
         // Normalize topics to handle malformed data
         const normalizedTopics = this.normalizeRawTopics(rawTopics);
@@ -198,7 +198,7 @@ RULES:
 - Do not include comments in JSON`;
 
       try {
-        const mergeResult = await llmService.generateJSON<{ merges: { keep: number; merge: number[] }[] }>(mergePrompt);
+        const mergeResult = await llmService.generateJSONLocal<{ merges: { keep: number; merge: number[] }[] }>(mergePrompt);
 
         // Validate the merge result structure
         if (!mergeResult || typeof mergeResult !== 'object') {
@@ -283,7 +283,7 @@ Return a JSON array of the topic numbers in the correct order:
 { "order": [1, 3, 2, 5, 4] }`;
 
     try {
-      const result = await llmService.generateJSON<{ order: number[] }>(prompt, systemPrompt);
+      const result = await llmService.generateJSONLocal<{ order: number[] }>(prompt, systemPrompt);
 
       const orderedTopics: TopicNode[] = [];
       for (let i = 0; i < result.order.length; i++) {
