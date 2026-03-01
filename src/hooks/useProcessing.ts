@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { ProcessingState, ProcessingStep, VideoNotes, TopicIndex, JobStatus } from '@/types';
 import { api } from '@/services/api';
 
@@ -10,167 +10,230 @@ const initialSteps: ProcessingStep[] = [
   { id: 'assemble', label: 'Assembling Notebook', description: 'Compiling final notebook', status: 'pending' },
 ];
 
-export const useProcessing = () => {
+export const useProcessing = (initialJobId?: string | null) => {
   const [state, setState] = useState<ProcessingState>({
     status: 'idle',
     currentStep: 0,
     steps: initialSteps,
   });
 
-  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const [logs, setLogs] = useState<{ id: string; message: string; type: 'info' | 'success' | 'error' | 'ai'; timestamp: string }[]>([]);
+
+  const addLog = useCallback((message: string, type: 'info' | 'success' | 'error' | 'ai' = 'info') => {
+    setLogs(prev => [{
+      id: Math.random().toString(36).substring(7),
+      message,
+      type,
+      timestamp: new Date().toLocaleTimeString()
+    }, ...prev].slice(0, 50));
+  }, []);
+
+  const eventSourceRef = useRef<EventSource | null>(null);
   const currentJobIdRef = useRef<string | null>(null);
 
-  const pollJobStatus = useCallback(async (jobId: string) => {
-    try {
-      console.log('📊 Polling job status for:', jobId);
-      const jobStatus: JobStatus = await api.getJobStatus(jobId);
-      console.log('📥 Job status received:', jobStatus);
+  // Helper to build markdown from sections
+  const buildContentFromSections = (note: any): string => {
+    if (!note.sections?.length) return note.summary || '';
+    return note.sections.map((s: any) => {
+      if (s.type === 'heading') return `${'#'.repeat((s.level || 2) + 1)} ${s.content}`;
+      if (s.type === 'code') return `\`\`\`${s.codeSnippet?.language || ''}\n${s.codeSnippet?.code || s.content}\n\`\`\``;
+      if (s.type === 'bullets') return s.items?.map((i: string) => `- ${i}`).join('\n') || s.content;
+      if (s.type === 'numbered') return s.items?.map((i: string, idx: number) => `${idx + 1}. ${i}`).join('\n') || s.content;
+      if (s.type === 'quote' || s.type === 'special') return `> ${s.specialNote?.content || s.content}`;
+      return s.content || '';
+    }).join('\n\n');
+  };
 
-      // Map backend status to frontend status
-      const mapStatus = (backendStatus: string): string => {
-        switch (backendStatus) {
-          case 'extracting-transcripts':
-            return 'extracting';
-          case 'analyzing-content':
-          case 'generating-index':
-            return 'indexing';
-          case 'awaiting-approval':
-            return 'awaiting-approval';
-          case 'generating-notes':
-            return 'generating';
-          case 'assembling-notebook':
-            return 'assembling';
-          case 'complete':
-            return 'complete';
-          case 'error':
-            return 'error';
-          default:
-            return backendStatus;
-        }
-      };
+  const handleJobUpdate = useCallback((jobStatus: JobStatus) => {
+    // Map backend status to frontend status
+    const mapStatus = (backendStatus: string): string => {
+      switch (backendStatus) {
+        case 'extracting-transcripts': return 'extracting';
+        case 'analyzing-content':
+        case 'generating-index': return 'indexing';
+        case 'awaiting-approval': return 'awaiting-approval';
+        case 'generating-notes': return 'generating';
+        case 'assembling-notebook': return 'assembling';
+        case 'complete': return 'complete';
+        case 'error': return 'error';
+        default: return backendStatus;
+      }
+    };
 
-      // Update steps based on backend status
-      const updatedSteps = jobStatus.steps || initialSteps;
-      const mappedStatus = mapStatus(jobStatus.status);
+    const updatedSteps = jobStatus.steps || initialSteps;
+    const mappedStatus = mapStatus(jobStatus.status);
 
-      console.log(`🔄 Status: ${jobStatus.status} → ${mappedStatus}, Step: ${jobStatus.currentStep}/${updatedSteps.length}`)
-      console.log('📝 Steps:', updatedSteps.map(s => `${s.label}: ${s.status}`).join(', '));
-
-      setState(prev => ({
+    setState(prev => {
+      const newState: ProcessingState = {
         ...prev,
         status: mappedStatus as any,
         currentStep: jobStatus.currentStep,
         steps: updatedSteps,
         videoInfo: jobStatus.videoInfo,
         videoCount: jobStatus.videos?.length,
-        // Store index when available (for approval)
         ...(jobStatus.index && { index: jobStatus.index }),
-      }));
+      };
 
-      // If waiting for approval, stop polling until user approves
-      if (jobStatus.status === 'awaiting-approval') {
-        console.log('⏸️  Index ready for approval. Pausing polling.');
-        console.log('📋 Index:', jobStatus.index);
-        if (pollingIntervalRef.current) {
-          clearInterval(pollingIntervalRef.current);
-          pollingIntervalRef.current = null;
-        }
-        return;
+      // Add logs based on status changes
+      if (prev.status !== newState.status) {
+        addLog(`Transitioned to state: ${newState.status}`, 'info');
       }
 
-      // If job is complete, stop polling and set final results
+      // If job is complete, transform notebook to notes format
       if (jobStatus.status === 'complete' && jobStatus.notebook) {
-        console.log('🎉 Job complete! Notebook:', jobStatus.notebook);
-        console.log('📚 Chapters:', jobStatus.notebook.chapters?.length);
-        console.log('📑 Topics:', jobStatus.notebook.index?.topicCount);
-
-        if (pollingIntervalRef.current) {
-          clearInterval(pollingIntervalRef.current);
-          pollingIntervalRef.current = null;
-        }
-
-        // Convert notebook to notes format
+        // ... (rest of transformation logic)
         const topicIndex: TopicIndex[] = jobStatus.notebook.index?.topics?.map((topic: any) => ({
           id: topic.id,
           title: topic.title,
           subtopics: topic.subtopics?.map((st: any) => st.title) || [],
         })) || [];
 
-        // Extract all topic notes from chapters
         const allTopicNotes: any[] = [];
         if (jobStatus.notebook.chapters) {
           jobStatus.notebook.chapters.forEach((chapter: any) => {
-            if (chapter.topics) {
-              allTopicNotes.push(...chapter.topics);
-            }
+            if (chapter.topics) allTopicNotes.push(...chapter.topics);
           });
         }
 
-        console.log('Extracted topic notes:', allTopicNotes);
-
-        // Convert to frontend format
-        // Build fullContent from sections so RunningNotesViewer gets proper markdown
-        const buildContent = (note: any): string => {
-          if (!note.sections?.length) return note.summary || '';
-          return note.sections.map((s: any) => {
-            if (s.type === 'heading') return `${'#'.repeat((s.level || 2) + 1)} ${s.content}`;
-            if (s.type === 'code') return `\`\`\`${s.codeSnippet?.language || ''}\n${s.codeSnippet?.code || s.content}\n\`\`\``;
-            if (s.type === 'bullets') return s.items?.map((i: string) => `- ${i}`).join('\n') || s.content;
-            if (s.type === 'numbered') return s.items?.map((i: string, idx: number) => `${idx + 1}. ${i}`).join('\n') || s.content;
-            if (s.type === 'quote' || s.type === 'special') return `> ${s.specialNote?.content || s.content}`;
-            return s.content || '';
-          }).join('\n\n');
-        };
-
-        const notes: VideoNotes = {
+        newState.topicIndex = topicIndex;
+        newState.notes = {
           videoId: jobStatus.videoInfo?.id || 'unknown',
           title: jobStatus.notebook.title,
           index: topicIndex,
           notes: allTopicNotes.map((note: any) => ({
-            topicId: note.topicId,
-            topicTitle: note.topicTitle,
-            summary: note.summary || '',
-            sections: note.sections || [],
-            keyTakeaways: note.keyTakeaways || [],
-            videoSources: note.videoSources || [],
-            generatedAt: note.generatedAt || new Date().toISOString(),
-            // Extra flattened content for RunningNotesViewer
-            content: buildContent(note),
+            ...note,
+            content: buildContentFromSections(note),
             title: note.topicTitle,
           })) as any,
-          fullContent: allTopicNotes.map((note: any) => {
-            return `## ${note.topicTitle}\n\n${buildContent(note)}`;
-          }).join('\n\n---\n\n'),
+          fullContent: allTopicNotes.map((note: any) => `## ${note.topicTitle}\n\n${buildContentFromSections(note)}`).join('\n\n---\n\n'),
         };
-
-        console.log('Converted notes for frontend:', notes);
-
-        setState(prev => ({
-          ...prev,
-          status: 'complete',
-          topicIndex,
-          notes,
-        }));
+        addLog('Notebook generation complete!', 'success');
       }
 
-      // If job failed, stop polling
-      if (jobStatus.status === 'error') {
-        console.error('Job failed:', jobStatus.error);
-        if (pollingIntervalRef.current) {
-          clearInterval(pollingIntervalRef.current);
-          pollingIntervalRef.current = null;
-        }
+      return newState;
+    });
+
+    if (jobStatus.status === 'complete' || jobStatus.status === 'error') {
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
       }
-    } catch (error) {
-      console.error('Error polling job status:', error);
     }
-  }, []);
+  }, [addLog]);
+
+  const connectToStream = useCallback((jobId: string) => {
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+    }
+
+    const apiBase = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
+    const url = `${apiBase}/process/stream/${jobId}`;
+
+    console.log(`🔌 Connecting to SSE stream: ${url}`);
+    const es = new EventSource(url);
+    eventSourceRef.current = es;
+
+    es.addEventListener('job:update', (e) => {
+      try {
+        const job = JSON.parse(e.data);
+        handleJobUpdate(job);
+
+        // Log important updates
+        const activeStep = job.steps[job.currentStep];
+        if (activeStep) {
+          addLog(`${activeStep.label}: ${activeStep.details || 'Processing...'}`, 'ai');
+        }
+      } catch (err) {
+        console.error('Failed to parse job update:', err);
+      }
+    });
+
+    es.addEventListener('note:delta', (e) => {
+      try {
+        const { topicId, delta } = JSON.parse(e.data);
+        setState(prev => {
+          if (!prev.notes) {
+            // Initialize notes structure if missing
+            const dummyNotes: VideoNotes = {
+              videoId: prev.videoInfo?.id || 'pending',
+              title: prev.videoInfo?.title || 'Generating Notes...',
+              index: [],
+              notes: [],
+              fullContent: ''
+            };
+            prev = { ...prev, notes: dummyNotes };
+          }
+
+          const existingNoteIdx = prev.notes!.notes.findIndex(n => n.topicId === topicId);
+          const updatedNotesList = [...prev.notes!.notes];
+
+          if (existingNoteIdx >= 0) {
+            const note = updatedNotesList[existingNoteIdx];
+            updatedNotesList[existingNoteIdx] = {
+              ...note,
+              content: (note.content || '') + delta
+            };
+          } else {
+            updatedNotesList.push({
+              topicId,
+              topicTitle: 'Generating...',
+              content: delta,
+              summary: '',
+              sections: [],
+              keyTakeaways: [],
+              videoSources: [],
+              generatedAt: new Date().toISOString(),
+              title: 'Generating...'
+            } as any);
+          }
+
+          return {
+            ...prev,
+            notes: {
+              ...prev.notes!,
+              notes: updatedNotesList,
+              fullContent: updatedNotesList.map(n => `## ${n.title || n.topicTitle}\n\n${n.content}`).join('\n\n---\n\n')
+            }
+          };
+        });
+      } catch (err) {
+        console.error('Failed to parse note delta:', err);
+      }
+    });
+
+    es.onerror = (err) => {
+      console.error('SSE Error:', err);
+      es.close();
+      eventSourceRef.current = null;
+    };
+
+    return () => {
+      es.close();
+    };
+  }, [handleJobUpdate, addLog]);
+
+  // Synchronize with an existing job
+  const syncJob = useCallback(async (jobId: string) => {
+    try {
+      addLog(`Synchronizing with job ${jobId.slice(0, 8)}...`, 'info');
+      const jobStatus = await api.getJobStatus(jobId);
+      currentJobIdRef.current = jobId;
+      handleJobUpdate(jobStatus);
+      connectToStream(jobId);
+    } catch (err) {
+      console.error('Failed to sync job:', err);
+      addLog('Failed to find existing job', 'error');
+    }
+  }, [handleJobUpdate, connectToStream, addLog]);
+
+  useEffect(() => {
+    if (initialJobId && !currentJobIdRef.current) {
+      syncJob(initialJobId);
+    }
+  }, [initialJobId, syncJob]);
 
   const startProcessing = useCallback(async (url: string, userNotes?: string, creativityLevel?: number) => {
-    console.log('🚀 Starting processing for URL:', url);
-
     try {
-      // Reset state
       setState({
         status: 'extracting',
         currentStep: 0,
@@ -180,23 +243,12 @@ export const useProcessing = () => {
         })),
       });
 
-      console.log('📡 Calling API to start processing...');
-      // Start processing job
       const response = await api.startProcessing(url, userNotes, creativityLevel);
-      console.log('✅ Processing started:', response);
-      console.log('🆔 Job ID:', response.jobId);
-
       const jobId = response.jobId;
       currentJobIdRef.current = jobId;
 
-      // Start polling for status updates
-      pollingIntervalRef.current = setInterval(() => {
-        pollJobStatus(jobId);
-      }, 2000); // Poll every 2 seconds
-
-      // Do initial poll immediately
-      pollJobStatus(jobId);
-
+      connectToStream(jobId);
+      return jobId;
     } catch (error) {
       console.error('Error starting processing:', error);
       setState(prev => ({
@@ -205,17 +257,35 @@ export const useProcessing = () => {
         steps: initialSteps.map(s => ({ ...s, status: 'error' })),
       }));
     }
-  }, [pollJobStatus]);
+  }, [connectToStream]);
+
+  const approveIndex = useCallback(async (updatedIndex: any) => {
+    const jobId = currentJobIdRef.current;
+    if (!jobId) return;
+
+    try {
+      await api.approveIndex(jobId, updatedIndex);
+      setState(prev => ({
+        ...prev,
+        status: 'generating',
+        index: updatedIndex,
+      }));
+
+      // Ensure we are connected
+      if (!eventSourceRef.current) {
+        connectToStream(jobId);
+      }
+    } catch (error) {
+      console.error('Error approving index:', error);
+      setState(prev => ({ ...prev, error: 'Failed to approve index' }));
+    }
+  }, [connectToStream]);
 
   const reset = useCallback(() => {
-    console.log('Resetting processing state');
-
-    // Clear polling interval if active
-    if (pollingIntervalRef.current) {
-      clearInterval(pollingIntervalRef.current);
-      pollingIntervalRef.current = null;
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+      eventSourceRef.current = null;
     }
-
     setState({
       status: 'idle',
       currentStep: 0,
@@ -223,48 +293,18 @@ export const useProcessing = () => {
     });
   }, []);
 
-  const approveIndex = useCallback(async (updatedIndex: any) => {
-    const jobId = currentJobIdRef.current;
-
-    if (!jobId) {
-      console.error('No job ID available');
-      return;
-    }
-
-    console.log('Approving index for job:', jobId);
-
-    try {
-      // Send approval to backend
-      await api.approveIndex(jobId, updatedIndex);
-
-      console.log('Index approved, resuming polling');
-
-      // Update state to show processing continuing
-      setState(prev => ({
-        ...prev,
-        status: 'generating',
-        index: updatedIndex,
-      }));
-
-      // Resume polling to track notes generation
-      pollingIntervalRef.current = setInterval(() => {
-        pollJobStatus(jobId);
-      }, 2000);
-
-      // Do initial poll
-      pollJobStatus(jobId);
-
-    } catch (error) {
-      console.error('Error approving index:', error);
-      setState(prev => ({
-        ...prev,
-        error: 'Failed to approve index',
-      }));
-    }
-  }, [pollJobStatus]);
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+      }
+    };
+  }, []);
 
   return {
     state,
+    logs,
     startProcessing,
     approveIndex,
     reset,

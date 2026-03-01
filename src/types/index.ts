@@ -53,6 +53,8 @@ export interface TopicNotes {
   keyTakeaways: string[];
   videoSources: VideoSourceReference[];
   generatedAt: string;
+  content?: string;
+  title?: string;
 }
 
 export interface VideoSourceReference {

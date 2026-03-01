@@ -5,6 +5,7 @@ export interface ProviderConfig {
     enabled: boolean;
     apiKeys: string[];      // Multiple keys; tried in order on failure
     model: string;
+    indexingModel?: string; // Faster model for topic extraction
     baseUrl?: string;       // For local providers (Ollama, LM Studio)
     priority: number;       // Lower = tried first
 }
@@ -55,6 +56,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
             enabled: true,
             apiKeys: [],
             model: 'qwen2.5-coder:7b',
+            indexingModel: 'qwen2.5-coder:1.5b',
             baseUrl: 'http://localhost:11434',
             priority: 1,
         },

@@ -16,7 +16,7 @@ import {
 import '@xyflow/react/dist/style.css';
 import { api } from '@/services/api';
 import { Button } from '@/components/ui/button';
-import { GitBranch, Loader2, ChevronDown, ChevronRight, Sparkles } from 'lucide-react';
+import { GitBranch, Loader2, ChevronDown, ChevronRight, Brain } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface MindMapTabProps {
@@ -185,7 +185,7 @@ function TopicMindMap({
                 </div>
                 {!generated && (
                     <Button variant="outline" size="sm" onClick={generate} disabled={loading} className="h-7 text-xs gap-1.5">
-                        {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                        {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Brain className="w-3.5 h-3.5" />}
                         {loading ? 'Generating…' : 'Generate Map'}
                     </Button>
                 )}

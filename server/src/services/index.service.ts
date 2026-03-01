@@ -98,11 +98,16 @@ Focus on:
     const chunks = chunkText(transcript.fullText, 4000);
     const allTopics: RawTopic[] = [];
 
-    console.log(`  📄 Processing ${chunks.length} chunk(s) from transcript`);
+    // Parallel Processing: Process chunks in batches to maximize CPU usage without overloading
+    const CONCURRENCY = 3;
 
-    for (let i = 0; i < chunks.length; i++) {
-      const chunk = chunks[i];
-      const prompt = `Analyze this video transcript excerpt and extract the main topics discussed.${userNotesSection}
+    console.log(`  📄 Processing ${chunks.length} chunk(s) in parallel (concurrency=${CONCURRENCY})`);
+
+    for (let i = 0; i < chunks.length; i += CONCURRENCY) {
+      const batch = chunks.slice(i, i + CONCURRENCY);
+      const promises = batch.map(async (chunk, batchIdx) => {
+        const globalIdx = i + batchIdx;
+        const prompt = `Analyze this video transcript excerpt and extract the main topics discussed.${userNotesSection}
 
 Transcript:
 """
@@ -124,17 +129,21 @@ IMPORTANT:
 - Ensure all strings are properly quoted
 - Do not add comments in the JSON`;
 
-      try {
-        console.log(`    Chunk ${i + 1}/${chunks.length}...`);
-        const rawTopics = await llmService.generateJSONLocal<RawTopic[]>(prompt, systemPrompt);
+        try {
+          console.log(`    Chunk ${globalIdx + 1}/${chunks.length} starting...`);
+          // Use generateJSONLocal with default indexingModel behavior
+          const rawTopics = await llmService.generateJSONLocal<RawTopic[]>(prompt, systemPrompt);
+          const normalizedTopics = this.normalizeRawTopics(rawTopics);
+          console.log(`    ✓ Chunk ${globalIdx + 1}/${chunks.length} complete (${normalizedTopics.length} topics)`);
+          return normalizedTopics;
+        } catch (error) {
+          console.warn(`    ⚠️ Chunk ${globalIdx + 1} failed:`, error instanceof Error ? error.message : 'Unknown error');
+          return [];
+        }
+      });
 
-        // Normalize topics to handle malformed data
-        const normalizedTopics = this.normalizeRawTopics(rawTopics);
-        allTopics.push(...normalizedTopics);
-        console.log(`    ✓ Found ${normalizedTopics.length} topic(s) in chunk ${i + 1}`);
-      } catch (error) {
-        console.warn(`    ⚠️ Failed to extract topics from chunk ${i + 1}:`, error instanceof Error ? error.message : 'Unknown error');
-      }
+      const results = await Promise.all(promises);
+      results.forEach(topics => allTopics.push(...topics));
     }
 
     // Deduplicate topics within this video

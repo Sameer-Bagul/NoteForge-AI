@@ -19,7 +19,7 @@ const ProcessingView = ({ steps, currentStep, videoInfo, videoCount, processedVi
     currentStep,
     steps: steps.map(s => ({ id: s.id, status: s.status, label: s.label }))
   });
-  
+
   const getStepIcon = (step: ProcessingStep, index: number) => {
     const icons = {
       extract: FileText,
@@ -28,20 +28,20 @@ const ProcessingView = ({ steps, currentStep, videoInfo, videoCount, processedVi
       notes: FileText,
       assemble: Package
     };
-    
+
     const IconComponent = icons[step.id as keyof typeof icons] || FileText;
-    
+
     switch (step.status) {
       case 'complete':
         return (
-          <div className="w-12 h-12 rounded-full bg-green-100 dark:bg-green-900 flex items-center justify-center border-2 border-green-500">
-            <Check className="w-6 h-6 text-green-600 dark:text-green-400" />
+          <div className="w-12 h-12 rounded-full bg-success/10 flex items-center justify-center border-2 border-success">
+            <Check className="w-6 h-6 text-success" />
           </div>
         );
       case 'active':
         return (
-          <div className="w-12 h-12 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center border-2 border-blue-500 pulse-glow">
-            <Loader2 className="w-6 h-6 text-blue-600 dark:text-blue-400 animate-spin" />
+          <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center border-2 border-primary pulse-glow">
+            <Loader2 className="w-6 h-6 text-primary animate-spin" />
           </div>
         );
       case 'error':
@@ -88,15 +88,14 @@ const ProcessingView = ({ steps, currentStep, videoInfo, videoCount, processedVi
         {/* Steps Panel */}
         <div className="lg:col-span-2 space-y-4">
           {steps.map((step, index) => (
-            <Card 
+            <Card
               key={step.id}
-              className={`transition-all ${
-                step.status === 'active' 
-                  ? 'border-2 border-blue-500 shadow-lg' 
+              className={`transition-all ${step.status === 'active'
+                  ? 'border-2 border-blue-500 shadow-lg'
                   : step.status === 'complete'
                     ? 'border-green-500'
                     : ''
-              }`}
+                }`}
             >
               <CardContent className="p-6">
                 <div className="flex items-start gap-4">
@@ -104,38 +103,38 @@ const ProcessingView = ({ steps, currentStep, videoInfo, videoCount, processedVi
                   <div className="flex-1 space-y-2">
                     <div className="flex items-center justify-between">
                       <h4 className="text-lg font-semibold">{step.label}</h4>
-                      <Badge 
+                      <Badge
                         variant={step.status === 'complete' ? 'default' : step.status === 'active' ? 'secondary' : 'outline'}
                       >
                         {step.status === 'active' ? 'In Progress' : step.status === 'complete' ? 'Done' : 'Pending'}
                       </Badge>
                     </div>
-                    
+
                     <p className="text-sm text-muted-foreground">
                       {step.description}
                     </p>
-                    
+
                     {/* Metadata Display */}
                     {step.metadata && step.status === 'active' && (
-                      <div className="bg-blue-50 dark:bg-blue-950 rounded-lg p-3 space-y-2">
+                      <div className="bg-primary/5 rounded-lg p-3 space-y-2 border border-primary/10">
                         {step.metadata.currentItem !== undefined && step.metadata.totalItems && (
                           <div className="flex items-center justify-between text-sm">
-                            <span className="font-medium text-blue-700 dark:text-blue-300">
+                            <span className="font-medium text-primary">
                               {step.metadata.itemName || 'Item'} {step.metadata.currentItem}/{step.metadata.totalItems}
                             </span>
-                            <span className="text-blue-600 dark:text-blue-400">
+                            <span className="text-primary/70">
                               {Math.round((step.metadata.currentItem / step.metadata.totalItems) * 100)}%
                             </span>
                           </div>
                         )}
                         {step.metadata.subProgress && (
-                          <div className="text-xs text-blue-600 dark:text-blue-400">
+                          <div className="text-xs text-primary/60">
                             {step.metadata.subProgress}
                           </div>
                         )}
                       </div>
                     )}
-                    
+
                     {/* Step Progress Bar */}
                     {step.status === 'active' && step.progress !== undefined && (
                       <div className="space-y-1">
@@ -146,7 +145,7 @@ const ProcessingView = ({ steps, currentStep, videoInfo, videoCount, processedVi
                         <Progress value={step.progress} className="h-2" />
                       </div>
                     )}
-                    
+
                     {/* Completion Details */}
                     {step.details && step.status === 'complete' && (
                       <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
@@ -174,8 +173,8 @@ const ProcessingView = ({ steps, currentStep, videoInfo, videoCount, processedVi
               </CardHeader>
               <CardContent className="space-y-3">
                 {videoInfo.thumbnail && (
-                  <img 
-                    src={videoInfo.thumbnail} 
+                  <img
+                    src={videoInfo.thumbnail}
                     alt={videoInfo.title}
                     className="w-full rounded-lg"
                   />
@@ -220,15 +219,15 @@ const ProcessingView = ({ steps, currentStep, videoInfo, videoCount, processedVi
           </Card>
 
           {/* Status Message */}
-          <Card className="bg-blue-50 dark:bg-blue-950 border-blue-200 dark:border-blue-800">
+          <Card className="bg-primary/5 border-primary/20">
             <CardContent className="p-4">
               <div className="flex items-start gap-3">
-                <Loader2 className="w-5 h-5 text-blue-600 dark:text-blue-400 animate-spin mt-0.5" />
+                <Loader2 className="w-5 h-5 text-primary animate-spin mt-0.5" />
                 <div className="text-sm">
-                  <p className="font-medium text-blue-900 dark:text-blue-100 mb-1">
+                  <p className="font-medium text-foreground mb-1">
                     {activeStep?.label || 'Processing...'}
                   </p>
-                  <p className="text-xs text-blue-700 dark:text-blue-300">
+                  <p className="text-xs text-muted-foreground">
                     {activeStep?.metadata?.subProgress || activeStep?.description || 'Please wait while we process your content'}
                   </p>
                 </div>

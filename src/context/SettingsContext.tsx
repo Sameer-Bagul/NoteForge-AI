@@ -37,7 +37,9 @@ function loadFromStorage(): AppSettings {
                 ...def,         // start with full defaults (model, baseUrl, etc.)
                 ...saved,       // overlay user's saved values (enabled, apiKeys, priority)
                 // Always keep default model/baseUrl if the saved value is empty/missing
-                model: saved.model || def.model,
+                // OR if it's the old 'mistral' default we want to migrate away from
+                model: (saved.model && saved.model !== 'mistral') ? saved.model : def.model,
+                indexingModel: saved.indexingModel || def.indexingModel,
                 baseUrl: saved.baseUrl || def.baseUrl,
             };
         });

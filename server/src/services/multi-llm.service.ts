@@ -3,6 +3,7 @@ import { jsonrepair } from 'jsonrepair';
 import { AIProvider, AppSettings, LLMMessage, LLMResponse, ProviderConfig } from '../types';
 import * as fs from 'fs';
 import * as path from 'path';
+import { cacheService } from './cache.service';
 
 // ─── Default Settings ──────────────────────────────────────────────────────────
 
@@ -12,9 +13,10 @@ const DEFAULT_SETTINGS: AppSettings = {
             provider: 'ollama',
             enabled: true,
             apiKeys: [],
-            model: process.env.OLLAMA_MODEL || 'mistral',
+            model: process.env.OLLAMA_MODEL || 'qwen2.5-coder:7b',
+            indexingModel: 'qwen2.5-coder:1.5b',
             baseUrl: process.env.OLLAMA_BASE_URL || 'http://localhost:11434',
-            priority: 4,
+            priority: 1,
         },
         {
             provider: 'lmstudio',
@@ -63,6 +65,7 @@ function loadSettingsFromFile(): AppSettings {
                     ...def,
                     ...sv,
                     model: sv.model || def.model,
+                    indexingModel: sv.indexingModel || def.indexingModel,
                     baseUrl: sv.baseUrl || def.baseUrl,
                 };
             });
@@ -94,9 +97,26 @@ export function getSettings(): AppSettings {
 }
 
 export function updateSettings(settings: AppSettings): void {
-    currentSettings = JSON.parse(JSON.stringify(settings));
+    // Merge with defaults to ensure all fields (like indexingModel) are preserved
+    const defaultMap = new Map(DEFAULT_SETTINGS.providers.map(p => [p.provider, p]));
+    const incomingMap = new Map(settings.providers.map(p => [p.provider, p]));
+
+    const merged = Array.from(defaultMap.keys()).map(key => {
+        const def = defaultMap.get(key)!;
+        const inc = incomingMap.get(key as AIProvider);
+        if (!inc) return def;
+        return {
+            ...def,
+            ...inc,
+            model: inc.model || def.model,
+            indexingModel: inc.indexingModel || def.indexingModel,
+            baseUrl: inc.baseUrl || def.baseUrl,
+        };
+    });
+
+    currentSettings = { providers: merged };
     saveSettingsToFile(currentSettings);
-    console.log('[MultiLLM] Settings updated & saved:', settings.providers.map(p => `${p.provider}(${p.enabled ? 'on' : 'off'},prio=${p.priority})`).join(', '));
+    console.log('[MultiLLM] Settings updated & saved (with defaults merge):', merged.map(p => `${p.provider}(${p.enabled ? 'on' : 'off'},model=${p.model},turbo=${p.indexingModel || 'none'})`).join(', '));
 }
 
 // ─── Rate Limiter (for cloud providers on free tier) ──────────────────────────
@@ -127,13 +147,46 @@ async function callOllama(
         model: config.model,
         messages: messages.map(m => ({ role: m.role, content: m.content })),
         stream: false,
-        options: { temperature: 0.7, num_predict: 3000 },
-    }, { timeout: 120000 });
+        options: { temperature: 0.7, num_predict: 2048 },
+    }, { timeout: 300000 }); // 5 minutes for local CPU tasks
 
     return {
         content: response.data.message?.content || '',
         tokensUsed: response.data.eval_count,
     };
+}
+
+/**
+ * callOllamaStream — returns an AsyncGenerator that yields tokens.
+ */
+async function* callOllamaStream(
+    messages: LLMMessage[],
+    config: ProviderConfig
+): AsyncGenerator<string> {
+    const baseUrl = config.baseUrl || 'http://localhost:11434';
+    const response = await axios.post(`${baseUrl}/api/chat`, {
+        model: config.model,
+        messages: messages.map(m => ({ role: m.role, content: m.content })),
+        stream: true,
+        options: { temperature: 0.7, num_predict: 8192 },
+    }, { responseType: 'stream', timeout: 300000 });
+
+    for await (const chunk of response.data) {
+        const text = chunk.toString();
+        const lines = text.split('\n');
+        for (const line of lines) {
+            if (!line.trim()) continue;
+            try {
+                const json = JSON.parse(line);
+                if (json.message?.content) {
+                    yield json.message.content;
+                }
+                if (json.done) break;
+            } catch (e) {
+                // skip invalid or partial JSON
+            }
+        }
+    }
 }
 
 async function callLMStudio(
@@ -145,9 +198,9 @@ async function callLMStudio(
         model: config.model,
         messages: messages.map(m => ({ role: m.role, content: m.content })),
         temperature: 0.7,
-        max_tokens: 3000,
+        max_tokens: 2048,
         stream: false,
-    }, { timeout: 120000 });
+    }, { timeout: 300000 }); // 5 minutes for local CPU tasks
 
     const choice = response.data.choices?.[0];
     return {
@@ -307,7 +360,7 @@ export class MultiLLMService {
      * Use for cheap repetitive tasks (topic extraction, query rewriting)
      * to avoid burning cloud API rate limits.
      */
-    async generateLocal(prompt: string, systemPrompt?: string): Promise<LLMResponse> {
+    async generateLocal(prompt: string, systemPrompt?: string, modelOverride?: string): Promise<LLMResponse> {
         const settings = getSettings();
         const localProviders = settings.providers
             .filter(p => p.enabled && (p.provider === 'ollama' || p.provider === 'lmstudio'))
@@ -326,8 +379,12 @@ export class MultiLLMService {
         const errors: string[] = [];
         for (const provider of localProviders) {
             try {
-                console.log(`[MultiLLM] Local task → ${provider.provider} (${provider.model})`);
-                const result = await callProvider(messages, provider, '');
+                // Model Priority: Override > Provider's IndexingModel > Provider's Primary Model
+                const modelToUse = modelOverride || provider.indexingModel || provider.model;
+                console.log(`[MultiLLM] DEBUG: provider=${provider.provider}, indexingModel=${provider.indexingModel}, primaryModel=${provider.model}, modelToUse=${modelToUse}`);
+                console.log(`[MultiLLM] Local task → ${provider.provider} (${modelToUse})`);
+
+                const result = await callProvider(messages, { ...provider, model: modelToUse }, '');
                 return result;
             } catch (err) {
                 const msg = err instanceof Error ? err.message : String(err);
@@ -345,7 +402,14 @@ export class MultiLLMService {
      * generateJSONLocal — forces Ollama/LMStudio ONLY for JSON tasks.
      * Uses the same repair/cleanup logic as generateJSON.
      */
-    async generateJSONLocal<T>(prompt: string, systemPrompt?: string, retryCount = 0): Promise<T> {
+    async generateJSONLocal<T>(prompt: string, systemPrompt?: string, modelOverride?: string, retryCount = 0): Promise<T> {
+        const cacheKey = `json:local:${modelOverride || 'default'}:${systemPrompt || ''}:${prompt}`;
+        const cached = await cacheService.get<T>(cacheKey);
+        if (cached) {
+            console.log('[MultiLLM] 💾 Cache hit for local JSON generation');
+            return cached;
+        }
+
         const strictRules = `
 CRITICAL JSON RULES:
 - Return ONLY valid JSON
@@ -354,7 +418,7 @@ CRITICAL JSON RULES:
 - No explanations`;
 
         const jsonSystemPrompt = `${systemPrompt || ''}${strictRules}`;
-        const response = await this.generateLocal(prompt, jsonSystemPrompt);
+        const response = await this.generateLocal(prompt, jsonSystemPrompt, modelOverride);
 
         let jsonStr = response.content.trim();
         if (jsonStr.startsWith('```json')) jsonStr = jsonStr.slice(7);
@@ -363,13 +427,17 @@ CRITICAL JSON RULES:
         jsonStr = jsonStr.trim();
 
         try {
-            return JSON.parse(jsonStr) as T;
+            const parsed = JSON.parse(jsonStr) as T;
+            await cacheService.set(cacheKey, parsed);
+            return parsed;
         } catch {
             try {
-                return JSON.parse(jsonrepair(jsonStr)) as T;
+                const parsed = JSON.parse(jsonrepair(jsonStr)) as T;
+                await cacheService.set(cacheKey, parsed);
+                return parsed;
             } catch {
                 if (retryCount === 0) {
-                    return this.generateJSONLocal<T>(prompt, systemPrompt, 1);
+                    return this.generateJSONLocal<T>(prompt, systemPrompt, modelOverride, 1);
                 }
                 throw new Error('Local LLM returned invalid JSON for topic extraction');
             }
@@ -607,6 +675,46 @@ CRITICAL JSON RULES:
         }
 
         throw new Error(`All providers failed for note generation:\n${errors.map(e => `  • ${e}`).join('\n')}`);
+    }
+
+    /**
+     * generateNotesStream — yields tokens in real-time.
+     * Optimized for local Ollama to provide instant feedback on CPU.
+     */
+    async *generateNotesStream(prompt: string, systemPrompt?: string): AsyncGenerator<string> {
+        const settings = getSettings();
+        const providers = settings.providers
+            .filter(p => p.enabled)
+            .sort((a, b) => a.priority - b.priority);
+
+        if (providers.length === 0) throw new Error('No AI providers enabled');
+
+        const messages: LLMMessage[] = [];
+        if (systemPrompt) messages.push({ role: 'system', content: systemPrompt });
+        messages.push({ role: 'user', content: prompt });
+
+        const errors: string[] = [];
+        for (const provider of providers) {
+            try {
+                if (provider.provider === 'ollama') {
+                    console.log(`[MultiLLM] 🌊 Streaming notes from Ollama (${provider.model})...`);
+                    yield* callOllamaStream(messages, provider);
+                    return;
+                } else {
+                    // Fallback to non-streaming for others for now
+                    console.log(`[MultiLLM] 📝 Non-streaming fallback for ${provider.provider}`);
+                    const res = await this.generateNotesContent(prompt, systemPrompt);
+                    yield res.content;
+                    return;
+                }
+            } catch (err) {
+                const msg = err instanceof Error ? err.message : String(err);
+                console.warn(`[MultiLLM] ❌ Streaming attempt failed for ${provider.provider}: ${msg}`);
+                errors.push(`${provider.provider}: ${msg}`);
+            }
+        }
+
+        throw new Error(`All providers failed for streaming notes:\n${errors.map(e => `  • ${e}`).join('\n')}`);
     }
 }
 

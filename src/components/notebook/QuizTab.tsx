@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react';
 import { api } from '@/services/api';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { HelpCircle, Loader2, CheckCircle2, XCircle, ChevronDown, ChevronUp, Sparkles } from 'lucide-react';
+import { HelpCircle, Loader2, CheckCircle2, XCircle, ChevronDown, ChevronUp, Brain } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface QuizTabProps {
@@ -171,7 +171,7 @@ export function QuizTab({ topicTitles, fullContent }: QuizTabProps) {
                 </div>
                 {error && <p className="text-xs text-destructive">{error}</p>}
                 <Button onClick={generate} disabled={loading} className="gap-2">
-                    {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                    {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Brain className="w-4 h-4" />}
                     {loading ? 'Generating Quiz…' : 'Generate Quiz'}
                 </Button>
             </div>

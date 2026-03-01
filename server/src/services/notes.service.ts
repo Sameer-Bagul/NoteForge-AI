@@ -181,11 +181,54 @@ Format as markdown. Keep it rich, educational, and readable.`;
     }
   }
 
+  /**
+   * generateTopicNotesStream — streaming version of generateTopicNotes.
+   * Optimized for local path (Ollama) to provide instant feedback.
+   */
+  async *generateTopicNotesStream(
+    topic: TopicNode,
+    transcripts: VideoTranscript[],
+    options?: JobOptions
+  ): AsyncGenerator<string> {
+    const level = options?.creativityLevel ?? 2;
+    const userNotesSection = options?.userNotes
+      ? `\n\nUSER INSTRUCTIONS (follow these throughout):\n"""\n${options.userNotes}\n"""`
+      : '';
+
+    const creativityGuidance =
+      level === 1 ? `STRICT MODE: Source-material ONLY.`
+        : level === 2 ? `BALANCED MODE: Mixed source + brief clarifications.`
+          : level === 3 ? `ENHANCED MODE: Enriched with diagrams/concepts.`
+            : `CREATIVE MODE: Full AI knowledge + deep dives.`;
+
+    const systemPrompt = `You are an expert technical writer. Produce high-quality, long-form study notes.
+${creativityGuidance} ${userNotesSection}
+Use markdown: ## headings, paragraphs, and \`\`\`mermaid or code blocks.`;
+
+    const isCloud = llmService.isPrimaryCloudProvider();
+    let prompt: string;
+
+    if (isCloud) {
+      const fullTranscriptText = transcripts
+        .map(t => `### Source: ${t.videoInfo?.title || t.videoId}\n\n${t.fullText}`)
+        .join('\n\n---\n\n')
+        .slice(0, 300_000);
+
+      prompt = `Write comprehensive running notes for: "${topic.title}" from this transcript:\n\n${fullTranscriptText}`;
+    } else {
+      const sourceMaterial = await ragService.retrieveContext(topic.title, transcripts);
+      prompt = `Write comprehensive running notes for: "${topic.title}" based on this context:\n\n${sourceMaterial}`;
+    }
+
+    yield* llmService.generateNotesStream(prompt, systemPrompt);
+  }
+
   // Generate all notes for an index
   async generateAllNotes(
     index: UnifiedIndex,
     transcripts: VideoTranscript[],
     onProgress?: (progress: { currentItem: number; totalItems: number; itemName: string; subProgress?: string }) => void,
+    onDelta?: (topicId: string, textDelta: string) => void,
     options?: JobOptions
   ): Promise<TopicNotes[]> {
     const allNotes: TopicNotes[] = [];
@@ -205,23 +248,35 @@ Format as markdown. Keep it rich, educational, and readable.`;
           });
         }
 
-        const notes = await this.generateTopicNotes(topic, transcripts, (subProgress) => {
-          if (onProgress) {
-            onProgress({
-              currentItem: i + 1,
-              totalItems: index.topics.length,
-              itemName: 'Topic',
-              subProgress: `${topic.title}: ${subProgress}`
-            });
-          }
-        }, options);
+        let fullText = '';
+        const stream = this.generateTopicNotesStream(topic, transcripts, options);
+
+        for await (const token of stream) {
+          fullText += token;
+          if (onDelta) onDelta(topic.id, token);
+        }
+
+        // Parse structured data from the full text
+        const sections = this.parseMarkdownToSections(fullText);
+        const keyTakeaways = this.extractKeyTakeaways(fullText);
+
+        const notes: TopicNotes = {
+          topicId: topic.id,
+          topicTitle: topic.title,
+          summary: this.generateSummary(fullText),
+          sections,
+          keyTakeaways,
+          videoSources: [],
+          generatedAt: new Date().toISOString()
+        };
 
         allNotes.push(notes);
+        this.storeTopicNotes(notes);
+
       } catch (error) {
         console.warn(`Skipping notes for ${topic.title}:`, error);
       }
     }
-
     return allNotes;
   }
 

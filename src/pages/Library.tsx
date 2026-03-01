@@ -75,7 +75,7 @@ const Library = () => {
           <BookOpen className="w-5 h-5 text-green-600" />
           Completed Notebooks
         </h3>
-        
+
         {completedJobs.length === 0 ? (
           <div className="text-center py-12 bg-muted/30 rounded-lg border border-dashed">
             <BookOpen className="w-12 h-12 text-muted-foreground mx-auto mb-3" />
@@ -127,9 +127,9 @@ const JobCard = ({ job }: { job: JobStatus }) => {
     <Card className={`flex flex-col h-full overflow-hidden transition-all hover:shadow-md ${isActive ? 'border-primary/50' : ''}`}>
       {thumbnail && (
         <div className="aspect-video w-full overflow-hidden bg-muted relative">
-          <img 
-            src={thumbnail} 
-            alt={title} 
+          <img
+            src={thumbnail}
+            alt={title}
             className="w-full h-full object-cover transition-transform hover:scale-105 duration-500"
           />
           <div className="absolute top-2 right-2">
@@ -139,7 +139,7 @@ const JobCard = ({ job }: { job: JobStatus }) => {
           </div>
         </div>
       )}
-      
+
       <CardHeader className="pb-2">
         <CardTitle className="line-clamp-2 text-lg leading-tight">
           {title}
@@ -149,7 +149,7 @@ const JobCard = ({ job }: { job: JobStatus }) => {
           {formatDistanceToNow(new Date(job.createdAt), { addSuffix: true })}
         </CardDescription>
       </CardHeader>
-      
+
       <CardContent className="flex-1 pb-2">
         {isActive && (
           <div className="space-y-2">
@@ -158,8 +158,8 @@ const JobCard = ({ job }: { job: JobStatus }) => {
               <span>Step {job.currentStep}/{job.steps?.length || 5}</span>
             </div>
             <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-              <div 
-                className="h-full bg-primary animate-pulse" 
+              <div
+                className="h-full bg-primary animate-pulse"
                 style={{ width: `${(job.currentStep / (job.steps?.length || 5)) * 100}%` }}
               />
             </div>
@@ -168,7 +168,7 @@ const JobCard = ({ job }: { job: JobStatus }) => {
             </p>
           </div>
         )}
-        
+
         {isComplete && job.notebook && (
           <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
             <div className="flex items-center gap-1">
@@ -188,7 +188,7 @@ const JobCard = ({ job }: { job: JobStatus }) => {
           </p>
         )}
       </CardContent>
-      
+
       <CardFooter className="pt-2">
         {isComplete ? (
           <Link to={`/notebook/${job.notebook?.id}`} className="w-full">
@@ -197,8 +197,7 @@ const JobCard = ({ job }: { job: JobStatus }) => {
             </Button>
           </Link>
         ) : isActive ? (
-          <Link to="/" className="w-full">
-             {/* Ideally we'd link to the specific job status page, but for now redirect to home where active job might be shown */}
+          <Link to={`/process/${job.id}`} className="w-full">
             <Button className="w-full" variant="outline">
               View Progress
             </Button>

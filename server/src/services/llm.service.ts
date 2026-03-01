@@ -3,7 +3,7 @@ import { jsonrepair } from 'jsonrepair';
 import { LLMConfig, LLMMessage, LLMResponse } from '../types';
 
 const DEFAULT_CONFIG: LLMConfig = {
-  model: process.env.OLLAMA_MODEL || 'mistral',
+  model: process.env.OLLAMA_MODEL || 'qwen2.5-coder:7b',
   baseUrl: process.env.OLLAMA_BASE_URL || 'http://localhost:11434',
   temperature: parseFloat(process.env.OLLAMA_TEMPERATURE || '0.7'),
   maxTokens: parseInt(process.env.OLLAMA_MAX_TOKENS || '4000', 10)
@@ -27,7 +27,7 @@ export class LLMService {
   // Generate completion using Ollama
   async generate(prompt: string, systemPrompt?: string): Promise<LLMResponse> {
     const messages: LLMMessage[] = [];
-    
+
     if (systemPrompt) {
       messages.push({ role: 'system', content: systemPrompt });
     }
@@ -40,7 +40,7 @@ export class LLMService {
   async chat(messages: LLMMessage[]): Promise<LLMResponse> {
     try {
       log(`Sending request to ${this.config.baseUrl}/api/chat with model ${this.config.model}`);
-      
+
       const response = await axios.post(`${this.config.baseUrl}/api/chat`, {
         model: this.config.model,
         messages: messages.map(m => ({
@@ -78,14 +78,14 @@ CRITICAL JSON RULES:
 - Strings must use double quotes only
 - If a list is empty, return []
 - Do NOT add explanations or text outside the JSON`;
-    
+
     const jsonSystemPrompt = `${systemPrompt || ''}${strictRules}`;
-    
+
     const response = await this.generate(prompt, jsonSystemPrompt);
-    
+
     // Extract JSON from response (handle potential markdown code blocks)
     let jsonStr = response.content.trim();
-    
+
     // Remove markdown code blocks if present
     if (jsonStr.startsWith('```json')) {
       jsonStr = jsonStr.slice(7);
@@ -95,7 +95,7 @@ CRITICAL JSON RULES:
     if (jsonStr.endsWith('```')) {
       jsonStr = jsonStr.slice(0, -3);
     }
-    
+
     jsonStr = jsonStr.trim();
 
     // Attempt 1: Direct parse
@@ -103,7 +103,7 @@ CRITICAL JSON RULES:
       return JSON.parse(jsonStr) as T;
     } catch (firstError) {
       log('First JSON parse failed, attempting repair...');
-      
+
       // Attempt 2: Use jsonrepair library
       try {
         const repaired = jsonrepair(jsonStr);
@@ -111,7 +111,7 @@ CRITICAL JSON RULES:
         return JSON.parse(repaired) as T;
       } catch (repairError) {
         log('JSON repair failed, attempting manual cleanup...');
-        
+
         // Attempt 3: Manual cleanup
         try {
           let cleaned = jsonStr
@@ -119,7 +119,7 @@ CRITICAL JSON RULES:
             .replace(/\/\*[\s\S]*?\*\//g, '')  // Remove /* */ comments
             .replace(/,\s*([}\]])/g, '$1')  // Remove trailing commas
             .trim();
-          
+
           return JSON.parse(cleaned) as T;
         } catch (cleanupError) {
           // Attempt 4: Retry with stricter prompt (only once)
@@ -128,7 +128,7 @@ CRITICAL JSON RULES:
             const retryPrompt = `${prompt}\n\n⚠️ IMPORTANT: The previous output was invalid JSON. Please produce the SAME content again, but as strictly valid JSON with no comments or extra text.`;
             return this.generateJSON<T>(retryPrompt, systemPrompt, 1);
           }
-          
+
           console.error('Failed to parse JSON response after all attempts:');
           console.error('Original:', jsonStr);
           throw new Error('LLM returned invalid JSON after multiple attempts');

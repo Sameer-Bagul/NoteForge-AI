@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Youtube, Sparkles, ArrowRight, List, Play, Brain, Lightbulb, BookOpen, Wand2, FileText, ChevronDown, ChevronUp } from 'lucide-react';
+import { Youtube, ArrowRight, List, Play, Brain, Lightbulb, BookOpen, Wand2, FileText, ChevronDown, ChevronUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -95,7 +95,7 @@ const UrlInput = ({ onSubmit, isLoading }: UrlInputProps) => {
       {/* Hero text */}
       <div className="text-center mb-8">
         <div className="inline-flex items-center gap-2 px-4 py-2 bg-accent rounded-full text-accent-foreground text-sm font-medium mb-6">
-          <Sparkles className="w-4 h-4" />
+          <Brain className="w-4 h-4" />
           Transform videos into structured knowledge
         </div>
         <h2 className="text-4xl md:text-5xl font-bold text-foreground mb-4">
@@ -124,8 +124,8 @@ const UrlInput = ({ onSubmit, isLoading }: UrlInputProps) => {
           {inputType && (
             <div className="absolute right-4 top-1/2 -translate-y-1/2">
               <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium ${inputType === 'playlist'
-                  ? 'bg-accent text-accent-foreground'
-                  : 'bg-secondary text-secondary-foreground'
+                ? 'bg-accent text-accent-foreground'
+                : 'bg-secondary text-secondary-foreground'
                 }`}>
                 {inputType === 'playlist' ? (
                   <><List className="w-3 h-3" />Playlist</>

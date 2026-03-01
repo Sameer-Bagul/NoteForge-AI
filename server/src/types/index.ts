@@ -200,6 +200,7 @@ export interface ProviderConfig {
   enabled: boolean;
   apiKeys: string[];   // Multiple keys; tried in order on failure
   model: string;
+  indexingModel?: string; // Faster model for topic extraction
   baseUrl?: string;   // For local providers (Ollama, LM Studio)
   priority: number;   // Lower number = tried first
 }

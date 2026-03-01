@@ -181,26 +181,65 @@ function ProviderCard({
             {/* Expanded body */}
             {expanded && (
                 <div className="px-3 pb-3 space-y-3 border-t border-border/30 pt-3">
-                    {/* Model */}
-                    <div className="grid grid-cols-2 gap-3">
-                        <div className="space-y-1">
-                            <Label className="text-xs text-muted-foreground">Model</Label>
+                    {/* Model & Base URL */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-1.5 pt-1">
+                            <Label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                                <span className="w-1.5 h-1.5 rounded-full bg-yellow-500 animate-pulse" />
+                                Primary Model (Quality)
+                            </Label>
                             <Input
                                 value={config.model}
                                 onChange={e => update({ model: e.target.value })}
                                 placeholder={DEFAULT_MODELS[config.provider]}
-                                className="h-8 text-sm bg-background/50 border-border/60"
+                                className="h-9 text-sm bg-background/40 border-border/40 focus-visible:ring-yellow-500/30 font-medium"
                             />
+                            <p className="px-1 text-[10px] text-muted-foreground leading-relaxed">
+                                Used for **Note Generation** & **Deep Analysis**.
+                                <br />Best for 7B+ models (e.g. Mistral, Llama 3).
+                            </p>
                         </div>
-                        {/* Base URL (show for all providers) */}
-                        <div className="space-y-1">
-                            <Label className="text-xs text-muted-foreground">Base URL</Label>
+                        <div className="space-y-1.5 pt-1">
+                            <Label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                                <Cloud className="w-3.5 h-3.5 text-blue-400" />
+                                Base URL
+                            </Label>
                             <Input
                                 value={config.baseUrl || ''}
                                 onChange={e => update({ baseUrl: e.target.value || undefined })}
                                 placeholder={DEFAULT_BASE_URLS[config.provider] || 'https://...'}
-                                className="h-8 text-sm bg-background/50 border-border/60"
+                                className="h-9 text-sm bg-background/40 border-border/40 focus-visible:ring-primary/30"
                             />
+                            <p className="px-1 text-[10px] text-muted-foreground">
+                                Regional API or local endpoint.
+                            </p>
+                        </div>
+                    </div>
+
+                    {/* Indexing Model (Special for high-speed indexing) */}
+                    <div className="mt-2 space-y-2.5 p-3 rounded-xl bg-primary/5 border border-primary/20 shadow-inner group">
+                        <div className="flex items-center justify-between">
+                            <Label className="text-[11px] font-extrabold uppercase tracking-tight text-primary flex items-center gap-2">
+                                <Zap className="w-3.5 h-3.5 fill-primary/20 group-hover:scale-125 transition-transform" />
+                                Indexing Model (Turbo Mode)
+                            </Label>
+                            <Badge variant="secondary" className="text-[9px] h-4.5 px-2 bg-primary/20 text-primary border-primary/30 font-bold tracking-widest shrink-0">
+                                TURBO
+                            </Badge>
+                        </div>
+                        <Input
+                            value={config.indexingModel || ''}
+                            onChange={e => update({ indexingModel: e.target.value || undefined })}
+                            placeholder="e.g. qwen2.5-coder:1.5b"
+                            className="h-9 text-sm bg-background/60 border-primary/20 focus-visible:ring-primary/40 font-mono font-semibold"
+                        />
+                        <div className="px-1 space-y-1">
+                            <p className="text-[10px] text-foreground/90 font-semibold leading-none">
+                                Powering **Topic Extraction** & **Index Generation**.
+                            </p>
+                            <p className="text-[10px] text-muted-foreground/80 italic leading-tight">
+                                Recommendation: Use a lightweight model (1.5B–3B) to achieve sub-10s indexing on local CPUs.
+                            </p>
                         </div>
                     </div>
 

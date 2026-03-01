@@ -1,4 +1,5 @@
 import { v4 as uuidv4 } from 'uuid';
+import { EventEmitter } from 'events';
 import {
   ProcessingJob,
   ProcessingStep,
@@ -24,7 +25,11 @@ const PROCESSING_STEPS: Omit<ProcessingStep, 'status'>[] = [
   { id: 'assemble', label: 'Assembling Notebook', description: 'Compiling final notebook' }
 ];
 
-export class JobService {
+export class JobService extends EventEmitter {
+
+  constructor() {
+    super();
+  }
 
   // Create a new processing job
   createJob(url: string, options?: JobOptions): ProcessingJob {
@@ -55,6 +60,7 @@ export class JobService {
     if (job) {
       Object.assign(job, updates, { updatedAt: new Date().toISOString() });
       jobs.set(jobId, job);
+      this.emit(`job:update:${jobId}`, job);
     }
   }
 
@@ -80,6 +86,7 @@ export class JobService {
       }
       job.updatedAt = new Date().toISOString();
       jobs.set(jobId, job);
+      this.emit(`job:update:${jobId}`, job);
     }
   }
 
@@ -215,9 +222,17 @@ export class JobService {
       this.updateStep(jobId, 3, 'active');
       this.updateJob(jobId, { status: 'generating-notes', currentStep: 3 });
 
-      const allNotes = await notesService.generateAllNotes(index, transcripts, (progress) => {
-        this.updateStep(jobId, 3, 'active', undefined, progress);
-      }, job.options);
+      const allNotes = await notesService.generateAllNotes(
+        index,
+        transcripts,
+        (progress) => {
+          this.updateStep(jobId, 3, 'active', undefined, progress);
+        },
+        (topicId, delta) => {
+          this.emit(`note:delta:${jobId}`, { topicId, delta });
+        },
+        job.options
+      );
       this.updateStep(jobId, 3, 'complete', `Generated notes for ${allNotes.length} topics`);
       console.log(`✅ Step 4 complete: Generated notes for ${allNotes.length} topics`);
 

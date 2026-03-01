@@ -4,6 +4,7 @@ import { indexService } from '../services/index.service';
 import { notesService } from '../services/notes.service';
 import { llmService } from '../services/llm.service';
 import { multiLlmService } from '../services/multi-llm.service';
+import { SSEStream } from '../utils/sse';
 
 const router = Router();
 
@@ -69,6 +70,43 @@ router.post('/start', async (req: Request, res: Response) => {
       error: error instanceof Error ? error.message : 'Failed to start processing'
     });
   }
+});
+
+// Stream job progress and note deltas via SSE
+router.get('/stream/:jobId', (req: Request, res: Response) => {
+  const { jobId } = req.params;
+  const job = jobService.getJob(jobId);
+
+  if (!job) {
+    return res.status(404).json({ success: false, error: 'Job not found' });
+  }
+
+  console.log(`[SSE] Client connected for job ${jobId}`);
+  const sse = new SSEStream(res);
+
+  // Send current state immediately
+  sse.sendEvent('job:update', job);
+
+  // Listen for job updates
+  const updateHandler = (updatedJob: any) => {
+    sse.sendEvent('job:update', updatedJob);
+  };
+
+  // Listen for note deltas
+  const deltaHandler = (data: { topicId: string, delta: string }) => {
+    sse.sendEvent('note:delta', data);
+  };
+
+  const cleanup = () => {
+    console.log(`[SSE] Client disconnected for job ${jobId}`);
+    jobService.removeListener(`job:update:${jobId}`, updateHandler);
+    jobService.removeListener(`note:delta:${jobId}`, deltaHandler);
+  };
+
+  jobService.on(`job:update:${jobId}`, updateHandler);
+  jobService.on(`note:delta:${jobId}`, deltaHandler);
+
+  req.on('close', cleanup);
 });
 
 // Get job status

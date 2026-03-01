@@ -5,15 +5,14 @@ import { Input } from './ui/input';
 import { Textarea } from './ui/textarea';
 import { Badge } from './ui/badge';
 import { Alert, AlertDescription } from './ui/alert';
-import { 
-  CheckCircle2, 
-  Edit2, 
-  Trash2, 
-  Plus, 
+import {
+  CheckCircle2,
+  Edit2,
+  Trash2,
+  Plus,
   GripVertical,
   ArrowUp,
-  ArrowDown,
-  Sparkles
+  ArrowDown
 } from 'lucide-react';
 
 interface SubTopic {
@@ -61,8 +60,8 @@ export function IndexReview({ index, onApprove, onCancel }: IndexReviewProps) {
   };
 
   const saveEdit = (topicId: string) => {
-    setTopics(topics.map(t => 
-      t.id === topicId 
+    setTopics(topics.map(t =>
+      t.id === topicId
         ? { ...t, title: editTitle, description: editDescription }
         : t
     ));
@@ -90,20 +89,20 @@ export function IndexReview({ index, onApprove, onCancel }: IndexReviewProps) {
 
     const newTopics = [...topics];
     const targetIndex = direction === 'up' ? index - 1 : index + 1;
-    
+
     [newTopics[index], newTopics[targetIndex]] = [newTopics[targetIndex], newTopics[index]];
-    
+
     // Update order property
     newTopics.forEach((topic, idx) => {
       topic.order = idx;
     });
-    
+
     setTopics(newTopics);
   };
 
   const addNewTopic = () => {
     const newTopic: TopicNode = {
-      id: `topic-${Date.now()}`,
+      id: `topic - ${Date.now()} `,
       title: 'New Topic',
       description: '',
       subtopics: [],
@@ -129,7 +128,6 @@ export function IndexReview({ index, onApprove, onCancel }: IndexReviewProps) {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Sparkles className="w-6 h-6 text-yellow-500" />
             Review Generated Index
           </CardTitle>
           <CardDescription>
@@ -173,7 +171,7 @@ export function IndexReview({ index, onApprove, onCancel }: IndexReviewProps) {
                 </div>
 
                 <GripVertical className="w-5 h-5 text-gray-400 mt-1" />
-                
+
                 <div className="flex-1">
                   {editingId === topic.id ? (
                     <div className="space-y-3">

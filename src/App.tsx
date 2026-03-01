@@ -11,6 +11,7 @@ import Layout from "./components/Layout";
 import Create from "./pages/Create";
 import Library from "./pages/Library";
 import NotebookView from "./pages/NotebookView";
+import Process from "./pages/Process";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -27,6 +28,7 @@ const App = () => (
               <Routes>
                 <Route element={<Layout />}>
                   <Route path="/" element={<Create />} />
+                  <Route path="/process/:jobId" element={<Process />} />
                   <Route path="/library" element={<Library />} />
                   <Route path="/notebook/:id" element={<NotebookView />} />
                   <Route path="*" element={<NotFound />} />
