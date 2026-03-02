@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { jsonrepair } from 'jsonrepair';
-import { LLMConfig, LLMMessage, LLMResponse } from '../types';
+import { LLMConfig, LLMMessage, LLMResponse } from '../types/index.js';
 
 const DEFAULT_CONFIG: LLMConfig = {
   model: process.env.OLLAMA_MODEL || 'qwen2.5-coder:7b',

@@ -1,8 +1,13 @@
-import YTDlpWrap from 'yt-dlp-wrap';
-import { VideoInfo, VideoTranscript, TranscriptSegment, PlaylistInfo } from '../types';
-import { extractVideoId, extractPlaylistId, getThumbnailUrl, cleanTranscriptText, formatDuration, buildCleanTranscript } from '../utils/youtube';
+import YTDlpWrapPkg from 'yt-dlp-wrap';
+const YTDlpWrap = (YTDlpWrapPkg as any).default || YTDlpWrapPkg;
+import { VideoInfo, VideoTranscript, TranscriptSegment, PlaylistInfo } from '../types/index.js';
+import { extractVideoId, extractPlaylistId, getThumbnailUrl, cleanTranscriptText, formatDuration, buildCleanTranscript } from '../utils/youtube.js';
 import * as fs from 'fs';
 import * as path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const STORAGE_DIR = path.join(__dirname, '../../storage/transcripts');
 const ytDlpWrap = new YTDlpWrap();
@@ -114,12 +119,12 @@ export class TranscriptService {
         if (subsData && subsData.events) {
           // Parse JSON3 subtitle format
           segments = subsData.events
-            .filter((event) => event.segs && event.tStartMs !== undefined)
-            .map((event) => ({
+            .filter((event: YtDlpSubtitleEvent) => event.segs && event.tStartMs !== undefined)
+            .map((event: YtDlpSubtitleEvent) => ({
               start: event.tStartMs! / 1000,
               duration: event.dDurationMs ? event.dDurationMs / 1000 : 0,
               text: cleanTranscriptText(
-                event.segs!.map((seg) => seg.utf8 || '').join('')
+                event.segs!.map((seg: YtDlpSubtitleSegment) => seg.utf8 || '').join('')
               )
             }))
             .filter((seg: TranscriptSegment) => seg.text.trim().length > 0);
@@ -174,12 +179,12 @@ export class TranscriptService {
 
     try {
       // Get playlist info using yt-dlp with flat-playlist option
-      const playlistData: YtDlpPlaylistData = await ytDlpWrap.execPromise([
+      const playlistData: YtDlpPlaylistData = await (ytDlpWrap as any).execPromise([
         playlistUrl,
         '--flat-playlist',
         '--dump-single-json',
         '--no-warnings'
-      ]).then(stdout => JSON.parse(stdout) as YtDlpPlaylistData);
+      ]).then((stdout: string) => JSON.parse(stdout) as YtDlpPlaylistData);
 
       console.log(`  🔍 Playlist data received, processing...`);
 
@@ -191,7 +196,7 @@ export class TranscriptService {
         throw new Error('Playlist entries is not an array');
       }
 
-      const videos: VideoInfo[] = entries.map((entry) => ({
+      const videos: VideoInfo[] = entries.map((entry: any) => ({
         id: entry.id || entry.url?.split('v=')[1] || '',
         title: entry.title || `Video ${entry.id || 'unknown'}`,
         duration: entry.duration ? formatDuration(entry.duration) : undefined,

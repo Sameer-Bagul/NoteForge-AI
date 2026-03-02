@@ -80,25 +80,38 @@ function IQCard({ q, index }: { q: IQuestion; index: number }) {
     );
 }
 
-export function InterviewTab({ topicTitles, fullContent }: InterviewTabProps) {
-    const [questions, setQuestions] = useState<IQuestion[]>([]);
+interface InterviewTabProps {
+    notebookId?: string;
+    topicTitles: string[];
+    fullContent: string;
+    existingQuestions?: IQuestion[];
+}
+
+export function InterviewTab({ notebookId, topicTitles, fullContent, existingQuestions }: InterviewTabProps) {
+    const [questions, setQuestions] = useState<IQuestion[]>(existingQuestions || []);
     const [loading, setLoading] = useState(false);
-    const [generated, setGenerated] = useState(false);
+    const [generated, setGenerated] = useState(!!existingQuestions && existingQuestions.length > 0);
     const [error, setError] = useState<string | null>(null);
     const [filter, setFilter] = useState<'all' | 'conceptual' | 'technical' | 'practical'>('all');
 
     const generate = useCallback(async () => {
         setLoading(true); setError(null);
         try {
-            const data = await api.generateInterview(topicTitles, fullContent);
-            setQuestions(Array.isArray(data) ? data : []);
+            const data = await api.generateInterview(topicTitles, fullContent.slice(0, 4000));
+            const interviewData = Array.isArray(data) ? data : [];
+            setQuestions(interviewData);
             setGenerated(true);
+
+            // Persist to backend if we have a notebookId
+            if (notebookId && interviewData.length > 0) {
+                await api.updateNotebook(notebookId, { interviewQA: interviewData });
+            }
         } catch {
             setError('Failed to generate interview Q&A. Please try again.');
         } finally {
             setLoading(false);
         }
-    }, [topicTitles, fullContent]);
+    }, [notebookId, topicTitles, fullContent]);
 
     const categories = ['all', 'conceptual', 'technical', 'practical'] as const;
     const filtered = filter === 'all' ? questions : questions.filter(q => q.category === filter);

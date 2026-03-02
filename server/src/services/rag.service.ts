@@ -1,4 +1,4 @@
-import { Ollama, OllamaEmbeddings } from "@langchain/ollama";
+import { ChatOllama, OllamaEmbeddings } from "@langchain/ollama";
 import { MemoryVectorStore } from "langchain/vectorstores/memory";
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
 import { ChatPromptTemplate } from "@langchain/core/prompts";
@@ -7,17 +7,17 @@ import { createStuffDocumentsChain } from "langchain/chains/combine_documents";
 import { createRetrievalChain } from "langchain/chains/retrieval";
 import { BM25Retriever } from "@langchain/community/retrievers/bm25";
 import { EnsembleRetriever } from "langchain/retrievers/ensemble";
-import { VideoTranscript } from "../types";
+import { VideoTranscript } from "../types/index.js";
 
 export class RAGService {
-    private llm: Ollama;
+    private llm: ChatOllama;
     private embeddings: OllamaEmbeddings;
     private vectorStore?: MemoryVectorStore;
     private retriever?: EnsembleRetriever;
     private ragChain?: any;
 
     constructor() {
-        this.llm = new Ollama({
+        this.llm = new ChatOllama({
             model: process.env.OLLAMA_MODEL || 'llama3.1',
             baseUrl: process.env.OLLAMA_BASE_URL || 'http://localhost:11434',
             temperature: 0
@@ -35,7 +35,7 @@ export class RAGService {
         if (onProgress) onProgress(`Indexing ${transcripts.length} transcripts...`);
         console.log(`[RAG] Indexing ${transcripts.length} transcripts...`);
 
-        const allDocs = transcripts.map(t => new Document({
+        const allDocs = transcripts.map((t: VideoTranscript) => new Document({
             pageContent: t.fullText,
             metadata: {
                 videoId: t.videoId,
@@ -94,7 +94,7 @@ export class RAGService {
         Topic: ${query}`;
 
         const response = await this.llm.invoke(rewritePrompt);
-        return response.trim();
+        return (response.content as string).trim();
     }
 
     /**
@@ -137,7 +137,7 @@ export class RAGService {
 
         if (onProgress) onProgress("Verifying & self-correcting draft...");
         const finalNote = await this.llm.invoke(verifyPrompt);
-        return finalNote.trim();
+        return (finalNote.content as string).trim();
     }
 
     /**

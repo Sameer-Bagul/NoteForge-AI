@@ -219,17 +219,32 @@ export function NotebookShell({ notes, onReset }: NotebookShellProps) {
 
                 {/* ── Mind Maps Tab ─────────────────────────────────────── */}
                 <TabsContent value="mindmap" className="mt-0">
-                    <MindMapTab topics={mapTopics} fullContent={notes.fullContent} />
+                    <MindMapTab
+                        notebookId={notes.videoId}
+                        topics={mapTopics}
+                        fullContent={notes.fullContent}
+                        existingMindMaps={notes.mindMaps}
+                    />
                 </TabsContent>
 
                 {/* ── Quiz Tab ──────────────────────────────────────────── */}
                 <TabsContent value="quiz" className="mt-0">
-                    <QuizTab topicTitles={topicTitles} fullContent={notes.fullContent} />
+                    <QuizTab
+                        notebookId={notes.videoId}
+                        topicTitles={topicTitles}
+                        fullContent={notes.fullContent}
+                        existingQuiz={notes.quiz}
+                    />
                 </TabsContent>
 
                 {/* ── Interview Tab ─────────────────────────────────────── */}
                 <TabsContent value="interview" className="mt-0">
-                    <InterviewTab topicTitles={topicTitles} fullContent={notes.fullContent} />
+                    <InterviewTab
+                        notebookId={notes.videoId}
+                        topicTitles={topicTitles}
+                        fullContent={notes.fullContent}
+                        existingQuestions={notes.interviewQA}
+                    />
                 </TabsContent>
             </Tabs>
         </div>

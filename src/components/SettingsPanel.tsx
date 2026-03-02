@@ -1,5 +1,5 @@
-import { useState, useCallback } from 'react';
-import { X, Plus, Trash2, Eye, EyeOff, ChevronUp, ChevronDown, Zap, Save, CheckCircle2, AlertTriangle, Cpu, Cloud } from 'lucide-react';
+import { useState, useCallback, useEffect } from 'react';
+import { X, Plus, Trash2, Eye, EyeOff, ChevronUp, ChevronDown, Zap, Save, CheckCircle2, AlertTriangle, Cpu, Cloud, Settings2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
@@ -8,6 +8,27 @@ import { Label } from '@/components/ui/label';
 import { useSettings } from '@/context/SettingsContext';
 import { ProviderConfig, AIProvider, PROVIDER_LABELS, PROVIDER_DESCRIPTIONS, DEFAULT_MODELS, DEFAULT_BASE_URLS, IS_LOCAL_PROVIDER } from '@/types/settings';
 import { cn } from '@/lib/utils';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+    DialogDescription,
+} from "@/components/ui/dialog";
+import {
+    Tabs,
+    TabsContent,
+    TabsList,
+    TabsTrigger,
+} from "@/components/ui/tabs";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 // ─── Provider Icon ─────────────────────────────────────────────────────────────
 
@@ -28,10 +49,10 @@ const PROVIDER_ICONS: Record<AIProvider, React.ReactNode> = {
 };
 
 const PROVIDER_COLORS: Record<AIProvider, string> = {
-    gemini: 'from-blue-500/20 to-blue-600/10 border-blue-500/30',
-    grok: 'from-gray-500/20 to-gray-600/10 border-gray-500/30',
-    lmstudio: 'from-purple-500/20 to-purple-600/10 border-purple-500/30',
-    ollama: 'from-orange-500/20 to-orange-600/10 border-orange-500/30',
+    gemini: 'hover:border-blue-500/30 hover:bg-blue-500/5',
+    grok: 'hover:border-gray-500/30 hover:bg-gray-500/5',
+    lmstudio: 'hover:border-purple-500/30 hover:bg-purple-500/5',
+    ollama: 'hover:border-orange-500/30 hover:bg-orange-500/5',
 };
 
 const PROVIDER_ACCENT: Record<AIProvider, string> = {
@@ -66,24 +87,24 @@ function ApiKeyItem({
                     value={value}
                     onChange={e => onChange(e.target.value)}
                     placeholder={`API Key ${index + 1}`}
-                    className="pr-9 bg-background/50 border-border/60 text-sm font-mono h-8 focus-visible:ring-primary/50"
+                    className="pr-9 bg-muted/30 border-border/40 text-sm font-mono h-9 focus-visible:ring-primary/30"
                 />
                 <button
                     type="button"
                     onClick={() => setVisible(v => !v)}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
                 >
                     {visible ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                 </button>
             </div>
-            <button
-                type="button"
+            <Button
+                variant="ghost"
+                size="icon"
                 onClick={onRemove}
-                className="text-muted-foreground hover:text-destructive transition-colors opacity-0 group-hover:opacity-100"
-                title="Remove key"
+                className="h-8 w-8 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
             >
                 <Trash2 className="w-3.5 h-3.5" />
-            </button>
+            </Button>
         </div>
     );
 }
@@ -97,6 +118,7 @@ function ProviderCard({
     onChange,
     onMoveUp,
     onMoveDown,
+    availableModels,
 }: {
     config: ProviderConfig;
     index: number;
@@ -104,8 +126,10 @@ function ProviderCard({
     onChange: (updated: ProviderConfig) => void;
     onMoveUp: () => void;
     onMoveDown: () => void;
+    availableModels?: string[];
 }) {
     const isLocal = IS_LOCAL_PROVIDER[config.provider];
+    const isOllama = config.provider === 'ollama';
     const [expanded, setExpanded] = useState(config.enabled);
 
     const update = (patch: Partial<ProviderConfig>) => onChange({ ...config, ...patch });
@@ -120,13 +144,13 @@ function ProviderCard({
 
     return (
         <div className={cn(
-            'rounded-xl border bg-gradient-to-br transition-all duration-200',
+            'group rounded-xl border border-border/50 bg-card transition-all duration-200 overflow-hidden',
             PROVIDER_COLORS[config.provider],
-            config.enabled ? 'opacity-100' : 'opacity-60',
+            config.enabled ? 'ring-1 ring-primary/10' : 'opacity-60 saturate-50',
         )}>
             {/* Card header */}
             <div
-                className="flex items-center gap-3 p-3 cursor-pointer select-none"
+                className="flex items-center gap-4 p-4 cursor-pointer select-none"
                 onClick={() => setExpanded(e => !e)}
             >
                 {/* Priority reorder */}
@@ -134,40 +158,32 @@ function ProviderCard({
                     <button
                         disabled={index === 0}
                         onClick={onMoveUp}
-                        className="text-muted-foreground hover:text-foreground disabled:opacity-20 transition-colors"
-                    ><ChevronUp className="w-3 h-3" /></button>
+                        className="text-muted-foreground hover:text-foreground disabled:opacity-20 transition-colors p-0.5"
+                    ><ChevronUp className="w-3.5 h-3.5" /></button>
                     <button
                         disabled={index === total - 1}
                         onClick={onMoveDown}
-                        className="text-muted-foreground hover:text-foreground disabled:opacity-20 transition-colors"
-                    ><ChevronDown className="w-3 h-3" /></button>
+                        className="text-muted-foreground hover:text-foreground disabled:opacity-20 transition-colors p-0.5"
+                    ><ChevronDown className="w-3.5 h-3.5" /></button>
                 </div>
 
-                {/* Priority badge */}
-                <span className="text-xs font-mono text-muted-foreground w-4 text-center">{index + 1}</span>
+                <span className="text-xs font-mono text-muted-foreground/60 w-4 text-center">{index + 1}</span>
 
-                {/* Icon */}
-                <span className={cn('shrink-0', PROVIDER_ACCENT[config.provider])}>
+                <div className={cn('shrink-0 p-2 rounded-lg bg-muted/50 transition-colors group-hover:bg-background', PROVIDER_ACCENT[config.provider])}>
                     {PROVIDER_ICONS[config.provider]}
-                </span>
+                </div>
 
-                {/* Name & desc */}
                 <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                        <span className="font-medium text-sm text-foreground">{PROVIDER_LABELS[config.provider]}</span>
-                        {isLocal ? (
-                            <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-muted-foreground/30">Local</Badge>
-                        ) : (
-                            <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-muted-foreground/30">
-                                <Cloud className="w-2.5 h-2.5 mr-1" />Cloud
-                            </Badge>
-                        )}
+                        <span className="font-semibold text-sm text-foreground">{PROVIDER_LABELS[config.provider]}</span>
+                        <Badge variant="secondary" className="text-[10px] h-4.5 px-1.5 font-medium bg-muted/50">
+                            {isLocal ? 'Local' : 'Cloud'}
+                        </Badge>
                     </div>
-                    <p className="text-xs text-muted-foreground truncate">{PROVIDER_DESCRIPTIONS[config.provider]}</p>
+                    <p className="text-xs text-muted-foreground/80 truncate mt-0.5">{PROVIDER_DESCRIPTIONS[config.provider]}</p>
                 </div>
 
-                {/* Toggle */}
-                <div onClick={e => e.stopPropagation()}>
+                <div onClick={e => e.stopPropagation()} className="flex items-center gap-3">
                     <Switch
                         checked={config.enabled}
                         onCheckedChange={checked => {
@@ -178,100 +194,112 @@ function ProviderCard({
                 </div>
             </div>
 
-            {/* Expanded body */}
+            {/* Expanded body - Clean grid layout */}
             {expanded && (
-                <div className="px-3 pb-3 space-y-3 border-t border-border/30 pt-3">
-                    {/* Model & Base URL */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="space-y-1.5 pt-1">
-                            <Label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                                <span className="w-1.5 h-1.5 rounded-full bg-yellow-500 animate-pulse" />
-                                Primary Model (Quality)
-                            </Label>
-                            <Input
-                                value={config.model}
-                                onChange={e => update({ model: e.target.value })}
-                                placeholder={DEFAULT_MODELS[config.provider]}
-                                className="h-9 text-sm bg-background/40 border-border/40 focus-visible:ring-yellow-500/30 font-medium"
-                            />
-                            <p className="px-1 text-[10px] text-muted-foreground leading-relaxed">
-                                Used for **Note Generation** & **Deep Analysis**.
-                                <br />Best for 7B+ models (e.g. Mistral, Llama 3).
+                <div className="px-4 pb-5 pt-1 space-y-6 border-t border-border/40 bg-muted/10 animate-in fade-in slide-in-from-top-2 duration-200">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4">
+                        {/* Primary Model */}
+                        <div className="space-y-2.5">
+                            <div className="flex items-center gap-2">
+                                <Label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Primary Model</Label>
+                                <Badge variant="outline" className="text-[9px] h-4 border-primary/20 text-primary">High Quality</Badge>
+                            </div>
+                            {isOllama && availableModels && availableModels.length > 0 ? (
+                                <Select value={config.model} onValueChange={(v: string) => update({ model: v })}>
+                                    <SelectTrigger className="h-9 text-sm bg-background border-border/60 focus:ring-primary/30">
+                                        <SelectValue placeholder={DEFAULT_MODELS[config.provider]} />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {availableModels.map(m => (
+                                            <SelectItem key={m} value={m}>{m}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            ) : (
+                                <Input
+                                    value={config.model}
+                                    onChange={e => update({ model: e.target.value })}
+                                    placeholder={DEFAULT_MODELS[config.provider]}
+                                    className="h-9 text-sm bg-background border-border/60 focus-visible:ring-primary/30"
+                                />
+                            )}
+                            <p className="text-[10px] text-muted-foreground italic px-1">
+                                Used for note generation and deep analysis.
                             </p>
                         </div>
-                        <div className="space-y-1.5 pt-1">
-                            <Label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                                <Cloud className="w-3.5 h-3.5 text-blue-400" />
-                                Base URL
-                            </Label>
+
+                        {/* Base URL */}
+                        <div className="space-y-2.5">
+                            <Label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Endpoint / Base URL</Label>
                             <Input
                                 value={config.baseUrl || ''}
                                 onChange={e => update({ baseUrl: e.target.value || undefined })}
                                 placeholder={DEFAULT_BASE_URLS[config.provider] || 'https://...'}
-                                className="h-9 text-sm bg-background/40 border-border/40 focus-visible:ring-primary/30"
+                                className="h-9 text-sm bg-background border-border/60 focus-visible:ring-primary/30"
                             />
-                            <p className="px-1 text-[10px] text-muted-foreground">
+                            <p className="text-[10px] text-muted-foreground italic px-1">
                                 Regional API or local endpoint.
                             </p>
                         </div>
                     </div>
 
-                    {/* Indexing Model (Special for high-speed indexing) */}
-                    <div className="mt-2 space-y-2.5 p-3 rounded-xl bg-primary/5 border border-primary/20 shadow-inner group">
+                    {/* Turbo Model Row */}
+                    <div className="p-4 rounded-xl border border-primary/10 bg-primary/5 space-y-3">
                         <div className="flex items-center justify-between">
-                            <Label className="text-[11px] font-extrabold uppercase tracking-tight text-primary flex items-center gap-2">
-                                <Zap className="w-3.5 h-3.5 fill-primary/20 group-hover:scale-125 transition-transform" />
-                                Indexing Model (Turbo Mode)
-                            </Label>
-                            <Badge variant="secondary" className="text-[9px] h-4.5 px-2 bg-primary/20 text-primary border-primary/30 font-bold tracking-widest shrink-0">
-                                TURBO
-                            </Badge>
+                            <div className="flex items-center gap-2">
+                                <Label className="text-[11px] font-bold uppercase tracking-wider text-primary">Indexing Model</Label>
+                                <Badge className="text-[9px] h-4 bg-primary/20 text-primary border-none font-bold">TURBO</Badge>
+                            </div>
                         </div>
-                        <Input
-                            value={config.indexingModel || ''}
-                            onChange={e => update({ indexingModel: e.target.value || undefined })}
-                            placeholder="e.g. qwen2.5-coder:1.5b"
-                            className="h-9 text-sm bg-background/60 border-primary/20 focus-visible:ring-primary/40 font-mono font-semibold"
-                        />
-                        <div className="px-1 space-y-1">
-                            <p className="text-[10px] text-foreground/90 font-semibold leading-none">
-                                Powering **Topic Extraction** & **Index Generation**.
-                            </p>
-                            <p className="text-[10px] text-muted-foreground/80 italic leading-tight">
-                                Recommendation: Use a lightweight model (1.5B–3B) to achieve sub-10s indexing on local CPUs.
-                            </p>
-                        </div>
+                        {isOllama && availableModels && availableModels.length > 0 ? (
+                            <Select value={config.indexingModel || ''} onValueChange={v => update({ indexingModel: v })}>
+                                <SelectTrigger className="h-9 text-sm bg-background border-primary/20 focus:ring-primary/30 font-medium">
+                                    <SelectValue placeholder="Select turbo model..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {availableModels.map(m => (
+                                        <SelectItem key={m} value={m}>{m}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        ) : (
+                            <Input
+                                value={config.indexingModel || ''}
+                                onChange={e => update({ indexingModel: e.target.value || undefined })}
+                                placeholder="e.g. qwen2.5-coder:1.5b"
+                                className="h-9 text-sm bg-background border-primary/20 focus-visible:ring-primary/30 font-medium"
+                            />
+                        )}
+                        <p className="text-[10px] text-primary/70 leading-relaxed px-1">
+                            Lightweight model optimized for fast topic extraction and video analysis.
+                        </p>
                     </div>
 
-                    {/* API Keys (only for cloud providers) */}
+                    {/* API Keys */}
                     {!isLocal && (
-                        <div className="space-y-1.5">
+                        <div className="space-y-3">
                             <div className="flex items-center justify-between">
-                                <Label className="text-xs text-muted-foreground">
-                                    API Keys
-                                    <span className="ml-1.5 text-[10px] text-muted-foreground/60">
-                                        (tried in order — if one fails, next is used)
-                                    </span>
-                                </Label>
-                                <button
-                                    type="button"
+                                <Label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">API Credentials</Label>
+                                <Button
+                                    variant="link"
+                                    size="sm"
                                     onClick={addKey}
-                                    className="flex items-center gap-1 text-xs text-primary hover:text-primary/80 transition-colors"
+                                    className="h-auto p-0 text-xs text-primary font-bold"
                                 >
-                                    <Plus className="w-3 h-3" /> Add Key
-                                </button>
+                                    <Plus className="w-3 h-3 mr-1" /> Add Key
+                                </Button>
                             </div>
-                            {config.apiKeys.length === 0 ? (
-                                <button
-                                    type="button"
-                                    onClick={addKey}
-                                    className="w-full border border-dashed border-border/50 rounded-lg py-2 text-xs text-muted-foreground hover:border-primary/50 hover:text-primary transition-colors"
-                                >
-                                    + Add your first API key
-                                </button>
-                            ) : (
-                                <div className="space-y-1.5">
-                                    {config.apiKeys.map((key, i) => (
+                            <div className="space-y-2">
+                                {config.apiKeys.length === 0 ? (
+                                    <Button
+                                        variant="outline"
+                                        onClick={addKey}
+                                        className="w-full h-9 text-xs border-dashed text-muted-foreground hover:border-primary/50 hover:text-primary transition-all"
+                                    >
+                                        + Connect with API Key
+                                    </Button>
+                                ) : (
+                                    config.apiKeys.map((key, i) => (
                                         <ApiKeyItem
                                             key={i}
                                             value={key}
@@ -280,15 +308,9 @@ function ProviderCard({
                                             onChange={v => updateKey(i, v)}
                                             onRemove={() => removeKey(i)}
                                         />
-                                    ))}
-                                </div>
-                            )}
-                            {config.apiKeys.length > 1 && (
-                                <p className="text-[10px] text-muted-foreground/60 flex items-center gap-1">
-                                    <AlertTriangle className="w-3 h-3" />
-                                    If a key fails, the next key in the list is automatically tried.
-                                </p>
-                            )}
+                                    ))
+                                )}
+                            </div>
                         </div>
                     )}
                 </div>
@@ -300,20 +322,14 @@ function ProviderCard({
 // ─── Settings Panel ────────────────────────────────────────────────────────────
 
 export function SettingsPanel() {
-    const { settings, updateProviders, saveToBackend, isSettingsOpen, closeSettings, isSaving } = useSettings();
+    const { settings, updateSettings, saveToBackend, isSettingsOpen, closeSettings, isSaving } = useSettings();
     const [localProviders, setLocalProviders] = useState(settings.providers);
+    const [localTaskMapping, setLocalTaskMapping] = useState(settings.taskMapping);
     const [saved, setSaved] = useState(false);
+    const [ollamaModels, setOllamaModels] = useState<string[]>([]);
+    const [fetchingModels, setFetchingModels] = useState(false);
 
-    // Sync local state when panel opens
-    const handleOpen = useCallback(() => {
-        setLocalProviders(settings.providers);
-        setSaved(false);
-    }, [settings.providers]);
-
-    // Reset when opened
-    if (isSettingsOpen && localProviders !== settings.providers && !saved) {
-        // handled via useEffect equivalent via key
-    }
+    const API_BASE = (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:3001/api';
 
     const updateCard = useCallback((index: number, updated: ProviderConfig) => {
         setLocalProviders(prev => prev.map((p, i) => i === index ? updated : p));
@@ -342,104 +358,205 @@ export function SettingsPanel() {
 
     const handleSave = async () => {
         const withPriority = localProviders.map((p, i) => ({ ...p, priority: i + 1 }));
-        updateProviders(withPriority);
+        updateSettings({
+            providers: withPriority,
+            taskMapping: localTaskMapping
+        });
         await saveToBackend();
         setSaved(true);
         setTimeout(() => setSaved(false), 2000);
     };
 
+    const fetchOllamaModels = useCallback(async () => {
+        setFetchingModels(true);
+        try {
+            const res = await fetch(`${API_BASE}/settings/ollama/models`);
+            const data = await res.json();
+            if (data.success) {
+                setOllamaModels(data.models.map((m: any) => m.name));
+            }
+        } catch (e) {
+            console.error('Failed to fetch Ollama models', e);
+        } finally {
+            setFetchingModels(false);
+        }
+    }, [API_BASE]);
+
+    useEffect(() => {
+        if (isSettingsOpen) {
+            fetchOllamaModels();
+            setLocalProviders(settings.providers);
+            setLocalTaskMapping(settings.taskMapping);
+        }
+    }, [isSettingsOpen, settings.providers, settings.taskMapping, fetchOllamaModels]);
+
     const enabledCount = localProviders.filter(p => p.enabled).length;
 
-    if (!isSettingsOpen) return null;
-
     return (
-        <>
-            {/* Backdrop */}
-            <div
-                className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 transition-opacity"
-                onClick={closeSettings}
-            />
-
-            {/* Panel */}
-            <div className="fixed right-0 top-0 h-full w-full max-w-md bg-card border-l border-border shadow-2xl z-50 flex flex-col overflow-hidden">
-                {/* Header */}
-                <div className="flex items-center justify-between px-5 py-4 border-b border-border bg-card/80 backdrop-blur-sm shrink-0">
-                    <div>
-                        <h2 className="text-base font-semibold text-foreground">AI Provider Settings</h2>
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                            {enabledCount === 0
-                                ? 'No providers enabled — please enable at least one'
-                                : `${enabledCount} provider${enabledCount > 1 ? 's' : ''} enabled · fallback order: top → bottom`}
-                        </p>
-                    </div>
-                    <button
-                        onClick={closeSettings}
-                        className="text-muted-foreground hover:text-foreground transition-colors"
-                    >
-                        <X className="w-5 h-5" />
-                    </button>
-                </div>
-
-                {/* Scrollable body */}
-                <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
-                    {enabledCount === 0 && (
-                        <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 flex items-start gap-2">
-                            <AlertTriangle className="w-4 h-4 text-destructive shrink-0 mt-0.5" />
-                            <p className="text-xs text-destructive">
-                                No AI providers are enabled. Enable at least one provider for note generation to work.
-                            </p>
+        <Dialog open={isSettingsOpen} onOpenChange={open => !open && closeSettings()}>
+            <DialogContent className="max-w-4xl max-h-[90vh] p-0 overflow-hidden flex flex-col sm:rounded-2xl border-border/40 shadow-2xl">
+                <DialogHeader className="px-6 py-5 border-b border-border/40 bg-muted/20">
+                    <div className="flex items-center justify-between">
+                        <div className="space-y-1">
+                            <DialogTitle className="text-xl font-bold flex items-center gap-2 tracking-tight">
+                                <span className="p-1.5 rounded-lg bg-primary/10 text-primary">
+                                    <Settings2 className="w-5 h-5" />
+                                </span>
+                                AI Configuration
+                            </DialogTitle>
+                            <DialogDescription className="text-xs font-medium text-muted-foreground/70">
+                                Management of intelligent models and provider fallbacks.
+                            </DialogDescription>
                         </div>
-                    )}
+                    </div>
+                </DialogHeader>
 
-                    <div className="space-y-1 mb-1">
-                        <p className="text-xs text-muted-foreground">
-                            Providers are tried from <strong>top to bottom</strong>. Within each cloud provider, keys are tried in order.
-                            Drag the arrows to change priority.
-                        </p>
+                <Tabs defaultValue="providers" className="flex-1 flex flex-col overflow-hidden">
+                    <div className="px-6 border-b border-border/40 bg-muted/10">
+                        <TabsList className="h-12 bg-transparent p-0 gap-6">
+                            <TabsTrigger
+                                value="providers"
+                                className="h-full rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-0 text-sm font-bold uppercase tracking-widest transition-all"
+                            >
+                                Models & Connectivity
+                            </TabsTrigger>
+                            <TabsTrigger
+                                value="tasks"
+                                className="h-full rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-0 text-sm font-bold uppercase tracking-widest transition-all"
+                            >
+                                Task Assignment
+                            </TabsTrigger>
+                        </TabsList>
                     </div>
 
-                    {localProviders.map((provider, idx) => (
-                        <ProviderCard
-                            key={provider.provider}
-                            config={provider}
-                            index={idx}
-                            total={localProviders.length}
-                            onChange={updated => updateCard(idx, updated)}
-                            onMoveUp={() => moveUp(idx)}
-                            onMoveDown={() => moveDown(idx)}
-                        />
-                    ))}
-                </div>
+                    <ScrollArea className="flex-1">
+                        <TabsContent value="providers" className="p-6 m-0 space-y-6 outline-none">
+                            <div className="flex items-center justify-between">
+                                <div className="space-y-0.5">
+                                    <h3 className="text-sm font-bold text-foreground">Active Providers</h3>
+                                    <p className="text-[11px] text-muted-foreground">Fallbacks are attempted in the order shown (top to bottom).</p>
+                                </div>
+                                <Badge variant="outline" className={cn("text-[10px] font-bold tracking-wider px-2 py-0.5 border-primary/20", enabledCount === 0 ? "text-destructive border-destructive/30 bg-destructive/5" : "text-primary bg-primary/5")}>
+                                    {enabledCount} ENABLED
+                                </Badge>
+                            </div>
 
-                {/* Footer */}
-                <div className="px-5 py-4 border-t border-border bg-card/80 backdrop-blur-sm shrink-0">
-                    <Button
-                        className="w-full gap-2"
-                        onClick={handleSave}
-                        disabled={isSaving}
-                    >
-                        {saved ? (
-                            <>
-                                <CheckCircle2 className="w-4 h-4 text-green-400" />
-                                Settings Saved!
-                            </>
-                        ) : isSaving ? (
-                            <>
-                                <span className="w-4 h-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
-                                Saving…
-                            </>
-                        ) : (
-                            <>
-                                <Save className="w-4 h-4" />
-                                Save & Apply
-                            </>
-                        )}
-                    </Button>
-                    <p className="text-center text-[10px] text-muted-foreground mt-2">
-                        Settings persist in browser storage and sync to the server.
+                            <div className="grid grid-cols-1 gap-4">
+                                {localProviders.map((provider, idx) => (
+                                    <ProviderCard
+                                        key={provider.provider}
+                                        config={provider}
+                                        index={idx}
+                                        total={localProviders.length}
+                                        onChange={updated => updateCard(idx, updated)}
+                                        onMoveUp={() => moveUp(idx)}
+                                        onMoveDown={() => moveDown(idx)}
+                                        availableModels={provider.provider === 'ollama' ? ollamaModels : undefined}
+                                    />
+                                ))}
+                            </div>
+                        </TabsContent>
+
+                        <TabsContent value="tasks" className="p-6 m-0 space-y-8 outline-none max-w-2xl mx-auto">
+                            <div className="text-center space-y-2 mb-4">
+                                <div className="inline-flex p-3 rounded-full bg-primary/10 text-primary mb-2">
+                                    <Cpu className="w-6 h-6" />
+                                </div>
+                                <h3 className="text-lg font-bold tracking-tight">Dedicated Task Routing</h3>
+                                <p className="text-sm text-muted-foreground max-w-md mx-auto">
+                                    Optimize performance by assigning specific providers to specialized tasks.
+                                </p>
+                            </div>
+
+                            <div className="space-y-4">
+                                {[
+                                    { id: 'notes', label: 'Detailed Summary Generation', icon: <CheckCircle2 className="w-4 h-4 text-green-400" />, desc: 'High-quality formatting for long-form content.' },
+                                    { id: 'indexing', label: 'Content Indexing & Extraction', icon: <Zap className="w-4 h-4 text-yellow-400" />, desc: 'Fast extraction of topics and key moments.' },
+                                    { id: 'features', label: 'Interactive Features (AI Tools)', icon: <Plus className="w-4 h-4 text-blue-400" />, desc: 'Mind Maps, Quizzes, and specialized tools.' },
+                                ].map(task => (
+                                    <div key={task.id} className="group p-5 rounded-2xl border border-border/50 bg-card/60 transition-all hover:bg-card hover:border-border hover:shadow-lg">
+                                        <div className="flex items-center gap-5">
+                                            <div className="p-2.5 rounded-xl bg-muted/50 group-hover:bg-background transition-colors">
+                                                {task.icon}
+                                            </div>
+                                            <div className="flex-1 space-y-1">
+                                                <div className="flex items-center justify-between">
+                                                    <Label className="text-sm font-bold tracking-tight">{task.label}</Label>
+                                                    <Select
+                                                        value={(localTaskMapping as any)[task.id]}
+                                                        onValueChange={v => setLocalTaskMapping(prev => ({ ...prev, [task.id]: v }))}
+                                                    >
+                                                        <SelectTrigger className="h-9 w-40 text-xs font-semibold bg-background/50 border-border/40 focus:ring-primary/20">
+                                                            <SelectValue />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            <SelectItem value="auto">Auto (Priority)</SelectItem>
+                                                            {localProviders.filter(p => p.enabled).map(p => (
+                                                                <SelectItem key={p.provider} value={p.provider}>
+                                                                    {PROVIDER_LABELS[p.provider]}
+                                                                </SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
+                                                </div>
+                                                <p className="text-[11px] text-muted-foreground leading-relaxed pr-20">
+                                                    {task.desc}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+
+                            <div className="p-4 rounded-xl bg-muted/30 border border-border/40 text-center">
+                                <p className="text-[11px] text-muted-foreground/80 italic">
+                                    "Auto" dynamically selects the highest priority enabled provider.
+                                    Explicit pinning ensures consistent behavior for specialized tasks.
+                                </p>
+                            </div>
+                        </TabsContent>
+                    </ScrollArea>
+                </Tabs>
+
+                <div className="px-6 py-5 border-t border-border/40 bg-muted/20 flex flex-col sm:flex-row items-center justify-between gap-4">
+                    <p className="text-[11px] text-muted-foreground font-medium flex items-center gap-1.5 order-2 sm:order-1">
+                        <Cloud className="w-3.5 h-3.5" /> Settings persist locally and sync with backend.
                     </p>
+                    <div className="flex items-center gap-3 w-full sm:w-auto order-1 sm:order-2">
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-xs font-bold"
+                            onClick={closeSettings}
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            size="sm"
+                            className="h-10 px-8 gap-2 font-bold shadow-lg shadow-primary/20"
+                            onClick={handleSave}
+                            disabled={isSaving}
+                        >
+                            {saved ? (
+                                <>
+                                    <CheckCircle2 className="w-4 h-4" />
+                                    Saved!
+                                </>
+                            ) : isSaving ? (
+                                <>
+                                    <span className="w-4 h-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
+                                    Applying…
+                                </>
+                            ) : (
+                                <>
+                                    <Save className="w-4 h-4" />
+                                    Save & Apply
+                                </>
+                            )}
+                        </Button>
+                    </div>
                 </div>
-            </div>
-        </>
+            </DialogContent>
+        </Dialog>
     );
 }

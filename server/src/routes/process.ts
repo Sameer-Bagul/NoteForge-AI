@@ -1,10 +1,10 @@
 import { Router, Request, Response } from 'express';
-import { jobService } from '../services/job.service';
-import { indexService } from '../services/index.service';
-import { notesService } from '../services/notes.service';
-import { llmService } from '../services/llm.service';
-import { multiLlmService } from '../services/multi-llm.service';
-import { SSEStream } from '../utils/sse';
+import { jobService } from '../services/job.service.js';
+import { indexService } from '../services/index.service.js';
+import { notesService } from '../services/notes.service.js';
+import { llmService } from '../services/llm.service.js';
+import { multiLlmService } from '../services/multi-llm.service.js';
+import { SSEStream } from '../utils/sse.js';
 
 const router = Router();
 
@@ -50,7 +50,7 @@ router.post('/start', async (req: Request, res: Response) => {
 
     // Start processing in background
     console.log(`🚀 Starting background processing...`);
-    jobService.processUrl(job.id, url, title).catch(err => {
+    jobService.processUrl(job.id, url, title).catch((err: Error) => {
       console.error(`❌ Background job ${job.id} failed:`, err);
     });
 
@@ -74,7 +74,7 @@ router.post('/start', async (req: Request, res: Response) => {
 
 // Stream job progress and note deltas via SSE
 router.get('/stream/:jobId', (req: Request, res: Response) => {
-  const { jobId } = req.params;
+  const { jobId } = req.params as { jobId: string };
   const job = jobService.getJob(jobId);
 
   if (!job) {
@@ -112,7 +112,7 @@ router.get('/stream/:jobId', (req: Request, res: Response) => {
 // Get job status
 router.get('/status/:jobId', (req: Request, res: Response) => {
   try {
-    const { jobId } = req.params;
+    const { jobId } = req.params as { jobId: string };
     console.log(`📊 Status request for job: ${jobId}`);
 
     const job = jobService.getJob(jobId);
@@ -159,7 +159,7 @@ router.get('/status/:jobId', (req: Request, res: Response) => {
 // Update and approve index
 router.put('/:jobId/approve-index', async (req: Request, res: Response) => {
   try {
-    const { jobId } = req.params;
+    const { jobId } = req.params as { jobId: string };
     const { index } = req.body;
 
     console.log(`\n📋 Index approval request for job: ${jobId}`);
@@ -185,7 +185,7 @@ router.put('/:jobId/approve-index', async (req: Request, res: Response) => {
     console.log(`🚀 Starting notes generation...`);
 
     // Continue processing in background
-    jobService.continueAfterApproval(jobId).catch(err => {
+    jobService.continueAfterApproval(jobId).catch((err: Error) => {
       console.error(`❌ Failed to continue job ${jobId}:`, err);
     });
 
@@ -211,12 +211,12 @@ router.get('/jobs', (req: Request, res: Response) => {
     // Create a map of notebook IDs associated with active jobs to avoid duplicates
     const activeNotebookIds = new Set(
       activeJobs
-        .filter(j => j.notebook)
-        .map(j => j.notebook!.id)
+        .filter((j: any) => j.notebook)
+        .map((j: any) => j.notebook!.id)
     );
 
     // Map active jobs to required format
-    const jobList = activeJobs.map(job => ({
+    const jobList = activeJobs.map((job: any) => ({
       id: job.id,
       status: job.status,
       currentStep: job.currentStep,
@@ -231,8 +231,8 @@ router.get('/jobs', (req: Request, res: Response) => {
 
     // Add notebooks from disk that aren't in active jobs
     const historicalJobs = allNotebooks
-      .filter(nb => !activeNotebookIds.has(nb.id))
-      .map(nb => ({
+      .filter((nb: any) => !activeNotebookIds.has(nb.id))
+      .map((nb: any) => ({
         id: nb.id,
         status: 'complete' as const,
         currentStep: 5,
@@ -264,7 +264,7 @@ router.get('/jobs', (req: Request, res: Response) => {
 // Delete a job
 router.delete('/job/:jobId', (req: Request, res: Response) => {
   try {
-    const { jobId } = req.params;
+    const { jobId } = req.params as { jobId: string };
     const deleted = jobService.deleteJob(jobId);
 
     if (!deleted) {
@@ -289,7 +289,7 @@ router.delete('/job/:jobId', (req: Request, res: Response) => {
 // Get notebook by ID
 router.get('/notebook/:notebookId', (req: Request, res: Response) => {
   try {
-    const { notebookId } = req.params;
+    const { notebookId } = req.params as { notebookId: string };
     const notebook = notesService.loadNotebook(notebookId);
 
     if (!notebook) {
@@ -311,10 +311,33 @@ router.get('/notebook/:notebookId', (req: Request, res: Response) => {
   }
 });
 
+// Update notebook content (for persistent AI features)
+router.patch('/notebook/:notebookId', (req: Request, res: Response) => {
+  try {
+    const { notebookId } = req.params as { notebookId: string };
+    const updates = req.body;
+
+    console.log(`📝 Update request for notebook: ${notebookId}`);
+
+    const updated = notesService.updateNotebook(notebookId, updates);
+
+    res.json({
+      success: true,
+      data: updated
+    });
+  } catch (error) {
+    console.error(`❌ Error updating notebook:`, error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to update notebook'
+    });
+  }
+});
+
 // Get index by ID
 router.get('/index/:indexId', (req: Request, res: Response) => {
   try {
-    const { indexId } = req.params;
+    const { indexId } = req.params as { indexId: string };
     const index = indexService.loadIndex(indexId);
 
     if (!index) {

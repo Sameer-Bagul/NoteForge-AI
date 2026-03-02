@@ -10,18 +10,22 @@ import {
   NotebookMetadata,
   VideoSourceReference,
   JobOptions
-} from '../types';
-import { multiLlmService as llmService } from './multi-llm.service';
-import { ragService } from './rag.service';
-import { countWords, estimateReadingTime } from '../utils/youtube';
+} from '../types/index.js';
+import { multiLlmService as llmService } from './multi-llm.service.js';
+import { ragService } from './rag.service.js';
+import { countWords, estimateReadingTime } from '../utils/youtube.js';
 import * as fs from 'fs';
 import * as path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const NOTES_DIR = path.join(__dirname, '../../storage/notes');
 const NOTEBOOKS_DIR = path.join(__dirname, '../../storage/notebooks');
 
 // Ensure storage directories exist
-[NOTES_DIR, NOTEBOOKS_DIR].forEach(dir => {
+[NOTES_DIR, NOTEBOOKS_DIR].forEach((dir: string) => {
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
@@ -102,7 +106,7 @@ Formatting requirements:
 Topic Description: ${topic.description || ''}
 
 Subtopics to cover (cover each one deeply):
-${topic.subtopics.map(st => `- ${st.title}${st.description ? ': ' + st.description : ''}`).join('\n')}
+${topic.subtopics.map((st: any) => `- ${st.title}${st.description ? ': ' + st.description : ''}`).join('\n')}
 
 Full Video Transcript (use this as your primary source material):
 """
@@ -137,7 +141,7 @@ Format as markdown.`;
 Topic Description: ${topic.description || ''}
 
 Subtopics to cover:
-${topic.subtopics.map(st => `- ${st.title}`).join('\n')}
+${topic.subtopics.map((st: any) => `- ${st.title}`).join('\n')}
 
 Primary source material (from video transcript):
 """
@@ -302,7 +306,7 @@ Use markdown: ## headings, paragraphs, and \`\`\`mermaid or code blocks.`;
       totalTopics: index.topicCount,
       totalWords: countWords(allContent),
       estimatedReadTime: estimateReadingTime(allContent),
-      sourceVideos: transcripts.map(t => t.videoInfo)
+      sourceVideos: transcripts.map((t: VideoTranscript) => t.videoInfo)
     };
 
     const notebook: Notebook = {
@@ -606,7 +610,7 @@ Use markdown: ## headings, paragraphs, and \`\`\`mermaid or code blocks.`;
 
   // Organize topics into chapters
   private async organizeChapters(topics: TopicNode[], notes: TopicNotes[]): Promise<Chapter[]> {
-    const notesMap = new Map(notes.map(n => [n.topicId, n]));
+    const notesMap = new Map(notes.map((n: TopicNotes) => [n.topicId, n]));
     const chapters: Chapter[] = [];
 
     // Group into chapters of 3-4 topics each
@@ -616,8 +620,8 @@ Use markdown: ## headings, paragraphs, and \`\`\`mermaid or code blocks.`;
     for (let i = 0; i < topics.length; i += topicsPerChapter) {
       const chapterTopics = topics.slice(i, i + topicsPerChapter);
       const chapterNotes = chapterTopics
-        .map(t => notesMap.get(t.id))
-        .filter((n): n is TopicNotes => n !== undefined);
+        .map((t: TopicNode) => notesMap.get(t.id))
+        .filter((n: any): n is TopicNotes => n !== undefined);
 
       chapters.push({
         id: uuidv4(),
@@ -650,6 +654,23 @@ Use markdown: ## headings, paragraphs, and \`\`\`mermaid or code blocks.`;
       return JSON.parse(fs.readFileSync(filePath, 'utf-8'));
     }
     return null;
+  }
+
+  // Update an existing notebook with partial data
+  updateNotebook(notebookId: string, updates: Partial<Notebook>): Notebook {
+    const notebook = this.loadNotebook(notebookId);
+    if (!notebook) {
+      throw new Error(`Notebook ${notebookId} not found`);
+    }
+
+    const updatedNotebook: Notebook = {
+      ...notebook,
+      ...updates,
+      updatedAt: new Date().toISOString()
+    };
+
+    this.storeNotebook(updatedNotebook);
+    return updatedNotebook;
   }
 
   // Get all stored notebooks

@@ -8,11 +8,11 @@ import {
   UnifiedIndex,
   Notebook,
   JobOptions
-} from '../types';
-import { transcriptService } from './transcript.service';
-import { indexService } from './index.service';
-import { notesService } from './notes.service';
-import { isPlaylistUrl, extractVideoId } from '../utils/youtube';
+} from '../types/index.js';
+import { transcriptService } from './transcript.service.js';
+import { indexService } from './index.service.js';
+import { notesService } from './notes.service.js';
+import { isPlaylistUrl, extractVideoId } from '../utils/youtube.js';
 
 // In-memory job storage (use Redis for production)
 const jobs = new Map<string, ProcessingJob>();
@@ -107,7 +107,7 @@ export class JobService extends EventEmitter {
       let transcripts: VideoTranscript[];
 
       if (isPlaylistUrl(url)) {
-        const { playlist, transcripts: playlistTranscripts } = await transcriptService.fetchPlaylist(url, (progress) => {
+        const { playlist, transcripts: playlistTranscripts } = await transcriptService.fetchPlaylist(url, (progress: any) => {
           this.updateStep(jobId, 0, 'active', undefined, progress);
         });
         transcripts = playlistTranscripts;
@@ -225,10 +225,10 @@ export class JobService extends EventEmitter {
       const allNotes = await notesService.generateAllNotes(
         index,
         transcripts,
-        (progress) => {
+        (progress: any) => {
           this.updateStep(jobId, 3, 'active', undefined, progress);
         },
-        (topicId, delta) => {
+        (topicId: string, delta: string) => {
           this.emit(`note:delta:${jobId}`, { topicId, delta });
         },
         job.options

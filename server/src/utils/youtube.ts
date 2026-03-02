@@ -1,4 +1,4 @@
-import { VideoInfo, PlaylistInfo } from '../types';
+import { VideoInfo, PlaylistInfo } from '../types/index.js';
 
 // Extract video ID from various YouTube URL formats
 export function extractVideoId(url: string): string | null {
@@ -104,18 +104,18 @@ export function chunkText(text: string, maxChunkSize: number = 4000): string[] {
 
   for (const sentence of sentences) {
     const trimmedSentence = sentence.trim();
-    
+
     // If single sentence exceeds max size, split it by clauses
     if (trimmedSentence.length > maxChunkSize) {
       if (currentChunk) {
         chunks.push(currentChunk.trim());
         currentChunk = '';
       }
-      
+
       // Split long sentence by commas or semicolons
       const parts = trimmedSentence.split(/[,;]/);
       let longChunk = '';
-      
+
       for (const part of parts) {
         if ((longChunk + part).length > maxChunkSize) {
           if (longChunk) chunks.push(longChunk.trim());

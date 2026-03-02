@@ -10,8 +10,15 @@ export interface ProviderConfig {
     priority: number;       // Lower = tried first
 }
 
+export interface TaskMapping {
+    notes: AIProvider | 'auto';
+    indexing: AIProvider | 'auto';
+    features: AIProvider | 'auto';
+}
+
 export interface AppSettings {
     providers: ProviderConfig[];
+    taskMapping: TaskMapping;
 }
 
 export const PROVIDER_LABELS: Record<AIProvider, string> = {
@@ -85,4 +92,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
             priority: 4,
         },
     ],
+    taskMapping: {
+        notes: 'auto',
+        indexing: 'auto',
+        features: 'auto',
+    },
 };

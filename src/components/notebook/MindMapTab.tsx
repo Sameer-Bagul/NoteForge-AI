@@ -20,8 +20,10 @@ import { GitBranch, Loader2, ChevronDown, ChevronRight, Brain } from 'lucide-rea
 import { cn } from '@/lib/utils';
 
 interface MindMapTabProps {
+    notebookId?: string;
     topics: { id: string; title: string; subtopics: string[] }[];
     fullContent: string;
+    existingMindMaps?: Record<string, any>; // Record<topicId, {nodes, edges}>
 }
 
 // ─── Custom Nodes ──────────────────────────────────────────────────────────────
@@ -140,18 +142,20 @@ function layoutTree(rawNodes: any[], rawEdges: any[]): { nodes: Node[]; edges: E
 // ─── Single Topic Mind Map ─────────────────────────────────────────────────────
 
 function TopicMindMap({
+    notebookId,
     topic,
     fullContent,
-    autoGenerate,
+    existingData,
 }: {
+    notebookId?: string;
     topic: { id: string; title: string; subtopics: string[] };
     fullContent: string;
-    autoGenerate?: boolean;
+    existingData?: { nodes: any[]; edges: any[] };
 }) {
-    const [nodes, setNodes, onNodesChange] = useNodesState([]);
-    const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+    const [nodes, setNodes, onNodesChange] = useNodesState(existingData?.nodes || []);
+    const [edges, setEdges, onEdgesChange] = useEdgesState(existingData?.edges || []);
     const [loading, setLoading] = useState(false);
-    const [generated, setGenerated] = useState(false);
+    const [generated, setGenerated] = useState(!!existingData);
     const [error, setError] = useState<string | null>(null);
 
     const generate = useCallback(async () => {
@@ -167,12 +171,27 @@ function TopicMindMap({
             setNodes(lNodes);
             setEdges(lEdges);
             setGenerated(true);
+
+            // Persist to backend if we have a notebookId
+            if (notebookId) {
+                // Get current mindMaps or empty object
+                const update = {
+                    mindMaps: {
+                        [topic.id]: {
+                            topicId: topic.id,
+                            nodes: lNodes,
+                            edges: lEdges
+                        }
+                    }
+                };
+                await api.updateNotebook(notebookId, update);
+            }
         } catch (err) {
             setError('Failed to generate mind map. Please try again.');
         } finally {
             setLoading(false);
         }
-    }, [topic, fullContent]);
+    }, [notebookId, topic, fullContent]);
 
     return (
         <div className="rounded-xl border border-border/60 overflow-hidden bg-card/40">
@@ -228,7 +247,7 @@ function TopicMindMap({
 
 // ─── Mind Map Tab ──────────────────────────────────────────────────────────────
 
-export function MindMapTab({ topics, fullContent }: MindMapTabProps) {
+export function MindMapTab({ notebookId, topics, fullContent, existingMindMaps }: MindMapTabProps) {
     const [expanded, setExpanded] = useState<string | null>(topics[0]?.id ?? null);
 
     return (
@@ -249,7 +268,12 @@ export function MindMapTab({ topics, fullContent }: MindMapTabProps) {
                         {expanded === topic.id ? <ChevronDown className="w-4 h-4 text-muted-foreground" /> : <ChevronRight className="w-4 h-4 text-muted-foreground" />}
                     </button>
                     {expanded === topic.id && (
-                        <TopicMindMap topic={topic} fullContent={fullContent} />
+                        <TopicMindMap
+                            notebookId={notebookId}
+                            topic={topic}
+                            fullContent={fullContent}
+                            existingData={existingMindMaps?.[topic.id]}
+                        />
                     )}
                 </div>
             ))}

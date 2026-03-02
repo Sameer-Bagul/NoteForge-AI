@@ -107,6 +107,33 @@ export interface NotebookMetadata {
   sourceVideos: VideoInfo[];
 }
 
+export interface MindMapData {
+  topicId: string;
+  nodes: any[];
+  edges: any[];
+}
+
+export interface QuizQuestion {
+  id: string;
+  type: 'mcq' | 'short';
+  question: string;
+  options?: string[];
+  answer: string;
+  explanation: string;
+  topic: string;
+  difficulty: 'easy' | 'medium' | 'hard';
+}
+
+export interface InterviewQuestion {
+  id: string;
+  category: 'conceptual' | 'technical' | 'practical';
+  question: string;
+  answer: string;
+  followUp?: string;
+  difficulty: 'junior' | 'mid' | 'senior';
+  topic: string;
+}
+
 export interface Notebook {
   id: string;
   title: string;
@@ -114,6 +141,9 @@ export interface Notebook {
   chapters: Chapter[];
   index: UnifiedIndex;
   metadata: NotebookMetadata;
+  mindMaps?: Record<string, MindMapData>;
+  quiz?: QuizQuestion[];
+  interviewQA?: InterviewQuestion[];
   createdAt: string;
   updatedAt: string;
 }
@@ -124,6 +154,9 @@ export interface VideoNotes {
   index: TopicIndex[];
   notes: TopicNotes[];
   fullContent: string;
+  mindMaps?: Record<string, MindMapData>;
+  quiz?: QuizQuestion[];
+  interviewQA?: InterviewQuestion[];
 }
 
 export interface ProcessingStep {

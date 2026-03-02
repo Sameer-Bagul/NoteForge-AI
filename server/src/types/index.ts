@@ -109,6 +109,33 @@ export interface Chapter {
   topics: TopicNotes[];
 }
 
+export interface MindMapData {
+  topicId: string;
+  nodes: any[];
+  edges: any[];
+}
+
+export interface QuizQuestion {
+  id: string;
+  type: 'mcq' | 'short';
+  question: string;
+  options?: string[];
+  answer: string;
+  explanation: string;
+  topic: string;
+  difficulty: 'easy' | 'medium' | 'hard';
+}
+
+export interface InterviewQuestion {
+  id: string;
+  category: 'conceptual' | 'technical' | 'practical';
+  question: string;
+  answer: string;
+  followUp?: string;
+  difficulty: 'junior' | 'mid' | 'senior';
+  topic: string;
+}
+
 export interface Notebook {
   id: string;
   title: string;
@@ -116,6 +143,9 @@ export interface Notebook {
   chapters: Chapter[];
   index: UnifiedIndex;
   metadata: NotebookMetadata;
+  mindMaps?: Record<string, MindMapData>;
+  quiz?: QuizQuestion[];
+  interviewQA?: InterviewQuestion[];
   createdAt: string;
   updatedAt: string;
 }
@@ -205,8 +235,16 @@ export interface ProviderConfig {
   priority: number;   // Lower number = tried first
 }
 
+export interface TaskMapping {
+  notes: AIProvider | 'auto';
+  indexing: AIProvider | 'auto';
+  features: AIProvider | 'auto';
+  [key: string]: AIProvider | 'auto';
+}
+
 export interface AppSettings {
   providers: ProviderConfig[];
+  taskMapping: TaskMapping;
 }
 
 export interface LLMMessage {

@@ -1,7 +1,5 @@
-// Load environment variables first
-require('dotenv').config();
-
-import express from 'express';
+import 'dotenv/config';
+import express, { Request, Response } from 'express';
 import cors from 'cors';
 import youtubeRoutes from './routes/youtube.js';
 import processRoutes from './routes/process.js';
@@ -19,7 +17,8 @@ app.use(cors({
   origin: CORS_ORIGIN,
   credentials: true,
 }));
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
 // Routes
 app.use('/api/youtube', youtubeRoutes);
@@ -28,7 +27,7 @@ app.use('/api/settings', settingsRoutes);
 app.use('/api/generate', generateRoutes);
 
 // Health check
-app.get('/api/health', async (req, res) => {
+app.get('/api/health', async (req: Request, res: Response) => {
   const llmHealth = await multiLlmService.checkHealth();
 
   res.json({
@@ -43,7 +42,7 @@ app.get('/api/health', async (req, res) => {
 });
 
 // Root endpoint
-app.get('/', (req, res) => {
+app.get('/', (req: Request, res: Response) => {
   res.json({
     name: 'NoteForge API',
     version: '1.0.0',

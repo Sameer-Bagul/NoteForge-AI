@@ -1,17 +1,17 @@
 import { Router, Request, Response } from 'express';
-import { transcriptService } from '../services/transcript.service';
-import { extractVideoId, extractPlaylistId, isPlaylistUrl } from '../utils/youtube';
+import { transcriptService } from '../services/transcript.service.js';
+import { extractVideoId, extractPlaylistId, isPlaylistUrl } from '../utils/youtube.js';
 
 const router = Router();
 
 // Get video info
 router.get('/video/:videoId', async (req: Request, res: Response) => {
   try {
-    const { videoId } = req.params;
-    
+    const { videoId } = req.params as { videoId: string };
+
     // Check if we have a cached transcript
     const cached = transcriptService.loadTranscript(videoId);
-    
+
     if (cached) {
       res.json({
         success: true,
@@ -46,7 +46,7 @@ router.get('/video/:videoId', async (req: Request, res: Response) => {
 router.post('/transcript', async (req: Request, res: Response) => {
   try {
     const { url } = req.body;
-    
+
     if (!url) {
       return res.status(400).json({
         success: false,
@@ -63,7 +63,7 @@ router.post('/transcript', async (req: Request, res: Response) => {
     }
 
     const transcript = await transcriptService.fetchTranscript(videoId);
-    
+
     res.json({
       success: true,
       data: {
@@ -85,7 +85,7 @@ router.post('/transcript', async (req: Request, res: Response) => {
 router.post('/playlist', async (req: Request, res: Response) => {
   try {
     const { url } = req.body;
-    
+
     if (!url) {
       return res.status(400).json({
         success: false,
@@ -101,7 +101,7 @@ router.post('/playlist', async (req: Request, res: Response) => {
     }
 
     const { playlist, transcripts } = await transcriptService.fetchPlaylist(url);
-    
+
     res.json({
       success: true,
       data: {
@@ -122,7 +122,7 @@ router.post('/playlist', async (req: Request, res: Response) => {
 router.post('/validate', (req: Request, res: Response) => {
   try {
     const { url } = req.body;
-    
+
     if (!url) {
       return res.status(400).json({
         success: false,

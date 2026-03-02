@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { multiLlmService as llmService } from '../services/multi-llm.service';
+import { multiLlmService as llmService } from '../services/multi-llm.service.js';
 
 const router = Router();
 
@@ -7,14 +7,14 @@ const router = Router();
 // Returns React Flow–compatible nodes + edges for a single topic
 
 router.post('/mindmap', async (req: Request, res: Response) => {
-    try {
-        const { topicTitle, subtopics = [], description = '', notesContent = '' } = req.body;
+  try {
+    const { topicTitle, subtopics = [], description = '', notesContent = '' } = req.body;
 
-        if (!topicTitle) {
-            return res.status(400).json({ success: false, error: 'topicTitle is required' });
-        }
+    if (!topicTitle) {
+      return res.status(400).json({ success: false, error: 'topicTitle is required' });
+    }
 
-        const systemPrompt = `You are a mind-map data generator. Produce a structured JSON mind map.
+    const systemPrompt = `You are a mind-map data generator. Produce a structured JSON mind map.
 The output MUST be valid JSON only — no markdown, no commentary.
 
 Schema:
@@ -35,7 +35,7 @@ Rules:
 - colors: central="#6366f1", branch="#8b5cf6","#06b6d4","#10b981","#f59e0b","#ef4444","#ec4899","#14b8a6"
 - Use branch color from the list cycling through for each branch`;
 
-        const prompt = `Create a mind map for the topic: "${topicTitle}"
+    const prompt = `Create a mind map for the topic: "${topicTitle}"
 Description: ${description}
 
 Subtopics: ${subtopics.join(', ')}
@@ -47,25 +47,25 @@ ${notesContent.slice(0, 2000)}
 
 Generate a comprehensive mind map JSON with the central topic, main branches for each subtopic, and leaf nodes for key concepts.`;
 
-        const data = await llmService.generateJSON<{ nodes: any[]; edges: any[] }>(prompt, systemPrompt);
+    const data = await llmService.generateJSONLocal<{ nodes: any[]; edges: any[] }>(prompt, systemPrompt);
 
-        res.json({ success: true, data });
-    } catch (error) {
-        console.error('Mind map generation error:', error);
-        res.status(500).json({
-            success: false,
-            error: error instanceof Error ? error.message : 'Failed to generate mind map',
-        });
-    }
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Mind map generation error:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to generate mind map',
+    });
+  }
 });
 
 // ─── Quiz ──────────────────────────────────────────────────────────────────────
 
 router.post('/quiz', async (req: Request, res: Response) => {
-    try {
-        const { topicTitles = [], fullContent = '', questionCount = 10 } = req.body;
+  try {
+    const { topicTitles = [], fullContent = '', questionCount = 10 } = req.body;
 
-        const systemPrompt = `You are an expert quiz generator. Return ONLY valid JSON — no markdown, no commentary.
+    const systemPrompt = `You are an expert quiz generator. Return ONLY valid JSON — no markdown, no commentary.
 
 Schema:
 [
@@ -81,7 +81,7 @@ Schema:
   }
 ]`;
 
-        const prompt = `Create ${questionCount} quiz questions covering these topics: ${topicTitles.join(', ')}
+    const prompt = `Create ${questionCount} quiz questions covering these topics: ${topicTitles.join(', ')}
 
 Content:
 """
@@ -90,25 +90,25 @@ ${fullContent.slice(0, 4000)}
 
 Mix of multiple-choice (70%) and short answer (30%). Cover easy, medium, and hard difficulty. Make questions test understanding, not just recall.`;
 
-        const data = await llmService.generateJSON<any[]>(prompt, systemPrompt);
+    const data = await llmService.generateJSONLocal<any[]>(prompt, systemPrompt);
 
-        res.json({ success: true, data });
-    } catch (error) {
-        console.error('Quiz generation error:', error);
-        res.status(500).json({
-            success: false,
-            error: error instanceof Error ? error.message : 'Failed to generate quiz',
-        });
-    }
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Quiz generation error:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to generate quiz',
+    });
+  }
 });
 
 // ─── Interview Q&A ─────────────────────────────────────────────────────────────
 
 router.post('/interview', async (req: Request, res: Response) => {
-    try {
-        const { topicTitles = [], fullContent = '' } = req.body;
+  try {
+    const { topicTitles = [], fullContent = '' } = req.body;
 
-        const systemPrompt = `You are an expert technical interviewer. Return ONLY valid JSON — no markdown, no commentary.
+    const systemPrompt = `You are an expert technical interviewer. Return ONLY valid JSON — no markdown, no commentary.
 
 Schema:
 [
@@ -123,7 +123,7 @@ Schema:
   }
 ]`;
 
-        const prompt = `Generate 15 interview questions for a candidate who studied: ${topicTitles.join(', ')}
+    const prompt = `Generate 15 interview questions for a candidate who studied: ${topicTitles.join(', ')}
 
 Content reference:
 """
@@ -136,16 +136,16 @@ Include:
 - 5 practical questions (real-world scenarios, problem-solving)
 Mix junior, mid, and senior level questions. Include strong follow-up questions.`;
 
-        const data = await llmService.generateJSON<any[]>(prompt, systemPrompt);
+    const data = await llmService.generateJSONLocal<any[]>(prompt, systemPrompt);
 
-        res.json({ success: true, data });
-    } catch (error) {
-        console.error('Interview generation error:', error);
-        res.status(500).json({
-            success: false,
-            error: error instanceof Error ? error.message : 'Failed to generate interview Q&A',
-        });
-    }
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Interview generation error:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to generate interview Q&A',
+    });
+  }
 });
 
 export default router;

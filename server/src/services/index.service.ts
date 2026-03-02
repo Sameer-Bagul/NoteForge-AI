@@ -1,9 +1,13 @@
 import { v4 as uuidv4 } from 'uuid';
-import { VideoTranscript, UnifiedIndex, TopicNode, SubTopic, JobOptions, CreativityLevel } from '../types';
-import { multiLlmService as llmService } from './multi-llm.service';
-import { chunkText } from '../utils/youtube';
+import { VideoTranscript, UnifiedIndex, TopicNode, SubTopic, JobOptions, CreativityLevel } from '../types/index.js';
+import { multiLlmService as llmService } from './multi-llm.service.js';
+import { chunkText } from '../utils/youtube.js';
 import * as fs from 'fs';
 import * as path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const STORAGE_DIR = path.join(__dirname, '../../storage/indexes');
 
@@ -105,7 +109,7 @@ Focus on:
 
     for (let i = 0; i < chunks.length; i += CONCURRENCY) {
       const batch = chunks.slice(i, i + CONCURRENCY);
-      const promises = batch.map(async (chunk, batchIdx) => {
+      const promises = batch.map(async (chunk: string, batchIdx: number) => {
         const globalIdx = i + batchIdx;
         const prompt = `Analyze this video transcript excerpt and extract the main topics discussed.${userNotesSection}
 
@@ -143,7 +147,7 @@ IMPORTANT:
       });
 
       const results = await Promise.all(promises);
-      results.forEach(topics => allTopics.push(...topics));
+      results.forEach((topics: RawTopic[]) => allTopics.push(...topics));
     }
 
     // Deduplicate topics within this video
@@ -260,16 +264,16 @@ RULES:
     }
 
     // Convert to TopicNode array
-    const transcriptMap = new Map(transcripts.map(t => [t.videoId, t]));
+    const transcriptMap = new Map(transcripts.map((t: VideoTranscript) => [t.videoId, t]));
 
-    return Array.from(topicMap.values()).map((topic, index): TopicNode => ({
+    return Array.from(topicMap.values()).map((topic: any, index: number): TopicNode => ({
       id: uuidv4(),
       title: topic.title,
       description: topic.description,
-      subtopics: Array.from(topic.subtopics).map(st => ({
+      subtopics: Array.from(topic.subtopics as Set<string>).map((st: string) => ({
         id: uuidv4(),
         title: st,
-        videoSources: Array.from(topic.videoSources)
+        videoSources: Array.from(topic.videoSources as Set<string>)
       })),
       videoSources: Array.from(topic.videoSources),
       order: index
@@ -331,7 +335,7 @@ Return a JSON array of the topic numbers in the correct order:
 
     return topics
       .filter(topic => topic && typeof topic === 'object')
-      .map(topic => ({
+      .map((topic: any) => ({
         title: topic.title || topic.name || 'Untitled Topic',
         description: topic.description || topic.desc || '',
         subtopics: Array.isArray(topic.subtopics)

@@ -6,6 +6,8 @@ const STORAGE_KEY = 'noteforge_ai_settings';
 interface SettingsContextValue {
     settings: AppSettings;
     updateProviders: (providers: ProviderConfig[]) => void;
+    updateTaskMapping: (mapping: AppSettings['taskMapping']) => void;
+    updateSettings: (updates: Partial<AppSettings>) => void;
     saveToBackend: () => Promise<void>;
     isSettingsOpen: boolean;
     openSettings: () => void;
@@ -44,7 +46,10 @@ function loadFromStorage(): AppSettings {
             };
         });
 
-        return { providers: mergedProviders };
+        return {
+            providers: mergedProviders,
+            taskMapping: parsed.taskMapping || DEFAULT_SETTINGS.taskMapping
+        };
     } catch {
         return DEFAULT_SETTINGS;
     }
@@ -71,10 +76,28 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
     const updateProviders = useCallback((providers: ProviderConfig[]) => {
-        const next = { ...settings, providers };
-        setSettings(next);
-        saveToStorage(next);
-    }, [settings]);
+        setSettings(prev => {
+            const next = { ...prev, providers };
+            saveToStorage(next);
+            return next;
+        });
+    }, []);
+
+    const updateTaskMapping = useCallback((taskMapping: AppSettings['taskMapping']) => {
+        setSettings(prev => {
+            const next = { ...prev, taskMapping };
+            saveToStorage(next);
+            return next;
+        });
+    }, []);
+
+    const updateSettings = useCallback((updates: Partial<AppSettings>) => {
+        setSettings(prev => {
+            const next = { ...prev, ...updates };
+            saveToStorage(next);
+            return next;
+        });
+    }, []);
 
     const syncToBackend = async (s: AppSettings) => {
         await fetch(`${API_BASE}/settings`, {
@@ -100,6 +123,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         <SettingsContext.Provider value={{
             settings,
             updateProviders,
+            updateTaskMapping,
+            updateSettings,
             saveToBackend,
             isSettingsOpen,
             openSettings,

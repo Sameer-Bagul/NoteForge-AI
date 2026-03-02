@@ -137,25 +137,38 @@ function ShortQuestion({ q, index }: { q: Question; index: number }) {
     );
 }
 
-export function QuizTab({ topicTitles, fullContent }: QuizTabProps) {
-    const [questions, setQuestions] = useState<Question[]>([]);
+interface QuizTabProps {
+    notebookId?: string;
+    topicTitles: string[];
+    fullContent: string;
+    existingQuiz?: Question[];
+}
+
+export function QuizTab({ notebookId, topicTitles, fullContent, existingQuiz }: QuizTabProps) {
+    const [questions, setQuestions] = useState<Question[]>(existingQuiz || []);
     const [loading, setLoading] = useState(false);
-    const [generated, setGenerated] = useState(false);
+    const [generated, setGenerated] = useState(!!existingQuiz && existingQuiz.length > 0);
     const [error, setError] = useState<string | null>(null);
     const [filter, setFilter] = useState<'all' | 'mcq' | 'short'>('all');
 
     const generate = useCallback(async () => {
         setLoading(true); setError(null);
         try {
-            const data = await api.generateQuiz(topicTitles, fullContent);
-            setQuestions(Array.isArray(data) ? data : []);
+            const data = await api.generateQuiz(topicTitles, fullContent.slice(0, 4000));
+            const quizData = Array.isArray(data) ? data : [];
+            setQuestions(quizData);
             setGenerated(true);
+
+            // Persist to backend if we have a notebookId
+            if (notebookId && quizData.length > 0) {
+                await api.updateNotebook(notebookId, { quiz: quizData });
+            }
         } catch {
             setError('Failed to generate quiz. Please try again.');
         } finally {
             setLoading(false);
         }
-    }, [topicTitles, fullContent]);
+    }, [notebookId, topicTitles, fullContent]);
 
     const filtered = filter === 'all' ? questions : questions.filter(q => q.type === filter);
 

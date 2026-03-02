@@ -100,6 +100,22 @@ export const api = {
     return result.data;
   },
 
+  async updateNotebook(notebookId: string, updates: Partial<Notebook>): Promise<Notebook> {
+    log('Updating notebook:', notebookId);
+    const response = await fetch(`${API_BASE}/process/notebook/${notebookId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates),
+    });
+    if (!response.ok) {
+      const error = await response.text();
+      console.error('API Error:', error);
+      throw new Error('Failed to update notebook');
+    }
+    const result = await response.json();
+    return result.data;
+  },
+
   async checkHealth(): Promise<{ status: string; services: { llm: string; activeProvider?: string } }> {
     const response = await fetch(`${API_BASE}/health`);
     if (!response.ok) throw new Error('Health check failed');

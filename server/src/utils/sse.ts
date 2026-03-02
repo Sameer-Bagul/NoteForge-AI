@@ -20,12 +20,8 @@ export class SSEStream {
     }
 
     sendEvent(event: string, data: any) {
-        const payload = {
-            event,
-            data,
-            timestamp: new Date().toISOString()
-        };
-        this.send(`data: ${JSON.stringify(payload)}\n\n`);
+        this.send(`event: ${event}\n`);
+        this.send(`data: ${JSON.stringify(data)}\n\n`);
     }
 
     sendDelta(text: string) {

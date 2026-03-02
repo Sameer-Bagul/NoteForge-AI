@@ -1,9 +1,13 @@
 import axios from 'axios';
 import { jsonrepair } from 'jsonrepair';
-import { AIProvider, AppSettings, LLMMessage, LLMResponse, ProviderConfig } from '../types';
+import { AIProvider, AppSettings, LLMMessage, LLMResponse, ProviderConfig, TaskMapping } from '../types/index.js';
 import * as fs from 'fs';
 import * as path from 'path';
-import { cacheService } from './cache.service';
+import { fileURLToPath } from 'url';
+import { cacheService } from './cache.service.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // ─── Default Settings ──────────────────────────────────────────────────────────
 
@@ -43,6 +47,11 @@ const DEFAULT_SETTINGS: AppSettings = {
             priority: 2,
         },
     ],
+    taskMapping: {
+        notes: 'auto',
+        indexing: 'auto',
+        features: 'auto',
+    },
 };
 
 // ─── Settings File Persistence ────────────────────────────────────────────────
@@ -55,22 +64,25 @@ function loadSettingsFromFile(): AppSettings {
             const raw = fs.readFileSync(SETTINGS_FILE, 'utf-8');
             const saved = JSON.parse(raw) as AppSettings;
             // Merge: start from defaults, overlay saved values so new providers/fields always appear
-            const defaultMap = new Map(DEFAULT_SETTINGS.providers.map(p => [p.provider, p]));
-            const savedMap = new Map(saved.providers.map(p => [p.provider, p]));
-            const merged = Array.from(defaultMap.keys()).map(key => {
+            const defaultMap = new Map(DEFAULT_SETTINGS.providers.map((p: ProviderConfig) => [p.provider, p]));
+            const savedMap = new Map(saved.providers.map((p: ProviderConfig) => [p.provider, p]));
+            const merged = Array.from(defaultMap.keys()).map((key: AIProvider) => {
                 const def = defaultMap.get(key)!;
-                const sv = savedMap.get(key as AIProvider);
+                const sv = savedMap.get(key);
                 if (!sv) return def;
                 return {
                     ...def,
                     ...sv,
-                    model: sv.model || def.model,
-                    indexingModel: sv.indexingModel || def.indexingModel,
-                    baseUrl: sv.baseUrl || def.baseUrl,
+                    model: (sv as any).model || (def as any).model,
+                    indexingModel: (sv as any).indexingModel || (def as any).indexingModel,
+                    baseUrl: (sv as any).baseUrl || (def as any).baseUrl,
                 };
             });
             console.log('[MultiLLM] Loaded settings from file:', merged.map(p => `${p.provider}(${p.enabled ? 'ON' : 'off'})`).join(', '));
-            return { providers: merged };
+            return {
+                providers: merged,
+                taskMapping: saved.taskMapping || DEFAULT_SETTINGS.taskMapping
+            };
         }
     } catch (e) {
         console.warn('[MultiLLM] Could not read settings file, using defaults:', e);
@@ -98,23 +110,26 @@ export function getSettings(): AppSettings {
 
 export function updateSettings(settings: AppSettings): void {
     // Merge with defaults to ensure all fields (like indexingModel) are preserved
-    const defaultMap = new Map(DEFAULT_SETTINGS.providers.map(p => [p.provider, p]));
-    const incomingMap = new Map(settings.providers.map(p => [p.provider, p]));
+    const defaultMap = new Map(DEFAULT_SETTINGS.providers.map((p: ProviderConfig) => [p.provider, p]));
+    const incomingMap = new Map(settings.providers.map((p: ProviderConfig) => [p.provider, p]));
 
-    const merged = Array.from(defaultMap.keys()).map(key => {
+    const merged = Array.from(defaultMap.keys()).map((key: AIProvider) => {
         const def = defaultMap.get(key)!;
-        const inc = incomingMap.get(key as AIProvider);
+        const inc = incomingMap.get(key);
         if (!inc) return def;
         return {
             ...def,
             ...inc,
-            model: inc.model || def.model,
-            indexingModel: inc.indexingModel || def.indexingModel,
-            baseUrl: inc.baseUrl || def.baseUrl,
+            model: (inc as any).model || (def as any).model,
+            indexingModel: (inc as any).indexingModel || (def as any).indexingModel,
+            baseUrl: (inc as any).baseUrl || (def as any).baseUrl,
         };
     });
 
-    currentSettings = { providers: merged };
+    currentSettings = {
+        providers: merged,
+        taskMapping: settings.taskMapping || currentSettings.taskMapping || DEFAULT_SETTINGS.taskMapping
+    };
     saveSettingsToFile(currentSettings);
     console.log('[MultiLLM] Settings updated & saved (with defaults merge):', merged.map(p => `${p.provider}(${p.enabled ? 'on' : 'off'},model=${p.model},turbo=${p.indexingModel || 'none'})`).join(', '));
 }
@@ -286,14 +301,42 @@ async function callProvider(
 // ─── MultiLLMService ───────────────────────────────────────────────────────────
 
 export class MultiLLMService {
-
-    async chat(messages: LLMMessage[]): Promise<LLMResponse> {
+    private getProviderForTask(task: keyof TaskMapping): ProviderConfig | null {
         const settings = getSettings();
+        const mapping = (settings.taskMapping as any)[task];
 
-        // Sort enabled providers by priority (ascending)
-        const providers = settings.providers
+        if (mapping && mapping !== 'auto') {
+            const provider = settings.providers.find(p => p.provider === mapping && p.enabled);
+            if (provider) return provider;
+        }
+
+        // Fallback to priority-based selection if 'auto' or mapped provider is disabled
+        return settings.providers
             .filter(p => p.enabled)
-            .sort((a, b) => a.priority - b.priority);
+            .sort((a, b) => a.priority - b.priority)[0] || null;
+    }
+
+
+    async chat(messages: LLMMessage[], task?: keyof TaskMapping): Promise<LLMResponse> {
+        const settings = getSettings();
+        let providers: ProviderConfig[] = [];
+
+        if (task) {
+            const mapped = this.getProviderForTask(task);
+            if (mapped) {
+                // If a specific task provider is requested, try it first, then others as fallback
+                providers = [
+                    mapped,
+                    ...settings.providers.filter(p => p.enabled && p.provider !== mapped.provider).sort((a, b) => a.priority - b.priority)
+                ];
+            }
+        }
+
+        if (providers.length === 0) {
+            providers = settings.providers
+                .filter(p => p.enabled)
+                .sort((a, b) => a.priority - b.priority);
+        }
 
         if (providers.length === 0) {
             throw new Error('No AI providers are enabled. Please configure at least one provider in Settings.');
@@ -348,11 +391,11 @@ export class MultiLLMService {
         throw new Error(`All AI providers failed:\n${errors.map(e => `  • ${e}`).join('\n')}`);
     }
 
-    async generate(prompt: string, systemPrompt?: string): Promise<LLMResponse> {
+    async generate(prompt: string, systemPrompt?: string, task?: keyof TaskMapping): Promise<LLMResponse> {
         const messages: LLMMessage[] = [];
         if (systemPrompt) messages.push({ role: 'system', content: systemPrompt });
         messages.push({ role: 'user', content: prompt });
-        return this.chat(messages);
+        return this.chat(messages, task);
     }
 
     /**
@@ -360,16 +403,25 @@ export class MultiLLMService {
      * Use for cheap repetitive tasks (topic extraction, query rewriting)
      * to avoid burning cloud API rate limits.
      */
-    async generateLocal(prompt: string, systemPrompt?: string, modelOverride?: string): Promise<LLMResponse> {
+    async generateLocal(prompt: string, systemPrompt?: string, modelOverride?: string, task: keyof TaskMapping = 'indexing'): Promise<LLMResponse> {
         const settings = getSettings();
-        const localProviders = settings.providers
-            .filter(p => p.enabled && (p.provider === 'ollama' || p.provider === 'lmstudio'))
-            .sort((a, b) => a.priority - b.priority);
+        const mappedProvider = this.getProviderForTask(task);
 
-        if (localProviders.length === 0) {
+        // If mapped provider is local, use it.
+        // Otherwise, look for any enabled local provider.
+        let providers: ProviderConfig[] = [];
+        if (mappedProvider && (mappedProvider.provider === 'ollama' || mappedProvider.provider === 'lmstudio')) {
+            providers = [mappedProvider];
+        } else {
+            providers = settings.providers
+                .filter(p => p.enabled && (p.provider === 'ollama' || p.provider === 'lmstudio'))
+                .sort((a, b) => a.priority - b.priority);
+        }
+
+        if (providers.length === 0) {
             // No local provider configured — fall back to full chat (uses cloud)
             console.warn('[MultiLLM] No local provider available, falling back to cloud for local task');
-            return this.generate(prompt, systemPrompt);
+            return this.generate(prompt, systemPrompt, task);
         }
 
         const messages: LLMMessage[] = [];
@@ -377,7 +429,7 @@ export class MultiLLMService {
         messages.push({ role: 'user', content: prompt });
 
         const errors: string[] = [];
-        for (const provider of localProviders) {
+        for (const provider of providers) {
             try {
                 // Model Priority: Override > Provider's IndexingModel > Provider's Primary Model
                 const modelToUse = modelOverride || provider.indexingModel || provider.model;
@@ -402,7 +454,7 @@ export class MultiLLMService {
      * generateJSONLocal — forces Ollama/LMStudio ONLY for JSON tasks.
      * Uses the same repair/cleanup logic as generateJSON.
      */
-    async generateJSONLocal<T>(prompt: string, systemPrompt?: string, modelOverride?: string, retryCount = 0): Promise<T> {
+    async generateJSONLocal<T>(prompt: string, systemPrompt?: string, modelOverride?: string, retryCount: number = 0, task: keyof TaskMapping = 'indexing'): Promise<T> {
         const cacheKey = `json:local:${modelOverride || 'default'}:${systemPrompt || ''}:${prompt}`;
         const cached = await cacheService.get<T>(cacheKey);
         if (cached) {
@@ -439,7 +491,7 @@ CRITICAL JSON RULES:
                 if (retryCount === 0) {
                     return this.generateJSONLocal<T>(prompt, systemPrompt, modelOverride, 1);
                 }
-                throw new Error('Local LLM returned invalid JSON for topic extraction');
+                throw new Error(`Local LLM returned invalid JSON for task: ${String(task)}`);
             }
         }
     }
@@ -540,9 +592,10 @@ CRITICAL JSON RULES:
      */
     async generateNotesContent(prompt: string, systemPrompt?: string): Promise<LLMResponse> {
         const settings = getSettings();
-        const providers = settings.providers
-            .filter(p => p.enabled)
-            .sort((a, b) => a.priority - b.priority);
+        const mapped = this.getProviderForTask('notes');
+        const providers = mapped
+            ? [mapped, ...settings.providers.filter(p => p.enabled && p.provider !== mapped.provider).sort((a, b) => a.priority - b.priority)]
+            : settings.providers.filter(p => p.enabled).sort((a, b) => a.priority - b.priority);
 
         if (providers.length === 0) {
             throw new Error('No AI providers are enabled. Please configure at least one provider in Settings.');
