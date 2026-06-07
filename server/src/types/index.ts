@@ -245,6 +245,8 @@ export interface TaskMapping {
 export interface AppSettings {
   providers: ProviderConfig[];
   taskMapping: TaskMapping;
+  pineconeApiKey?: string;
+  pineconeIndex?: string;
 }
 
 export interface LLMMessage {

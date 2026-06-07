@@ -1,5 +1,7 @@
 import { ChatOllama, OllamaEmbeddings } from "@langchain/ollama";
 import { MemoryVectorStore } from "langchain/vectorstores/memory";
+import { PineconeStore } from "@langchain/pinecone";
+import { Pinecone as PineconeClient } from "@pinecone-database/pinecone";
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
 import { ChatPromptTemplate } from "@langchain/core/prompts";
 import { Document } from "@langchain/core/documents";
@@ -7,14 +9,29 @@ import { createStuffDocumentsChain } from "langchain/chains/combine_documents";
 import { createRetrievalChain } from "langchain/chains/retrieval";
 import { BM25Retriever } from "@langchain/community/retrievers/bm25";
 import { EnsembleRetriever } from "langchain/retrievers/ensemble";
+import { StateGraph, START, END, Annotation } from "@langchain/langgraph";
 import { VideoTranscript } from "../types/index.js";
+import { getSettings } from "./multi-llm.service.js";
+
+// Define the State for the LangGraph Agent
+const GraphState = Annotation.Root({
+    topic: Annotation<string>(),
+    optimizedQuery: Annotation<string>(),
+    context: Annotation<string>(),
+    draftAnswer: Annotation<string>(),
+    finalAnswer: Annotation<string>(),
+    hasHallucinations: Annotation<boolean>(),
+    loopCount: Annotation<number>({ reducer: (a, b) => b, default: () => 0 }),
+    onProgress: Annotation<any>(), // Function to report progress
+});
 
 export class RAGService {
     private llm: ChatOllama;
     private embeddings: OllamaEmbeddings;
-    private vectorStore?: MemoryVectorStore;
+    private vectorStore?: any; // MemoryVectorStore | PineconeStore
     private retriever?: EnsembleRetriever;
     private ragChain?: any;
+    private pineconeClient?: PineconeClient;
 
     constructor() {
         this.llm = new ChatOllama({
@@ -50,7 +67,6 @@ export class RAGService {
                 
                 // Group segments into ~800 character chunks or if it's the last segment
                 if (currentChunkText.length >= 800 || i === t.segments.length - 1) {
-                    // Format timestamp
                     const minutes = Math.floor(chunkStartTime / 60);
                     const seconds = Math.floor(chunkStartTime % 60);
                     const timestampStr = `[${minutes}:${seconds.toString().padStart(2, '0')}]`;
@@ -73,7 +89,26 @@ export class RAGService {
         if (onProgress) onProgress(`Created ${allDocs.length} timestamped chunks.`);
         console.log(`[RAG] Created ${allDocs.length} chunks.`);
 
-        this.vectorStore = await MemoryVectorStore.fromDocuments(allDocs, this.embeddings);
+        // Initialize Vector Store (Pinecone or Memory)
+        const settings = getSettings();
+        if (settings.pineconeApiKey && settings.pineconeIndex) {
+            if (onProgress) onProgress("Connecting to Pinecone Cloud Storage...");
+            console.log("[RAG] Initializing Pinecone Store...");
+            try {
+                this.pineconeClient = new PineconeClient({ apiKey: settings.pineconeApiKey });
+                const pineconeIndex = this.pineconeClient.Index(settings.pineconeIndex);
+                this.vectorStore = await PineconeStore.fromDocuments(allDocs, this.embeddings, {
+                    pineconeIndex,
+                    maxConcurrency: 5,
+                });
+            } catch (err) {
+                console.error("[RAG] Pinecone init failed. Falling back to Memory.", err);
+                if (onProgress) onProgress("Pinecone connection failed. Falling back to local memory.");
+                this.vectorStore = await MemoryVectorStore.fromDocuments(allDocs, this.embeddings);
+            }
+        } else {
+            this.vectorStore = await MemoryVectorStore.fromDocuments(allDocs, this.embeddings);
+        }
 
         const vectorRetriever = this.vectorStore.asRetriever({ k: 20 });
         const bm25Retriever = await BM25Retriever.fromDocuments(allDocs, { k: 20 });
@@ -107,57 +142,106 @@ export class RAGService {
     }
 
     /**
-     * Transform query for better retrieval
+     * LangGraph Agentic Workflow Nodes
      */
-    async rewriteQuery(query: string): Promise<string> {
-        const rewritePrompt = `Transform this user topic into a search query suitable for finding relevant sections in a video transcript. Return ONLY the search query.
-        Topic: ${query}`;
-
+    private async rewriteNode(state: typeof GraphState.State) {
+        if (state.onProgress) state.onProgress("Agent: Transforming query for better retrieval...");
+        const rewritePrompt = `Transform this user topic into a search query suitable for finding relevant sections in a video transcript. Return ONLY the search query. Topic: ${state.topic}`;
         const response = await this.llm.invoke(rewritePrompt);
-        return (response.content as string).trim();
+        return { optimizedQuery: (response.content as string).trim() };
+    }
+
+    private async retrieveAndDraftNode(state: typeof GraphState.State) {
+        if (state.onProgress) state.onProgress("Agent: Retrieving context & drafting answer...");
+        if (!this.ragChain) throw new Error("RAG Chain not initialized");
+        
+        const result = await this.ragChain.invoke({ input: state.optimizedQuery });
+        return { 
+            draftAnswer: result.answer, 
+            context: result.context.map((d: any) => d.pageContent).join('\n---\n') 
+        };
+    }
+
+    private async critiqueNode(state: typeof GraphState.State) {
+        if (state.onProgress) state.onProgress("Agent: Self-critiquing draft for hallucinations...");
+        const verifyPrompt = `
+            Context from Video Transcripts:
+            ${state.context}
+            
+            Draft Note:
+            ${state.draftAnswer}
+            
+            CHECKLIST FOR VERIFICATION:
+            1. Is every claim in the Draft Note strictly supported by the Context?
+            2. Are there any hallucinations (info NOT in the context)?
+            
+            Respond strictly in JSON format:
+            {
+               "hasHallucinations": boolean,
+               "verifiedNote": "the corrected note strictly grounded in context, or the exact draft if accurate"
+            }
+        `;
+        
+        try {
+            // Force JSON format for parsing
+            const llmJson = this.llm.bind({ format: "json" });
+            const finalNote = await llmJson.invoke(verifyPrompt);
+            const parsed = JSON.parse(finalNote.content as string);
+            
+            return {
+                hasHallucinations: parsed.hasHallucinations,
+                finalAnswer: parsed.verifiedNote,
+                loopCount: state.loopCount + 1
+            };
+        } catch (err) {
+            console.error("[RAG Agent] Critique JSON parse failed, bypassing:", err);
+            return {
+                hasHallucinations: false,
+                finalAnswer: state.draftAnswer,
+                loopCount: state.loopCount + 1
+            };
+        }
+    }
+
+    private shouldLoop(state: typeof GraphState.State) {
+        // If hallucinations are found and we haven't looped too many times, re-retrieve.
+        if (state.hasHallucinations && state.loopCount < 2) {
+            if (state.onProgress) state.onProgress("Agent: Hallucinations detected! Retrying retrieval...");
+            return "rewriteNode"; // Route back to the start
+        }
+        return END; // Otherwise finish
     }
 
     /**
-     * Retrieve context and generate answer with self-correction
+     * Retrieve context and generate answer using LangGraph
      */
     async generateGroundedNotes(topic: string, transcripts: VideoTranscript[], onProgress?: (msg: string) => void): Promise<string> {
-        // If the context is new or different, we should potentially re-index
-        // For simplicity in this master implementation, we re-index if not already done
         if (!this.ragChain) {
             await this.indexTranscripts(transcripts, onProgress);
         }
 
-        // 1. Rewrite query
-        if (onProgress) onProgress("Transforming query...");
-        const optimizedQuery = await this.rewriteQuery(topic);
+        // Define the StateGraph Workflow
+        const workflow = new StateGraph(GraphState)
+            .addNode("rewriteNode", this.rewriteNode.bind(this))
+            .addNode("retrieveAndDraftNode", this.retrieveAndDraftNode.bind(this))
+            .addNode("critiqueNode", this.critiqueNode.bind(this))
+            .addEdge(START, "rewriteNode")
+            .addEdge("rewriteNode", "retrieveAndDraftNode")
+            .addEdge("retrieveAndDraftNode", "critiqueNode")
+            .addConditionalEdges("critiqueNode", this.shouldLoop.bind(this));
 
-        // 2. Generate initial answer
-        if (onProgress) onProgress("Retrieving context & generating draft...");
-        const result = await this.ragChain.invoke({ input: optimizedQuery });
-        const draftAnswer = result.answer;
-        const context = result.context.map((d: any) => d.pageContent).join('\n---\n');
+        const app = workflow.compile();
 
-        // 3. Self-correction loop
-        const verifyPrompt = `
-            Context from Video Transcripts:
-            ${context}
-            
-            Draft Note:
-            ${draftAnswer}
-            
-            CHECKLIST FOR VERIFICATION:
-            1. Is every claim in the Draft Note supported by the Context?
-            2. Are there any hallucinations (info NOT in the context)?
-            
-            If the note is accurate, repeat it exactly.
-            If there are hallucinations, rewrite it to be strictly grounded in the context.
-            
-            Verified Note:
-        `;
+        if (onProgress) onProgress("Agent: Starting autonomous workflow...");
+        const finalState = await app.invoke({
+            topic,
+            loopCount: 0,
+            hasHallucinations: false,
+            onProgress
+        });
 
-        if (onProgress) onProgress("Verifying & self-correcting draft...");
-        const finalNote = await this.llm.invoke(verifyPrompt);
-        return (finalNote.content as string).trim();
+        if (onProgress) onProgress("Agent: Workflow complete.");
+        return finalState.finalAnswer || finalState.draftAnswer || "";
     }
 
     /**
@@ -169,7 +253,10 @@ export class RAGService {
         }
 
         if (onProgress) onProgress("Retrieving dense context...");
-        const optimizedQuery = await this.rewriteQuery(query);
+        const rewritePrompt = `Transform this user topic into a search query suitable for finding relevant sections in a video transcript. Return ONLY the search query. Topic: ${query}`;
+        const response = await this.llm.invoke(rewritePrompt);
+        const optimizedQuery = (response.content as string).trim();
+        
         const docs = await this.retriever!.getRelevantDocuments(optimizedQuery);
         const selectedDocs = docs.slice(0, k);
         return selectedDocs.map(d => `[Source: ${d.metadata.title}] ${d.pageContent}`).join('\n\n---\n\n');

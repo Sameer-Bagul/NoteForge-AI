@@ -94,7 +94,9 @@ function loadSettingsFromFile(): AppSettings {
             console.log('[MultiLLM] Loaded settings from file:', merged.map(p => `${p.provider}(${p.enabled ? 'ON' : 'off'})`).join(', '));
             return {
                 providers: merged,
-                taskMapping: saved.taskMapping || DEFAULT_SETTINGS.taskMapping
+                taskMapping: saved.taskMapping || DEFAULT_SETTINGS.taskMapping,
+                pineconeApiKey: saved.pineconeApiKey,
+                pineconeIndex: saved.pineconeIndex,
             };
         }
     } catch (e) {
@@ -147,7 +149,9 @@ export function updateSettings(settings: AppSettings): void {
 
     currentSettings = {
         providers: merged,
-        taskMapping: settings.taskMapping || currentSettings.taskMapping || DEFAULT_SETTINGS.taskMapping
+        taskMapping: settings.taskMapping || currentSettings.taskMapping || DEFAULT_SETTINGS.taskMapping,
+        pineconeApiKey: settings.pineconeApiKey || currentSettings.pineconeApiKey,
+        pineconeIndex: settings.pineconeIndex || currentSettings.pineconeIndex,
     };
     saveSettingsToFile(currentSettings);
     console.log('[MultiLLM] Settings updated & saved (with defaults merge):', merged.map(p => `${p.provider}(${p.enabled ? 'on' : 'off'},model=${p.model},turbo=${p.indexingModel || 'none'})`).join(', '));

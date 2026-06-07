@@ -11,6 +11,8 @@ export class SettingsController {
         apiKey: p.apiKey ? `${p.apiKey.slice(0, 6)}${'*'.repeat(Math.max(0, p.apiKey.length - 6))}` : '',
       })),
       taskMapping: settings.taskMapping,
+      pineconeApiKey: settings.pineconeApiKey ? `${settings.pineconeApiKey.slice(0, 6)}...` : undefined,
+      pineconeIndex: settings.pineconeIndex,
     };
   }
 
@@ -37,7 +39,7 @@ export class SettingsController {
   // POST /api/settings — update settings
   static updateSettings(req: Request, res: Response) {
     try {
-      const { providers, taskMapping } = req.body as AppSettings;
+      const { providers, taskMapping, pineconeApiKey, pineconeIndex } = req.body as AppSettings;
 
       if (!Array.isArray(providers)) {
         return res.status(400).json({ success: false, error: 'providers array is required' });
@@ -63,7 +65,9 @@ export class SettingsController {
 
       updateSettings({
         providers: sanitized,
-        taskMapping: taskMapping || { notes: 'auto', indexing: 'auto', features: 'auto' }
+        taskMapping: taskMapping || { notes: 'auto', indexing: 'auto', features: 'auto' },
+        pineconeApiKey: typeof pineconeApiKey === 'string' ? pineconeApiKey : undefined,
+        pineconeIndex: typeof pineconeIndex === 'string' ? pineconeIndex : undefined,
       });
 
       res.json({
@@ -71,7 +75,9 @@ export class SettingsController {
         message: 'Settings updated',
         data: SettingsController.redactSettings({
           providers: sanitized,
-          taskMapping: taskMapping || { notes: 'auto', indexing: 'auto', features: 'auto' }
+          taskMapping: taskMapping || { notes: 'auto', indexing: 'auto', features: 'auto' },
+          pineconeApiKey: typeof pineconeApiKey === 'string' ? pineconeApiKey : undefined,
+          pineconeIndex: typeof pineconeIndex === 'string' ? pineconeIndex : undefined,
         }),
       });
     } catch (error) {

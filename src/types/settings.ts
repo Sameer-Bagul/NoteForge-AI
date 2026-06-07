@@ -19,6 +19,8 @@ export interface TaskMapping {
 export interface AppSettings {
     providers: ProviderConfig[];
     taskMapping: TaskMapping;
+    pineconeApiKey?: string;
+    pineconeIndex?: string;
 }
 
 export const PROVIDER_LABELS: Record<AIProvider, string> = {

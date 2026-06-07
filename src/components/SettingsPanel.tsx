@@ -259,6 +259,8 @@ export function SettingsPanel() {
     const { settings, updateSettings, saveToBackend, isSettingsOpen, closeSettings, isSaving } = useSettings();
     const [localProviders, setLocalProviders] = useState(settings.providers);
     const [localTaskMapping, setLocalTaskMapping] = useState(settings.taskMapping);
+    const [localPineconeApiKey, setLocalPineconeApiKey] = useState(settings.pineconeApiKey || '');
+    const [localPineconeIndex, setLocalPineconeIndex] = useState(settings.pineconeIndex || '');
     const [saved, setSaved] = useState(false);
     const [ollamaModels, setOllamaModels] = useState<string[]>([]);
     const [fetchingModels, setFetchingModels] = useState(false);
@@ -294,7 +296,9 @@ export function SettingsPanel() {
         const withPriority = localProviders.map((p, i) => ({ ...p, priority: i + 1 }));
         updateSettings({
             providers: withPriority,
-            taskMapping: localTaskMapping
+            taskMapping: localTaskMapping,
+            pineconeApiKey: localPineconeApiKey,
+            pineconeIndex: localPineconeIndex,
         });
         await saveToBackend();
         setSaved(true);
@@ -321,6 +325,8 @@ export function SettingsPanel() {
             fetchOllamaModels();
             setLocalProviders(settings.providers);
             setLocalTaskMapping(settings.taskMapping);
+            setLocalPineconeApiKey(settings.pineconeApiKey || '');
+            setLocalPineconeIndex(settings.pineconeIndex || '');
         }
     }, [isSettingsOpen, settings.providers, settings.taskMapping, fetchOllamaModels]);
 
@@ -359,6 +365,12 @@ export function SettingsPanel() {
                                 className="h-full rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-0 text-sm font-bold uppercase tracking-widest transition-all"
                             >
                                 Task Assignment
+                            </TabsTrigger>
+                            <TabsTrigger
+                                value="storage"
+                                className="h-full rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-0 text-sm font-bold uppercase tracking-widest transition-all"
+                            >
+                                Vector Storage
                             </TabsTrigger>
                         </TabsList>
                     </div>
@@ -447,6 +459,40 @@ export function SettingsPanel() {
                                     "Auto" dynamically selects the highest priority enabled provider.
                                     Explicit pinning ensures consistent behavior for specialized tasks.
                                 </p>
+                            </div>
+                        </TabsContent>
+
+                        <TabsContent value="storage" className="p-6 m-0 space-y-8 outline-none max-w-2xl mx-auto">
+                            <div className="text-center space-y-2 mb-4">
+                                <div className="inline-flex p-3 rounded-full bg-primary/10 text-primary mb-2">
+                                    <Cloud className="w-6 h-6" />
+                                </div>
+                                <h3 className="text-lg font-bold tracking-tight">Persistent Vector Storage</h3>
+                                <p className="text-sm text-muted-foreground max-w-md mx-auto">
+                                    Configure Pinecone to save video indexes permanently. Leave blank for in-memory storage.
+                                </p>
+                            </div>
+
+                            <div className="space-y-6">
+                                <div className="space-y-2">
+                                    <Label className="text-sm font-bold tracking-tight">Pinecone API Key</Label>
+                                    <Input 
+                                        type="password"
+                                        placeholder="pcsk_..."
+                                        value={localPineconeApiKey}
+                                        onChange={e => { setLocalPineconeApiKey(e.target.value); setSaved(false); }}
+                                    />
+                                    <p className="text-[11px] text-muted-foreground">Required for cloud persistence.</p>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label className="text-sm font-bold tracking-tight">Pinecone Index Name</Label>
+                                    <Input 
+                                        placeholder="noteforge-index"
+                                        value={localPineconeIndex}
+                                        onChange={e => { setLocalPineconeIndex(e.target.value); setSaved(false); }}
+                                    />
+                                    <p className="text-[11px] text-muted-foreground">The name of the index you created in your Pinecone dashboard (Dimensions: 768 for Nomic, 1536 for OpenAI).</p>
+                                </div>
                             </div>
                         </TabsContent>
                     </div>
