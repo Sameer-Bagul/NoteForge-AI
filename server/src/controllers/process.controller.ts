@@ -9,13 +9,14 @@ import { SSEStream } from '../utils/sse.js';
 export class ProcessController {
   static async startJob(req: Request, res: Response) {
     try {
-      const { url, title, userNotes, creativityLevel } = req.body;
+      const { url, title, userNotes, creativityLevel, generationMode } = req.body;
 
       console.log(`\n📨 Received processing request:`);
       console.log(`   URL: ${url}`);
       console.log(`   Title: ${title || 'N/A'}`);
       console.log(`   User Notes: ${userNotes ? userNotes.slice(0, 60) + '...' : 'None'}`);
       console.log(`   Creativity Level: ${creativityLevel ?? 2}`);
+      console.log(`   Generation Mode: ${generationMode || 'topical'}`);
 
       if (!url) {
         console.log(`❌ Error: URL is required`);
@@ -40,6 +41,7 @@ export class ProcessController {
       const options = {
         userNotes: typeof userNotes === 'string' && userNotes.trim() ? userNotes.trim() : undefined,
         creativityLevel: [1, 2, 3, 4].includes(creativityLevel) ? creativityLevel : 2,
+        generationMode: (generationMode === 'chronological' ? 'chronological' : 'topical') as 'topical' | 'chronological',
       };
 
       // Create job

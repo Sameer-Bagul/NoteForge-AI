@@ -35,25 +35,32 @@ export class IndexService {
     if (options?.userNotes) console.log(`  User notes: ${options.userNotes.slice(0, 80)}`);
     if (options?.creativityLevel) console.log(`  Creativity level: ${options.creativityLevel}`);
 
-    // Step 1: Extract topics from each video
-    const videoTopicsList: VideoTopics[] = [];
+    let orderedTopics: TopicNode[] = [];
 
-    for (const transcript of transcripts) {
-      console.log(`Analyzing topics in: ${transcript.videoInfo.title}`);
-      const topics = await this.extractVideoTopics(transcript, options);
-      videoTopicsList.push({
-        videoId: transcript.videoId,
-        topics
-      });
+    if (options?.generationMode === 'chronological') {
+      console.log('Using Lecture Mode (Chronological Indexing)...');
+      orderedTopics = await this.generateChronologicalIndex(transcripts);
+    } else {
+      // Step 1: Extract topics from each video
+      const videoTopicsList: VideoTopics[] = [];
+
+      for (const transcript of transcripts) {
+        console.log(`Analyzing topics in: ${transcript.videoInfo.title}`);
+        const topics = await this.extractVideoTopics(transcript, options);
+        videoTopicsList.push({
+          videoId: transcript.videoId,
+          topics
+        });
+      }
+
+      // Step 2: Merge and deduplicate topics across videos
+      console.log('Merging topics across all videos...');
+      const unifiedTopics = await this.mergeTopics(videoTopicsList, transcripts);
+
+      // Step 3: Order topics from basic to advanced
+      console.log('Ordering topics...');
+      orderedTopics = await this.orderTopics(unifiedTopics);
     }
-
-    // Step 2: Merge and deduplicate topics across videos
-    console.log('Merging topics across all videos...');
-    const unifiedTopics = await this.mergeTopics(videoTopicsList, transcripts);
-
-    // Step 3: Order topics from basic to advanced
-    console.log('Ordering topics...');
-    const orderedTopics = await this.orderTopics(unifiedTopics);
 
     const index: UnifiedIndex = {
       id: uuidv4(),
@@ -69,6 +76,70 @@ export class IndexService {
     this.storeIndex(index);
 
     return index;
+  }
+
+  // Generate chronological chunks (Lecture Mode)
+  private async generateChronologicalIndex(transcripts: VideoTranscript[]): Promise<TopicNode[]> {
+    const CHUNK_DURATION = 5 * 60; // 5 minutes
+    const orderedTopics: TopicNode[] = [];
+    let topicIndex = 1;
+
+    for (const transcript of transcripts) {
+      let currentChunkText = "";
+      let chunkStartTime = 0;
+      let chunkEndTime = 0;
+
+      const processChunk = async (text: string, start: number, end: number) => {
+        if (!text.trim()) return;
+
+        const minutes = Math.floor(start / 60);
+        const seconds = Math.floor(start % 60);
+        const timestampStr = `[${minutes}:${seconds.toString().padStart(2, '0')}]`;
+
+        // Ask LLM to generate a single chapter title for this text
+        const prompt = `Read the following video transcript segment starting at ${timestampStr}. Provide a concise, descriptive chapter title for this segment.
+Transcript:
+"""
+${text.slice(0, 3000)}...
+"""
+
+Return ONLY a valid JSON object in this format: {"title": "Chapter Title Here"}`;
+
+        try {
+          const result = await llmService.generateJSONLocal<{ title: string }>(prompt);
+          orderedTopics.push({
+            id: `chronological-${uuidv4()}`,
+            title: `${timestampStr} ${result?.title || 'Chapter ' + topicIndex}`,
+            description: `Chronological segment from ${start}s to ${end}s`,
+            subtopics: [],
+            videoSources: [transcript.videoId],
+            order: topicIndex++
+          });
+        } catch (e) {
+          orderedTopics.push({
+            id: `chronological-${uuidv4()}`,
+            title: `${timestampStr} Chapter ${topicIndex}`,
+            description: `Chronological segment`,
+            subtopics: [],
+            videoSources: [transcript.videoId],
+            order: topicIndex++
+          });
+        }
+      };
+
+      for (let i = 0; i < transcript.segments.length; i++) {
+        const seg = transcript.segments[i];
+        if (currentChunkText === "") chunkStartTime = seg.start;
+        currentChunkText += seg.text + " ";
+        chunkEndTime = seg.start + seg.duration;
+
+        if (chunkEndTime - chunkStartTime >= CHUNK_DURATION || i === transcript.segments.length - 1) {
+          await processChunk(currentChunkText, chunkStartTime, chunkEndTime);
+          currentChunkText = "";
+        }
+      }
+    }
+    return orderedTopics;
   }
 
   // Extract topics from a single video transcript

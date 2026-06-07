@@ -53,8 +53,8 @@ const Create = () => {
           transition={{ delay: 0.2, duration: 0.4 }}
         >
           <UrlInput
-            onSubmit={async (url, userNotes, creativityLevel) => {
-              const jobId = await startProcessing(url, userNotes, creativityLevel);
+            onSubmit={async (url, userNotes, creativityLevel, generationMode) => {
+              const jobId = await startProcessing(url, userNotes, creativityLevel, generationMode);
               if (jobId) {
                 navigate(`/process/${jobId}`);
               }

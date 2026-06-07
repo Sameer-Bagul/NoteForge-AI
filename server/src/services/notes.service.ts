@@ -91,12 +91,28 @@ Formatting requirements:
 
       if (isCloud) {
         // ─── CLOUD PATH (Gemini / Grok) ──────────────────────────────────────────
-        // Use RAG to get the most dense and relevant chunks, but fetch a large number (e.g. k=50) 
-        // to give the Cloud LLM rich context without stuffing 400k characters blindly.
-        if (onSubProgress) onSubProgress(`Retrieving dense context for ${provider} (Map-Reduce)...`);
-        console.log(`[Notes] Cloud mode (${provider}): using RAG dense context for ${topic.title}`);
-
-        const sourceMaterial = await ragService.retrieveContext(topic.title, transcripts, onSubProgress, 50);
+        let sourceMaterial = '';
+        
+        if (options?.generationMode === 'chronological' && topic.description?.startsWith('Chronological segment from')) {
+            if (onSubProgress) onSubProgress(`Extracting exact chronological chunk for ${provider}...`);
+            console.log(`[Notes] Chronological mode: extracting exact chunk for ${topic.title}`);
+            const match = topic.description.match(/from (\d+)s to (\d+)s/);
+            if (match) {
+               const start = parseInt(match[1]);
+               const end = parseInt(match[2]);
+               const transcript = transcripts[0]; 
+               const segments = transcript.segments.filter(s => s.start >= start && s.start <= end);
+               sourceMaterial = segments.map(s => {
+                   const minutes = Math.floor(s.start / 60);
+                   const seconds = Math.floor(s.start % 60);
+                   return `[${minutes}:${seconds.toString().padStart(2, '0')}] ${s.text}`;
+               }).join('\n');
+            }
+        } else {
+            if (onSubProgress) onSubProgress(`Retrieving dense context for ${provider} (Map-Reduce)...`);
+            console.log(`[Notes] Cloud mode (${provider}): using RAG dense context for ${topic.title}`);
+            sourceMaterial = await ragService.retrieveContext(topic.title, transcripts, onSubProgress, 50);
+        }
 
         const prompt = `Write comprehensive, detailed running notes for: "${topic.title}"${userNotesSection}
 
@@ -118,6 +134,7 @@ Write flowing, deeply detailed notes that:
 5. Weave in practical insights and common pitfalls
 6. Close with a "## Key Takeaways" section
 7. IMPORTANT: Include timestamp citations like [12:34] directly in your paragraphs when explaining a concept derived from the text.
+${options?.generationMode === 'chronological' ? '8. INTERLINKING: Explicitly mention how these concepts connect to earlier chapters if applicable.\n9. ADDED CONTEXT: Inject your own world-knowledge to deeply explain the concepts mentioned in this segment.' : ''}
 
 Be comprehensive and thorough — aim for at least 800 words of rich, educational content.
 Format as markdown.`;
@@ -127,12 +144,28 @@ Format as markdown.`;
 
       } else {
         // ─── LOCAL PATH (Ollama / LMStudio) ──────────────────────────────────────
-        // Use RAG retrieval (Ollama embeddings) to find the most relevant chunks,
-        // then generate notes from them. Also runs the self-correction loop.
-        if (onSubProgress) onSubProgress(`Retrieving context via RAG for ${topic.title}...`);
-        console.log(`[Notes] Local mode (${provider}): using RAG for ${topic.title}`);
-
-        const sourceMaterial = await ragService.retrieveContext(topic.title, transcripts, onSubProgress);
+        let sourceMaterial = '';
+        
+        if (options?.generationMode === 'chronological' && topic.description?.startsWith('Chronological segment from')) {
+            if (onSubProgress) onSubProgress(`Extracting exact chronological chunk for local provider...`);
+            console.log(`[Notes] Chronological mode: extracting exact chunk for ${topic.title}`);
+            const match = topic.description.match(/from (\d+)s to (\d+)s/);
+            if (match) {
+               const start = parseInt(match[1]);
+               const end = parseInt(match[2]);
+               const transcript = transcripts[0]; 
+               const segments = transcript.segments.filter(s => s.start >= start && s.start <= end);
+               sourceMaterial = segments.map(s => {
+                   const minutes = Math.floor(s.start / 60);
+                   const seconds = Math.floor(s.start % 60);
+                   return `[${minutes}:${seconds.toString().padStart(2, '0')}] ${s.text}`;
+               }).join('\n');
+            }
+        } else {
+            if (onSubProgress) onSubProgress(`Retrieving context via RAG for ${topic.title}...`);
+            console.log(`[Notes] Local mode (${provider}): using RAG for ${topic.title}`);
+            sourceMaterial = await ragService.retrieveContext(topic.title, transcripts, onSubProgress);
+        }
 
         const prompt = `Write comprehensive running notes for: "${topic.title}"${userNotesSection}
 
@@ -147,6 +180,7 @@ ${sourceMaterial}
 """
 
 Write flowing, connected notes that cover all subtopics with transitions. Start with a short framing paragraph, expand each subtopic in prose, and close with Key Takeaways bullets.
+${options?.generationMode === 'chronological' ? 'Also seamlessly add INTERLINKING to previous concepts and inject ADDITIONAL world-knowledge CONTEXT.' : ''}
 Format as markdown. Keep it rich, educational, and readable.`;
 
         const initialResponse = await llmService.generate(prompt, systemPrompt);
@@ -209,17 +243,34 @@ Use markdown: ## headings, paragraphs, and \`\`\`mermaid or code blocks.`;
 
     const isCloud = llmService.isPrimaryCloudProvider();
     let prompt: string;
+    let sourceMaterial = '';
 
-    if (isCloud) {
-      const fullTranscriptText = transcripts
-        .map(t => `### Source: ${t.videoInfo?.title || t.videoId}\n\n${t.fullText}`)
-        .join('\n\n---\n\n')
-        .slice(0, 300_000);
-
-      prompt = `Write comprehensive running notes for: "${topic.title}" from this transcript:\n\n${fullTranscriptText}`;
+    if (options?.generationMode === 'chronological' && topic.description?.startsWith('Chronological segment from')) {
+        const match = topic.description.match(/from (\d+)s to (\d+)s/);
+        if (match) {
+           const start = parseInt(match[1]);
+           const end = parseInt(match[2]);
+           const transcript = transcripts[0]; 
+           const segments = transcript.segments.filter(s => s.start >= start && s.start <= end);
+           sourceMaterial = segments.map(s => {
+               const minutes = Math.floor(s.start / 60);
+               const seconds = Math.floor(s.start % 60);
+               return `[${minutes}:${seconds.toString().padStart(2, '0')}] ${s.text}`;
+           }).join('\n');
+        }
+        prompt = `Write comprehensive running notes for: "${topic.title}" based on this chronological excerpt:\n\n${sourceMaterial}\n\nInclude INTERLINKING to previous concepts and inject additional world-knowledge context if applicable.`;
     } else {
-      const sourceMaterial = await ragService.retrieveContext(topic.title, transcripts);
-      prompt = `Write comprehensive running notes for: "${topic.title}" based on this context:\n\n${sourceMaterial}`;
+        if (isCloud) {
+          const fullTranscriptText = transcripts
+            .map(t => `### Source: ${t.videoInfo?.title || t.videoId}\n\n${t.fullText}`)
+            .join('\n\n---\n\n')
+            .slice(0, 300_000);
+
+          prompt = `Write comprehensive running notes for: "${topic.title}" from this transcript:\n\n${fullTranscriptText}`;
+        } else {
+          sourceMaterial = await ragService.retrieveContext(topic.title, transcripts);
+          prompt = `Write comprehensive running notes for: "${topic.title}" based on this context:\n\n${sourceMaterial}`;
+        }
     }
 
     yield* llmService.generateNotesStream(prompt, systemPrompt);

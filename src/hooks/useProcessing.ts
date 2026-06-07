@@ -232,7 +232,7 @@ export const useProcessing = (initialJobId?: string | null) => {
     }
   }, [initialJobId, syncJob]);
 
-  const startProcessing = useCallback(async (url: string, userNotes?: string, creativityLevel?: number) => {
+  const startProcessing = useCallback(async (url: string, userNotes?: string, creativityLevel?: number, generationMode?: 'topical' | 'chronological') => {
     try {
       setState({
         status: 'extracting',
@@ -243,7 +243,7 @@ export const useProcessing = (initialJobId?: string | null) => {
         })),
       });
 
-      const response = await api.startProcessing(url, userNotes, creativityLevel);
+      const response = await api.startProcessing(url, userNotes, creativityLevel, generationMode);
       const jobId = response.jobId;
       currentJobIdRef.current = jobId;
 

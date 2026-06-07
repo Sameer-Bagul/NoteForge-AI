@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Youtube, ArrowRight, List, Play, Brain, Lightbulb, BookOpen, Wand2, FileText, ChevronDown, ChevronUp } from 'lucide-react';
+import { Youtube, ArrowRight, List, Play, Brain, Lightbulb, BookOpen, Wand2, FileText, ChevronDown, ChevronUp, Clock, Network } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -51,7 +51,7 @@ type CreativityLevel = 1 | 2 | 3 | 4;
 // ─── Props ─────────────────────────────────────────────────────────────────────
 
 interface UrlInputProps {
-  onSubmit: (url: string, userNotes?: string, creativityLevel?: CreativityLevel) => void;
+  onSubmit: (url: string, userNotes?: string, creativityLevel?: CreativityLevel, generationMode?: 'topical' | 'chronological') => void;
   isLoading?: boolean;
 }
 
@@ -61,6 +61,7 @@ const UrlInput = ({ onSubmit, isLoading }: UrlInputProps) => {
   const [url, setUrl] = useState('');
   const [userNotes, setUserNotes] = useState('');
   const [creativityLevel, setCreativityLevel] = useState<CreativityLevel>(2);
+  const [generationMode, setGenerationMode] = useState<'topical' | 'chronological'>('topical');
   const [inputType, setInputType] = useState<'video' | 'playlist' | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
 
@@ -84,7 +85,7 @@ const UrlInput = ({ onSubmit, isLoading }: UrlInputProps) => {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (url.trim()) {
-      onSubmit(url.trim(), userNotes.trim() || undefined, creativityLevel);
+      onSubmit(url.trim(), userNotes.trim() || undefined, creativityLevel, generationMode);
     }
   };
 
@@ -157,6 +158,44 @@ const UrlInput = ({ onSubmit, isLoading }: UrlInputProps) => {
 
           {showAdvanced && (
             <div className="px-4 pb-4 space-y-5 border-t border-border/40">
+              {/* Generation Mode */}
+              <div className="space-y-2 pt-4">
+                <label className="text-sm font-medium text-foreground flex items-center gap-2">
+                  <Network className="w-4 h-4 text-primary" />
+                  Generation Mode
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setGenerationMode('topical')}
+                    className={cn(
+                      'relative flex flex-col items-start gap-1 p-3 rounded-lg border text-left transition-all duration-150',
+                      generationMode === 'topical' ? 'border-primary bg-primary/10 ring-2 ring-primary/30' : 'border-border/40 bg-card hover:bg-muted/50'
+                    )}
+                  >
+                    <div className="flex items-center gap-2 text-foreground font-semibold text-sm">
+                      <Network className="w-4 h-4 text-blue-400" />
+                      Synthesis Mode
+                    </div>
+                    <p className="text-xs text-muted-foreground pr-4">Groups related concepts semantically regardless of timestamps.</p>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setGenerationMode('chronological')}
+                    className={cn(
+                      'relative flex flex-col items-start gap-1 p-3 rounded-lg border text-left transition-all duration-150',
+                      generationMode === 'chronological' ? 'border-primary bg-primary/10 ring-2 ring-primary/30' : 'border-border/40 bg-card hover:bg-muted/50'
+                    )}
+                  >
+                    <div className="flex items-center gap-2 text-foreground font-semibold text-sm">
+                      <Clock className="w-4 h-4 text-orange-400" />
+                      Lecture Mode
+                    </div>
+                    <p className="text-xs text-muted-foreground pr-4">Chronological study guide strictly following the video timeline.</p>
+                  </button>
+                </div>
+              </div>
+
               {/* User Notes */}
               <div className="space-y-2 pt-4">
                 <label className="text-sm font-medium text-foreground flex items-center gap-2">

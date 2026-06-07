@@ -30,12 +30,12 @@ export const api = {
     return response.json();
   },
 
-  async startProcessing(url: string, userNotes?: string, creativityLevel?: number): Promise<{ jobId: string; status: string }> {
+  async startProcessing(url: string, userNotes?: string, creativityLevel?: number, generationMode?: 'topical' | 'chronological'): Promise<{ jobId: string; status: string }> {
     log('Starting processing for:', url);
     const response = await fetch(`${API_BASE}/process/start`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url, userNotes, creativityLevel }),
+      body: JSON.stringify({ url, userNotes, creativityLevel, generationMode }),
     });
     if (!response.ok) {
       const error = await response.text();

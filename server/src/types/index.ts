@@ -182,6 +182,7 @@ export type CreativityLevel = 1 | 2 | 3 | 4;
 export interface JobOptions {
   userNotes?: string;        // Extra context/instructions from the user
   creativityLevel?: CreativityLevel;
+  generationMode?: 'topical' | 'chronological';
 }
 
 export interface ProcessingStep {
