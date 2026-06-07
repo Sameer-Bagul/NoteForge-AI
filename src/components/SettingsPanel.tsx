@@ -62,52 +62,7 @@ const PROVIDER_ACCENT: Record<AIProvider, string> = {
     ollama: 'text-orange-400',
 };
 
-// ─── API Key Item ──────────────────────────────────────────────────────────────
-
-function ApiKeyItem({
-    value,
-    index,
-    total,
-    onChange,
-    onRemove,
-}: {
-    value: string;
-    index: number;
-    total: number;
-    onChange: (v: string) => void;
-    onRemove: () => void;
-}) {
-    const [visible, setVisible] = useState(false);
-
-    return (
-        <div className="flex items-center gap-2 group">
-            <div className="relative flex-1">
-                <Input
-                    type={visible ? 'text' : 'password'}
-                    value={value}
-                    onChange={e => onChange(e.target.value)}
-                    placeholder={`API Key ${index + 1}`}
-                    className="pr-9 bg-muted/30 border-border/40 text-sm font-mono h-9 focus-visible:ring-primary/30"
-                />
-                <button
-                    type="button"
-                    onClick={() => setVisible(v => !v)}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                >
-                    {visible ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                </button>
-            </div>
-            <Button
-                variant="ghost"
-                size="icon"
-                onClick={onRemove}
-                className="h-8 w-8 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
-            >
-                <Trash2 className="w-3.5 h-3.5" />
-            </Button>
-        </div>
-    );
-}
+// removed ApiKeyItem
 
 // ─── Provider Card ─────────────────────────────────────────────────────────────
 
@@ -133,14 +88,7 @@ function ProviderCard({
     const [expanded, setExpanded] = useState(config.enabled);
 
     const update = (patch: Partial<ProviderConfig>) => onChange({ ...config, ...patch });
-
-    const addKey = () => update({ apiKeys: [...config.apiKeys, ''] });
-    const removeKey = (i: number) => update({ apiKeys: config.apiKeys.filter((_, idx) => idx !== i) });
-    const updateKey = (i: number, v: string) => {
-        const keys = [...config.apiKeys];
-        keys[i] = v;
-        update({ apiKeys: keys });
-    };
+    const [keyVisible, setKeyVisible] = useState(false);
 
     return (
         <div className={cn(
@@ -275,41 +223,27 @@ function ProviderCard({
                         </p>
                     </div>
 
-                    {/* API Keys */}
+                    {/* API Key */}
                     {!isLocal && (
                         <div className="space-y-3">
                             <div className="flex items-center justify-between">
                                 <Label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">API Credentials</Label>
-                                <Button
-                                    variant="link"
-                                    size="sm"
-                                    onClick={addKey}
-                                    className="h-auto p-0 text-xs text-primary font-bold"
-                                >
-                                    <Plus className="w-3 h-3 mr-1" /> Add Key
-                                </Button>
                             </div>
-                            <div className="space-y-2">
-                                {config.apiKeys.length === 0 ? (
-                                    <Button
-                                        variant="outline"
-                                        onClick={addKey}
-                                        className="w-full h-9 text-xs border-dashed text-muted-foreground hover:border-primary/50 hover:text-primary transition-all"
-                                    >
-                                        + Connect with API Key
-                                    </Button>
-                                ) : (
-                                    config.apiKeys.map((key, i) => (
-                                        <ApiKeyItem
-                                            key={i}
-                                            value={key}
-                                            index={i}
-                                            total={config.apiKeys.length}
-                                            onChange={v => updateKey(i, v)}
-                                            onRemove={() => removeKey(i)}
-                                        />
-                                    ))
-                                )}
+                            <div className="relative">
+                                <Input
+                                    type={keyVisible ? 'text' : 'password'}
+                                    value={config.apiKey || ''}
+                                    onChange={e => update({ apiKey: e.target.value })}
+                                    placeholder="Enter API Key"
+                                    className="pr-9 bg-muted/30 border-border/40 text-sm font-mono h-9 focus-visible:ring-primary/30"
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => setKeyVisible(v => !v)}
+                                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                                >
+                                    {keyVisible ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                                </button>
                             </div>
                         </div>
                     )}
@@ -429,7 +363,7 @@ export function SettingsPanel() {
                         </TabsList>
                     </div>
 
-                    <ScrollArea className="flex-1">
+                    <div className="flex-1 overflow-y-auto min-h-0">
                         <TabsContent value="providers" className="p-6 m-0 space-y-6 outline-none">
                             <div className="flex items-center justify-between">
                                 <div className="space-y-0.5">
@@ -515,7 +449,7 @@ export function SettingsPanel() {
                                 </p>
                             </div>
                         </TabsContent>
-                    </ScrollArea>
+                    </div>
                 </Tabs>
 
                 <div className="px-6 py-5 border-t border-border/40 bg-muted/20 flex flex-col sm:flex-row items-center justify-between gap-4">

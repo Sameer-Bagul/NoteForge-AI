@@ -35,28 +35,48 @@ export class RAGService {
         if (onProgress) onProgress(`Indexing ${transcripts.length} transcripts...`);
         console.log(`[RAG] Indexing ${transcripts.length} transcripts...`);
 
-        const allDocs = transcripts.map((t: VideoTranscript) => new Document({
-            pageContent: t.fullText,
-            metadata: {
-                videoId: t.videoId,
-                title: t.videoInfo.title,
-                source: 'youtube'
+        const allDocs: Document[] = [];
+        
+        // Semantic Timestamp Chunking
+        for (const t of transcripts) {
+            let currentChunkText = "";
+            let chunkStartTime = 0;
+            
+            for (let i = 0; i < t.segments.length; i++) {
+                const seg = t.segments[i];
+                if (currentChunkText === "") chunkStartTime = seg.start;
+                
+                currentChunkText += seg.text + " ";
+                
+                // Group segments into ~800 character chunks or if it's the last segment
+                if (currentChunkText.length >= 800 || i === t.segments.length - 1) {
+                    // Format timestamp
+                    const minutes = Math.floor(chunkStartTime / 60);
+                    const seconds = Math.floor(chunkStartTime % 60);
+                    const timestampStr = `[${minutes}:${seconds.toString().padStart(2, '0')}]`;
+                    
+                    allDocs.push(new Document({
+                        pageContent: `${timestampStr} ${currentChunkText.trim()}`,
+                        metadata: {
+                            videoId: t.videoId,
+                            title: t.videoInfo.title,
+                            source: 'youtube',
+                            timestamp: chunkStartTime,
+                            timestampStr
+                        }
+                    }));
+                    currentChunkText = "";
+                }
             }
-        }));
+        }
 
-        const splitter = new RecursiveCharacterTextSplitter({
-            chunkSize: 1000,
-            chunkOverlap: 200
-        });
+        if (onProgress) onProgress(`Created ${allDocs.length} timestamped chunks.`);
+        console.log(`[RAG] Created ${allDocs.length} chunks.`);
 
-        const splitDocs = await splitter.splitDocuments(allDocs);
-        if (onProgress) onProgress(`Split into ${splitDocs.length} chunks.`);
-        console.log(`[RAG] Split into ${splitDocs.length} chunks.`);
+        this.vectorStore = await MemoryVectorStore.fromDocuments(allDocs, this.embeddings);
 
-        this.vectorStore = await MemoryVectorStore.fromDocuments(splitDocs, this.embeddings);
-
-        const vectorRetriever = this.vectorStore.asRetriever({ k: 4 });
-        const bm25Retriever = await BM25Retriever.fromDocuments(splitDocs, { k: 4 });
+        const vectorRetriever = this.vectorStore.asRetriever({ k: 20 });
+        const bm25Retriever = await BM25Retriever.fromDocuments(allDocs, { k: 20 });
 
         this.retriever = new EnsembleRetriever({
             retrievers: [vectorRetriever as any, bm25Retriever as any],
@@ -143,15 +163,16 @@ export class RAGService {
     /**
      * Manual context retrieval if needed
      */
-    async retrieveContext(query: string, transcripts: VideoTranscript[], onProgress?: (msg: string) => void): Promise<string> {
+    async retrieveContext(query: string, transcripts: VideoTranscript[], onProgress?: (msg: string) => void, k: number = 20): Promise<string> {
         if (!this.retriever) {
             await this.indexTranscripts(transcripts, onProgress);
         }
 
-        if (onProgress) onProgress("Retrieving relevant context...");
+        if (onProgress) onProgress("Retrieving dense context...");
         const optimizedQuery = await this.rewriteQuery(query);
         const docs = await this.retriever!.getRelevantDocuments(optimizedQuery);
-        return docs.map(d => `[Source: ${d.metadata.title}]\n${d.pageContent}`).join('\n\n---\n\n');
+        const selectedDocs = docs.slice(0, k);
+        return selectedDocs.map(d => `[Source: ${d.metadata.title}] ${d.pageContent}`).join('\n\n---\n\n');
     }
 
     /**

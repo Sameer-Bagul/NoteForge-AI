@@ -102,8 +102,9 @@ Focus on:
     const chunks = chunkText(transcript.fullText, 4000);
     const allTopics: RawTopic[] = [];
 
-    // Parallel Processing: Process chunks in batches to maximize CPU usage without overloading
-    const CONCURRENCY = 3;
+    // Parallel Processing: Process chunks in batches.
+    // Cloud providers can handle high concurrency, local GPUs typically crash if concurrency > 1
+    const CONCURRENCY = llmService.isPrimaryCloudProvider() ? 5 : 1;
 
     console.log(`  📄 Processing ${chunks.length} chunk(s) in parallel (concurrency=${CONCURRENCY})`);
 

@@ -1,54 +1,31 @@
-# NoteForge AI (YouTube to Notes) 🧠🎥
+# NoteForge AI 🧠🎥
 
 <div align="center">
 
-**A high-end, completely autonomous Retrieval-Augmented Generation (RAG) pipeline that transforms YouTube videos into comprehensive study notes, interactive mind maps, and quizzes using LangChain and local Ollama models.**
+**A production-ready, autonomous Retrieval-Augmented Generation (RAG) pipeline that transforms YouTube videos into comprehensive study notes, interactive mind maps, and quizzes. Engineered with a hybrid LLM routing architecture to maximize speed while minimizing API costs.**
 
 [![LangChain](https://img.shields.io/badge/LangChain-0.3-black?logo=langchain)](https://js.langchain.com/)
 [![Ollama](https://img.shields.io/badge/Ollama-Local_LLM-white)](https://ollama.ai/)
 [![React](https://img.shields.io/badge/React-18-blue)](https://reactjs.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-Express-green)](https://nodejs.org/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-
-[Features](#-key-features) • [RAG Architecture](#-rag-pipeline--system-architecture) • [AI Integration](#-dual-model-ai-strategy) • [Quick Start](#-quick-start)
 
 </div>
 
 ---
 
-## 📸 Project Media
+## 🏗 System Architecture
 
-![App Screenshot](assets/screenshot.png)
-
-*(Add screenshots of the generated Markdown notes, the React Flow Mind Map, and the AI Quiz generator here)*
-
-[Watch Demo Video](assets/demo.mp4)
-
----
-
-## 🎯 Key Features
-
-✅ **Advanced RAG Pipeline** - Automatically extracts transcripts and audio from YouTube videos using `youtubei.js` and `yt-dlp-wrap`, processes them through LangChain text splitters, and generates highly accurate semantic context.  
-✅ **Interactive Mind Maps** - Uses `@xyflow/react` to parse LLM-generated JSON into dynamic, drag-and-drop relationship diagrams of the video's concepts.  
-✅ **Privacy-First Local AI** - Deep integration with **Ollama** allows you to run powerful models (Llama 3, Mistral) entirely locally without sending data to third-party APIs.  
-✅ **Auto-Healing JSON Generation** - Utilizes `jsonrepair` to intercept and fix malformed LLM outputs, ensuring strict schema adherence for UI components like Quizzes and Mind Maps.  
-✅ **Premium UI/UX** - Fully responsive glassmorphic frontend utilizing **Tailwind CSS**, **Shadcn/UI**, and **Framer Motion** for a sleek, modern learning environment.
-
----
-
-## 🏗 RAG Pipeline & System Architecture
-
-NoteForge AI is engineered to handle massive amounts of video data by employing a chunked, parallel-processing RAG architecture.
+NoteForge AI is engineered to handle massive amounts of video data by employing a chunked, parallel-processing RAG architecture combined with a **Hybrid LLM Router**.
 
 ```mermaid
 graph TD
     subgraph Client [React SPA]
-        UI[User Interface]
+        UI[Glassmorphic UI]
         Flow[React Flow Mindmap]
     end
 
     subgraph Node.js Backend [NoteForge Server]
-        API[Express API]
+        API[Express EventStream API]
         YT[YouTube Extractor <br> yt-dlp-wrap]
         
         subgraph LangChain RAG Pipeline
@@ -56,11 +33,17 @@ graph TD
             Vector[(In-Memory Vector Context)]
             Prompt[Dynamic Prompt Templates]
         end
+        
+        subgraph Hybrid Multi-LLM Router
+            Queue[Concurrency Queue]
+            Backoff[Exponential Backoff Manager]
+            Healer[JSON Self-Healing Loop]
+        end
     end
 
     subgraph AI Providers
-        Ollama[Local Ollama Models]
-        OpenAI[External APIs]
+        Ollama[Local Ollama Models <br> qwen2.5-coder:7b]
+        Cloud[Cloud APIs <br> Gemini Flash]
     end
 
     UI -->|1. Submit YouTube URL| API
@@ -70,21 +53,49 @@ graph TD
     Splitter -->|4. Chunking| Vector
     Vector -->|5. Context Retrieval| Prompt
     
-    Prompt -->|6. Task-Specific Prompts <br> Notes / Quizzes / Maps| Ollama
+    Prompt -->|6. Route Request| Queue
+    Queue -->|7. API Rate-Limit Handling| Backoff
+    Backoff -->|8. Dispatch Request| Ollama
+    Backoff -->|8. Dispatch Request| Cloud
     
-    Ollama -->|7. Streaming Response| API
-    API -->|8. JSON Repair & Formatting| UI
-    API -->|8b. Node/Edge JSON| Flow
+    Ollama -->|9. Validate Output| Healer
+    Healer -->|10. Stream Response| API
+    API -->|11. Render UI Elements| Flow
 ```
 
 ---
 
-## 🤖 Dual-Model AI Strategy
+## 🤖 Hybrid Multi-LLM Strategy
 
-Based on the [NoteForge Implementation Patterns](knowledge/noteforge_ai_architecture), this project employs a **Task-Specific AI Provider Mapping**:
-- **Heavy Extraction Tasks** (like summarizing a 2-hour lecture): Routed to high-context models.
-- **Structured Data Generation** (Mind Maps, Quizzes): Routed to highly deterministic models combined with strict system prompts to ensure valid JSON outputs.
-- **Local Model Discovery**: The server automatically queries the local `http://localhost:11434/api/tags` endpoint to discover installed Ollama models, presenting them dynamically in the UI settings panel.
+NoteForge employs an intelligent **Task-Specific AI Provider Mapping** system that splits workloads between local hardware and cloud APIs to balance speed, cost, and quality.
+
+### 1. The "Heavy Lifter" (Primary Model)
+Used for massive text generation tasks (like summarizing a 2-hour lecture). 
+* **Target:** Cloud APIs (e.g., `gemini-flash-latest`) or large local models (`qwen3:14b`).
+* **Implementation:** The backend explicitly routes `generateNotesContent` requests to the primary provider, configuring high-capacity output tokens (8192+) for maximum detail.
+
+### 2. The "Turbo Indexer" (Indexing Model)
+Used for rapid, repetitive micro-tasks such as timestamp matching, topic extraction, and UI layout generation.
+* **Target:** Local Ollama models (e.g., `qwen2.5-coder:7b`).
+* **Implementation:** Since local inferences are free, the system fires dozens of parallel context-extraction prompts to the Turbo Indexer to build the structural data without burning through Cloud API rate limits.
+
+---
+
+## 🛡️ Resilience Engineering
+
+Building AI applications that rely on unpredictable third-party APIs requires aggressive error handling. NoteForge implements three critical resilience patterns:
+
+### Strict Concurrency Queuing
+Cloud APIs (especially free tiers) instantly throw `429 Too Many Requests` if flooded. NoteForge uses `p-queue` to wrap all LLM calls. If 15 note-generation requests hit the server simultaneously, they are cleanly throttled inside a `concurrency: 10` queue, protecting the API key from blacklisting.
+
+### Dynamic Exponential Backoff
+If a cloud provider *does* return a `429` error, the backend's `executeWithBackoff` utility intercepts the failure and initiates a dynamic retry loop, waiting 5 seconds, then 15 seconds, then 45 seconds. This guarantees the user's generation job completes silently in the background without crashing.
+
+### Auto-Healing JSON Generation
+Local LLMs are notorious for outputting malformed JSON (adding markdown ticks, conversational text, or trailing commas). 
+1. The server catches the raw string and attempts to run it through `jsonrepair`.
+2. If `jsonrepair` fails, the **Self-Healing Loop** catches the exception.
+3. It automatically re-prompts the local LLM: *"⚠️ IMPORTANT: The previous output was invalid JSON. Please produce the SAME content again, but as strictly valid JSON..."* up to 3 times until a valid syntax tree is achieved.
 
 ---
 
@@ -92,51 +103,44 @@ Based on the [NoteForge Implementation Patterns](knowledge/noteforge_ai_architec
 
 ### Prerequisites
 - **Node.js** (v18 or higher)
-- **Ollama** (Installed locally with at least one model, e.g., `ollama run llama3`)
+- **Ollama** (Installed locally. Recommended: `ollama run qwen2.5-coder:7b`)
 - **FFmpeg** (Required for `yt-dlp` audio extraction fallbacks)
 
-### 1. Clone the Repository
+### 1. Start the Backend (NoteForge Server)
 ```bash
 git clone https://github.com/Sameer-Bagul/ytvideo2notes.git
-cd ytvideo2notes
-```
-
-### 2. Start the Backend (NoteForge Server)
-```bash
-cd server
+cd ytvideo2notes/server
 npm install
-cp .env.example .env
-# Edit .env to ensure OLLAMA_BASE_URL=http://127.0.0.1:11434
 
+# Start the LangChain Express server
 npm run dev
 ```
-*The LangChain Express server will boot up and automatically scan for local AI models.*
 
-### 3. Start the Frontend (Vite/React)
+### 2. Start the Frontend (React SPA)
 Open a new terminal session:
 ```bash
-# Return to root directory
+cd ytvideo2notes
 npm install
+
+# Launch the Glassmorphic UI
 npm run dev
 ```
-*The application will launch on `http://localhost:5173`. Drop a YouTube link in the search bar and watch the RAG pipeline go to work!*
+
+The application will launch on `http://localhost:8080`. Go to the **Settings** panel to configure your Hybrid AI route!
 
 ---
 
 ## 🤝 Contributing
 
-We welcome contributions to optimize prompt templates, add support for Pinecone/ChromaDB for persistent vector storage, or expand UI components.
+We welcome contributions to optimize prompt templates, add support for persistent vector storage (Pinecone/ChromaDB), or expand UI components.
+
 1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/VectorDB`)
+2. Create your feature branch (`git checkout -b feature/Optimization`)
 3. Commit your changes
 4. Push to the branch
 5. Open a Pull Request
 
 ---
-
-## 📝 License
-
-This project is licensed under the MIT License.
 
 <div align="center">
 <b>Transforming videos into knowledge.</b>

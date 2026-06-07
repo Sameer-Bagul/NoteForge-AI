@@ -66,6 +66,7 @@ Write like a very attentive, knowledgeable student taking comprehensive class no
 - Reserve bullet points only for genuinely list-like content (steps, comparisons, feature lists)
 - Highlight key terms in **bold** when first introduced
 - Add inline \`code\` for technical identifiers
+- CITE TIMESTAMPS: Whenever you mention a specific concept, feature, or claim from the transcript, cite the exact timestamp (e.g., "[12:34]") if available in the text.
 - End each major section with a brief connector to the next
 - Close the entire topic with a "## Key Takeaways" section in bullet form
 - AIM FOR LENGTH: write at least 600-1000 words per topic — comprehensive beats concise`;
@@ -90,16 +91,12 @@ Formatting requirements:
 
       if (isCloud) {
         // ─── CLOUD PATH (Gemini / Grok) ──────────────────────────────────────────
-        // Send the FULL transcript directly — bypass Ollama RAG entirely.
-        // Cloud LLMs have 1M+ context windows, so they can handle the full text.
-        if (onSubProgress) onSubProgress(`Sending full transcript to ${provider} (8192 token output)...`);
-        console.log(`[Notes] Cloud mode (${provider}): using full transcript for ${topic.title}`);
+        // Use RAG to get the most dense and relevant chunks, but fetch a large number (e.g. k=50) 
+        // to give the Cloud LLM rich context without stuffing 400k characters blindly.
+        if (onSubProgress) onSubProgress(`Retrieving dense context for ${provider} (Map-Reduce)...`);
+        console.log(`[Notes] Cloud mode (${provider}): using RAG dense context for ${topic.title}`);
 
-        // Merge all transcripts into one text (capped at 400k chars to stay well within 1M tokens)
-        const fullTranscriptText = transcripts
-          .map(t => `### Source: ${t.videoInfo?.title || t.videoId}\n\n${t.fullText}`)
-          .join('\n\n---\n\n')
-          .slice(0, 400_000);
+        const sourceMaterial = await ragService.retrieveContext(topic.title, transcripts, onSubProgress, 50);
 
         const prompt = `Write comprehensive, detailed running notes for: "${topic.title}"${userNotesSection}
 
@@ -108,9 +105,9 @@ Topic Description: ${topic.description || ''}
 Subtopics to cover (cover each one deeply):
 ${topic.subtopics.map((st: any) => `- ${st.title}${st.description ? ': ' + st.description : ''}`).join('\n')}
 
-Full Video Transcript (use this as your primary source material):
+Primary source material (timestamped excerpts from video transcript):
 """
-${fullTranscriptText}
+${sourceMaterial}
 """
 
 Write flowing, deeply detailed notes that:
@@ -120,6 +117,7 @@ Write flowing, deeply detailed notes that:
 4. Add mermaid diagrams where they clarify architecture or flows
 5. Weave in practical insights and common pitfalls
 6. Close with a "## Key Takeaways" section
+7. IMPORTANT: Include timestamp citations like [12:34] directly in your paragraphs when explaining a concept derived from the text.
 
 Be comprehensive and thorough — aim for at least 800 words of rich, educational content.
 Format as markdown.`;
@@ -237,8 +235,8 @@ Use markdown: ## headings, paragraphs, and \`\`\`mermaid or code blocks.`;
   ): Promise<TopicNotes[]> {
     const allNotes: TopicNotes[] = [];
 
-    // Clear RAG index to ensure fresh context for this specific job
-    ragService.clearIndex();
+    // We no longer clear the RAG index so we can reuse the persistent timestamped chunks
+    // ragService.clearIndex();
 
     for (let i = 0; i < index.topics.length; i++) {
       const topic = index.topics[i];

@@ -3,7 +3,7 @@ export type AIProvider = 'gemini' | 'grok' | 'lmstudio' | 'ollama';
 export interface ProviderConfig {
     provider: AIProvider;
     enabled: boolean;
-    apiKeys: string[];      // Multiple keys; tried in order on failure
+    apiKey?: string;        // Single API key
     model: string;
     indexingModel?: string; // Faster model for topic extraction
     baseUrl?: string;       // For local providers (Ollama, LM Studio)
@@ -36,7 +36,7 @@ export const PROVIDER_DESCRIPTIONS: Record<AIProvider, string> = {
 };
 
 export const DEFAULT_MODELS: Record<AIProvider, string> = {
-    gemini: 'gemini-2.0-flash',
+    gemini: 'gemini-flash-latest',
     grok: 'grok-beta',
     lmstudio: 'local-model',
     ollama: 'qwen2.5-coder:7b',
@@ -61,7 +61,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
         {
             provider: 'ollama',
             enabled: true,
-            apiKeys: [],
+            apiKey: '',
             model: 'qwen2.5-coder:7b',
             indexingModel: 'qwen2.5-coder:1.5b',
             baseUrl: 'http://localhost:11434',
@@ -70,15 +70,15 @@ export const DEFAULT_SETTINGS: AppSettings = {
         {
             provider: 'gemini',
             enabled: true,
-            apiKeys: [],
-            model: 'gemini-2.0-flash',
+            apiKey: '',
+            model: 'gemini-3.5-flash',
             baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
             priority: 2,
         },
         {
             provider: 'grok',
             enabled: false,
-            apiKeys: [],
+            apiKey: '',
             model: 'grok-beta',
             baseUrl: 'https://api.x.ai/v1',
             priority: 3,
@@ -86,7 +86,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
         {
             provider: 'lmstudio',
             enabled: false,
-            apiKeys: [],
+            apiKey: '',
             model: 'local-model',
             baseUrl: 'http://localhost:1234',
             priority: 4,

@@ -5,6 +5,12 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
 import { cacheService } from './cache.service.js';
+import PQueue from 'p-queue';
+
+// ─── Queues ────────────────────────────────────────────────────────────────────
+// Global queues to prevent hardware crashes (local) and API floods (cloud)
+const localQueue = new PQueue({ concurrency: 1 });
+const cloudQueue = new PQueue({ concurrency: 10 });
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -16,7 +22,7 @@ const DEFAULT_SETTINGS: AppSettings = {
         {
             provider: 'ollama',
             enabled: true,
-            apiKeys: [],
+            apiKey: '',
             model: process.env.OLLAMA_MODEL || 'qwen2.5-coder:7b',
             indexingModel: 'qwen2.5-coder:1.5b',
             baseUrl: process.env.OLLAMA_BASE_URL || 'http://localhost:11434',
@@ -25,7 +31,7 @@ const DEFAULT_SETTINGS: AppSettings = {
         {
             provider: 'lmstudio',
             enabled: false,
-            apiKeys: [],
+            apiKey: '',
             model: 'local-model',
             baseUrl: process.env.LMSTUDIO_BASE_URL || 'http://localhost:1234',
             priority: 3,
@@ -33,15 +39,15 @@ const DEFAULT_SETTINGS: AppSettings = {
         {
             provider: 'gemini',
             enabled: false,
-            apiKeys: process.env.GEMINI_API_KEYS ? process.env.GEMINI_API_KEYS.split(',').map(k => k.trim()) : [],
-            model: process.env.GEMINI_MODEL || 'gemini-2.0-flash',
+            apiKey: process.env.GEMINI_API_KEY || (process.env.GEMINI_API_KEYS ? process.env.GEMINI_API_KEYS.split(',')[0].trim() : ''),
+            model: process.env.GEMINI_MODEL || 'gemini-flash-latest',
             baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
             priority: 1,
         },
         {
             provider: 'grok',
             enabled: false,
-            apiKeys: process.env.GROK_API_KEYS ? process.env.GROK_API_KEYS.split(',').map(k => k.trim()) : [],
+            apiKey: process.env.GROK_API_KEY || (process.env.GROK_API_KEYS ? process.env.GROK_API_KEYS.split(',')[0].trim() : ''),
             model: 'grok-beta',
             baseUrl: 'https://api.x.ai/v1',
             priority: 2,
@@ -70,12 +76,19 @@ function loadSettingsFromFile(): AppSettings {
                 const def = defaultMap.get(key)!;
                 const sv = savedMap.get(key);
                 if (!sv) return def;
+                let modelToUse = (sv as any).model || (def as any).model;
+                // Migrate old gemini model
+                if (key === 'gemini' && (modelToUse === 'gemini-2.0-flash' || modelToUse === 'gemini-3.5-flash')) {
+                    modelToUse = 'gemini-flash-latest';
+                }
+                
                 return {
                     ...def,
                     ...sv,
-                    model: (sv as any).model || (def as any).model,
+                    model: modelToUse,
                     indexingModel: (sv as any).indexingModel || (def as any).indexingModel,
                     baseUrl: (sv as any).baseUrl || (def as any).baseUrl,
+                    apiKey: (sv as any).apiKey || (Array.isArray((sv as any).apiKeys) && (sv as any).apiKeys.length > 0 ? (sv as any).apiKeys[0] : '') || (def as any).apiKey,
                 };
             });
             console.log('[MultiLLM] Loaded settings from file:', merged.map(p => `${p.provider}(${p.enabled ? 'ON' : 'off'})`).join(', '));
@@ -117,12 +130,18 @@ export function updateSettings(settings: AppSettings): void {
         const def = defaultMap.get(key)!;
         const inc = incomingMap.get(key);
         if (!inc) return def;
+        let modelToUse = (inc as any).model || (def as any).model;
+        if (key === 'gemini' && (modelToUse === 'gemini-2.0-flash' || modelToUse === 'gemini-3.5-flash')) {
+            modelToUse = 'gemini-flash-latest';
+        }
+
         return {
             ...def,
             ...inc,
-            model: (inc as any).model || (def as any).model,
+            model: modelToUse,
             indexingModel: (inc as any).indexingModel || (def as any).indexingModel,
             baseUrl: (inc as any).baseUrl || (def as any).baseUrl,
+            apiKey: (inc as any).apiKey || (def as any).apiKey,
         };
     });
 
@@ -149,6 +168,33 @@ async function enforceRateLimit(provider: string, isCloud: boolean): Promise<voi
         await new Promise(r => setTimeout(r, wait));
     }
     lastCallTime.set(provider, Date.now());
+}
+
+async function executeWithBackoff<T>(
+    operationName: string,
+    operation: () => Promise<T>,
+    isCloud: boolean,
+    maxRetries: number = 3
+): Promise<T> {
+    let attempt = 0;
+    while (true) {
+        try {
+            return await operation();
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            const is429 = msg.includes('429') || msg.includes('Too Many Requests') || msg.includes('RESOURCE_EXHAUSTED');
+            
+            if (is429 && isCloud && attempt < maxRetries) {
+                attempt++;
+                // Exponential backoff: 5s, 15s, 45s
+                const waitMs = Math.pow(3, attempt - 1) * 5000;
+                console.warn(`[MultiLLM] ⏳ ${operationName} hit rate limit (429). Retry ${attempt}/${maxRetries} in ${waitMs / 1000}s...`);
+                await new Promise(r => setTimeout(r, waitMs));
+                continue;
+            }
+            throw err;
+        }
+    }
 }
 
 // ─── Provider Call Implementations ────────────────────────────────────────────
@@ -244,11 +290,14 @@ async function callGemini(
     }
     body.generationConfig = { temperature: 0.7, maxOutputTokens: 3000 };
 
-    const model = config.model || 'gemini-2.0-flash';
+    const model = config.model || 'gemini-flash-latest';
     const baseUrl = config.baseUrl || 'https://generativelanguage.googleapis.com/v1beta';
-    const url = `${baseUrl}/models/${model}:generateContent?key=${apiKey}`;
+    const url = `${baseUrl}/models/${model}:generateContent`;
 
-    const response = await axios.post(url, body, { timeout: 120000 });
+    const response = await axios.post(url, body, {
+        headers: { 'Content-Type': 'application/json', 'X-goog-api-key': apiKey },
+        timeout: 120000
+    });
     const text = response.data.candidates?.[0]?.content?.parts?.[0]?.text || '';
     const tokens = response.data.usageMetadata?.candidatesTokenCount;
 
@@ -288,14 +337,20 @@ async function callProvider(
     apiKey: string
 ): Promise<LLMResponse> {
     const isCloud = CLOUD_PROVIDERS.has(config.provider);
-    await enforceRateLimit(config.provider, isCloud);
-    switch (config.provider) {
-        case 'ollama': return callOllama(messages, config);
-        case 'lmstudio': return callLMStudio(messages, config);
-        case 'gemini': return callGemini(messages, config, apiKey);
-        case 'grok': return callGrok(messages, config, apiKey);
-        default: throw new Error(`Unknown provider: ${config.provider}`);
-    }
+    
+    // Add to the appropriate queue
+    const queue = isCloud ? cloudQueue : localQueue;
+    
+    return queue.add(async () => {
+        await enforceRateLimit(config.provider, isCloud);
+        switch (config.provider) {
+            case 'ollama': return callOllama(messages, config);
+            case 'lmstudio': return callLMStudio(messages, config);
+            case 'gemini': return callGemini(messages, config, apiKey);
+            case 'grok': return callGrok(messages, config, apiKey);
+            default: throw new Error(`Unknown provider: ${config.provider}`);
+        }
+    }) as Promise<LLMResponse>;
 }
 
 // ─── MultiLLMService ───────────────────────────────────────────────────────────
@@ -346,45 +401,28 @@ export class MultiLLMService {
 
         for (const provider of providers) {
             const isCloud = CLOUD_PROVIDERS.has(provider.provider);
-            // Local providers (ollama, lmstudio) don't need API keys
-            const keys = (provider.provider === 'ollama' || provider.provider === 'lmstudio')
-                ? ['']
-                : provider.apiKeys.filter(k => k.trim().length > 0);
+            const apiKey = provider.apiKey?.trim() || '';
+            const isLocal = provider.provider === 'ollama' || provider.provider === 'lmstudio';
 
-            if (keys.length === 0 && provider.provider !== 'ollama' && provider.provider !== 'lmstudio') {
-                console.warn(`[MultiLLM] ${provider.provider}: skipped (no API keys configured)`);
-                errors.push(`${provider.provider}: no API keys`);
+            if (!apiKey && !isLocal) {
+                console.warn(`[MultiLLM] ${provider.provider}: skipped (no API key configured)`);
+                errors.push(`${provider.provider}: no API key`);
                 continue;
             }
 
-            for (let i = 0; i < keys.length; i++) {
-                try {
-                    console.log(`[MultiLLM] Trying ${provider.provider} (key ${i + 1}/${keys.length})...`);
-                    const result = await callProvider(messages, provider, keys[i]);
-                    console.log(`[MultiLLM] ✅ Success with ${provider.provider} (key ${i + 1})`);
-                    return result;
-                } catch (err) {
-                    const msg = err instanceof Error ? err.message : String(err);
-                    const is429 = msg.includes('429') || msg.includes('Too Many Requests') || msg.includes('RESOURCE_EXHAUSTED');
-
-                    if (is429 && isCloud) {
-                        // On 429: wait 60s then retry the SAME key once before moving on
-                        console.warn(`[MultiLLM] ⏳ ${provider.provider} key ${i + 1} hit rate limit (429). Waiting 60s...`);
-                        await new Promise(r => setTimeout(r, 60_000));
-                        try {
-                            const retry = await callProvider(messages, provider, keys[i]);
-                            console.log(`[MultiLLM] ✅ Retry succeeded for ${provider.provider} key ${i + 1}`);
-                            return retry;
-                        } catch (retryErr) {
-                            const retryMsg = retryErr instanceof Error ? retryErr.message : String(retryErr);
-                            console.warn(`[MultiLLM] ❌ ${provider.provider} key ${i + 1} still failing after retry: ${retryMsg}`);
-                            errors.push(`${provider.provider}[key${i + 1}][retry]: ${retryMsg}`);
-                        }
-                    } else {
-                        console.warn(`[MultiLLM] ❌ ${provider.provider} key ${i + 1} failed: ${msg}`);
-                        errors.push(`${provider.provider}[key${i + 1}]: ${msg}`);
-                    }
-                }
+            try {
+                console.log(`[MultiLLM] Trying ${provider.provider}...`);
+                const result = await executeWithBackoff(
+                    `chat(${provider.provider})`,
+                    () => callProvider(messages, provider, apiKey),
+                    isCloud
+                );
+                console.log(`[MultiLLM] ✅ Success with ${provider.provider}`);
+                return result;
+            } catch (err) {
+                const msg = err instanceof Error ? err.message : String(err);
+                console.warn(`[MultiLLM] ❌ ${provider.provider} failed: ${msg}`);
+                errors.push(`${provider.provider}: ${msg}`);
             }
         }
 
@@ -488,10 +526,14 @@ CRITICAL JSON RULES:
                 await cacheService.set(cacheKey, parsed);
                 return parsed;
             } catch {
-                if (retryCount === 0) {
-                    return this.generateJSONLocal<T>(prompt, systemPrompt, modelOverride, 1);
+                if (retryCount < 3) {
+                    console.warn(`[MultiLLM] JSON parse failed, retrying (${retryCount + 1}/3) with stricter prompt...`);
+                    const retryPrompt = `${prompt}\n\n⚠️ IMPORTANT: The previous output was invalid JSON. Please produce the SAME content again, but as strictly valid JSON with no comments or extra text.`;
+                    // Add a small backoff based on retry count
+                    await new Promise(r => setTimeout(r, 1000 * (retryCount + 1)));
+                    return this.generateJSONLocal<T>(retryPrompt, systemPrompt, modelOverride, retryCount + 1, task);
                 }
-                throw new Error(`Local LLM returned invalid JSON for task: ${String(task)}`);
+                throw new Error(`Local LLM returned invalid JSON for task: ${String(task)} after ${retryCount} attempts`);
             }
         }
     }
@@ -531,12 +573,14 @@ CRITICAL JSON RULES:
                         .trim();
                     return JSON.parse(cleaned) as T;
                 } catch {
-                    if (retryCount === 0) {
-                        console.warn('[MultiLLM] JSON parse failed, retrying with stricter prompt...');
+                    if (retryCount < 3) {
+                        console.warn(`[MultiLLM] JSON parse failed, retrying (${retryCount + 1}/3) with stricter prompt...`);
                         const retryPrompt = `${prompt}\n\n⚠️ IMPORTANT: The previous output was invalid JSON. Please produce the SAME content again, but as strictly valid JSON with no comments or extra text.`;
-                        return this.generateJSON<T>(retryPrompt, systemPrompt, 1);
+                        // Add a small backoff based on retry count
+                        await new Promise(r => setTimeout(r, 1000 * (retryCount + 1)));
+                        return this.generateJSON<T>(retryPrompt, systemPrompt, retryCount + 1);
                     }
-                    throw new Error('LLM returned invalid JSON after multiple attempts');
+                    throw new Error(`LLM returned invalid JSON after ${retryCount} attempts`);
                 }
             }
         }
@@ -562,7 +606,7 @@ CRITICAL JSON RULES:
                 return { healthy: res.status === 200, provider: 'lmstudio' };
             } else {
                 // Cloud providers — just verify there's at least one key
-                const hasKey = first.apiKeys.filter(k => k.trim()).length > 0;
+                const hasKey = !!first.apiKey?.trim();
                 return { healthy: hasKey, provider: first.provider, error: hasKey ? undefined : 'No API key set' };
             }
         } catch (err) {
@@ -608,122 +652,65 @@ CRITICAL JSON RULES:
 
         for (const provider of providers) {
             const isCloud = CLOUD_PROVIDERS.has(provider.provider);
-            const keys = (provider.provider === 'ollama' || provider.provider === 'lmstudio')
-                ? ['']
-                : provider.apiKeys.filter(k => k.trim().length > 0);
+            const apiKey = provider.apiKey?.trim() || '';
+            const isLocal = provider.provider === 'ollama' || provider.provider === 'lmstudio';
 
-            if (keys.length === 0 && isCloud) {
+            if (!apiKey && !isLocal) {
                 errors.push(`${provider.provider}: no API keys`);
                 continue;
             }
 
-            for (let i = 0; i < keys.length; i++) {
-                try {
-                    await enforceRateLimit(provider.provider, isCloud);
-
-                    let result: LLMResponse;
-
-                    if (provider.provider === 'gemini') {
-                        // Gemini: 8192 tokens for rich detailed notes
-                        const systemMsg = messages.find(m => m.role === 'system');
-                        const userMsgs = messages.filter(m => m.role !== 'system');
-                        const contents = userMsgs.map(m => ({
-                            role: m.role === 'assistant' ? 'model' : 'user',
-                            parts: [{ text: m.content }],
-                        }));
-                        const body: Record<string, unknown> = { contents };
-                        if (systemMsg) body.systemInstruction = { parts: [{ text: systemMsg.content }] };
-                        body.generationConfig = { temperature: 0.8, maxOutputTokens: 8192 };
-                        const model = provider.model || 'gemini-2.0-flash';
-                        const baseUrl = provider.baseUrl || 'https://generativelanguage.googleapis.com/v1beta';
-                        const url = `${baseUrl}/models/${model}:generateContent?key=${keys[i]}`;
-                        const response = await axios.post(url, body, { timeout: 180000 });
-                        const text = response.data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-                        result = { content: text, tokensUsed: response.data.usageMetadata?.candidatesTokenCount };
-                    } else if (provider.provider === 'grok') {
-                        const baseUrl = provider.baseUrl || 'https://api.x.ai/v1';
-                        const response = await axios.post(`${baseUrl}/chat/completions`, {
-                            model: provider.model || 'grok-beta',
-                            messages: messages.map(m => ({ role: m.role, content: m.content })),
-                            temperature: 0.8,
-                            max_tokens: 8192,
-                        }, {
-                            headers: { Authorization: `Bearer ${keys[i]}`, 'Content-Type': 'application/json' },
-                            timeout: 180000,
-                        });
-                        result = { content: response.data.choices?.[0]?.message?.content || '', tokensUsed: response.data.usage?.completion_tokens };
-                    } else {
-                        // Local fallback: use standard generate
-                        result = await callProvider(messages, provider, keys[i]);
-                    }
-
-                    console.log(`[MultiLLM] ✅ Notes generated with ${provider.provider} (key ${i + 1}), tokens: ${result.tokensUsed ?? '?'}`);
-                    return result;
-                } catch (err) {
-                    const msg = err instanceof Error ? err.message : String(err);
-                    const is429 = msg.includes('429') || msg.includes('Too Many Requests') || msg.includes('RESOURCE_EXHAUSTED');
-
-                    if (is429 && isCloud) {
-                        // On 429: wait 60s then retry the SAME key once
-                        console.warn(`[MultiLLM] ⏳ ${provider.provider} notes key ${i + 1} hit rate limit (429). Waiting 60s...`);
-                        await new Promise(r => setTimeout(r, 60_000));
-                        try {
-                            const model = provider.model || 'gemini-2.0-flash';
+            try {
+                const queue = isCloud ? cloudQueue : localQueue;
+                
+                const result = await queue.add(async () => {
+                    return await executeWithBackoff(`notes(${provider.provider})`, async () => {
+                        await enforceRateLimit(provider.provider, isCloud);
+                        
+                        if (provider.provider === 'gemini') {
+                            const systemMsg = messages.find(m => m.role === 'system');
+                            const userMsgs = messages.filter(m => m.role !== 'system');
+                            const contents = userMsgs.map(m => ({
+                                role: m.role === 'assistant' ? 'model' : 'user',
+                                parts: [{ text: m.content }],
+                            }));
+                            const body: Record<string, unknown> = { contents };
+                            if (systemMsg) body.systemInstruction = { parts: [{ text: systemMsg.content }] };
+                            body.generationConfig = { temperature: 0.8, maxOutputTokens: 8192 };
+                            const model = provider.model || 'gemini-flash-latest';
                             const baseUrl = provider.baseUrl || 'https://generativelanguage.googleapis.com/v1beta';
-
-                            const retry = await axios.post(
-                                provider.provider === 'gemini'
-                                    ? `${baseUrl}/models/${model}:generateContent?key=${keys[i]}`
-                                    : `${provider.baseUrl || 'https://api.x.ai/v1'}/chat/completions`,
-                                provider.provider === 'gemini'
-                                    ? {
-                                        contents: messages.filter(m => m.role !== 'system').map(m => ({
-                                            role: m.role === 'assistant' ? 'model' : 'user',
-                                            parts: [{ text: m.content }],
-                                        })),
-                                        systemInstruction: messages.find(m => m.role === 'system')
-                                            ? { parts: [{ text: messages.find(m => m.role === 'system')!.content }] }
-                                            : undefined,
-                                        generationConfig: { temperature: 0.8, maxOutputTokens: 8192 }
-                                    }
-                                    : {
-                                        model: provider.model || 'grok-beta',
-                                        messages: messages.map(m => ({ role: m.role, content: m.content })),
-                                        temperature: 0.8,
-                                        max_tokens: 8192,
-                                    },
-                                {
-                                    headers: provider.provider === 'grok'
-                                        ? { Authorization: `Bearer ${keys[i]}`, 'Content-Type': 'application/json' }
-                                        : undefined,
-                                    timeout: 180000
-                                }
-                            );
-
-                            let retryRes: LLMResponse;
-                            if (provider.provider === 'gemini') {
-                                retryRes = {
-                                    content: retry.data.candidates?.[0]?.content?.parts?.[0]?.text || '',
-                                    tokensUsed: retry.data.usageMetadata?.candidatesTokenCount
-                                };
-                            } else {
-                                retryRes = {
-                                    content: retry.data.choices?.[0]?.message?.content || '',
-                                    tokensUsed: retry.data.usage?.completion_tokens
-                                };
-                            }
-                            console.log(`[MultiLLM] ✅ Retry succeeded for ${provider.provider} notes key ${i + 1}`);
-                            return retryRes;
-                        } catch (retryErr) {
-                            const retryMsg = retryErr instanceof Error ? retryErr.message : String(retryErr);
-                            console.warn(`[MultiLLM] ❌ ${provider.provider} notes key ${i + 1} still failing after retry: ${retryMsg}`);
-                            errors.push(`${provider.provider}[key${i + 1}][retry]: ${retryMsg}`);
+                            const url = `${baseUrl}/models/${model}:generateContent`;
+                            const response = await axios.post(url, body, {
+                                headers: { 'Content-Type': 'application/json', 'X-goog-api-key': apiKey },
+                                timeout: 180000
+                            });
+                            const text = response.data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+                            return { content: text, tokensUsed: response.data.usageMetadata?.candidatesTokenCount };
+                        } else if (provider.provider === 'grok') {
+                            const baseUrl = provider.baseUrl || 'https://api.x.ai/v1';
+                            const response = await axios.post(`${baseUrl}/chat/completions`, {
+                                model: provider.model || 'grok-beta',
+                                messages: messages.map(m => ({ role: m.role, content: m.content })),
+                                temperature: 0.8,
+                                max_tokens: 8192,
+                            }, {
+                                headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+                                timeout: 180000,
+                            });
+                            return { content: response.data.choices?.[0]?.message?.content || '', tokensUsed: response.data.usage?.completion_tokens };
+                        } else {
+                            // Local fallback
+                            return await callProvider(messages, provider, apiKey);
                         }
-                    } else {
-                        console.warn(`[MultiLLM] ❌ ${provider.provider} key ${i + 1} failed: ${msg}`);
-                        errors.push(`${provider.provider}[key${i + 1}]: ${msg}`);
-                    }
-                }
+                    }, isCloud);
+                }) as LLMResponse;
+
+                console.log(`[MultiLLM] ✅ Notes generated with ${provider.provider}, tokens: ${result.tokensUsed ?? '?'}`);
+                return result;
+            } catch (err) {
+                const msg = err instanceof Error ? err.message : String(err);
+                console.warn(`[MultiLLM] ❌ ${provider.provider} notes failed: ${msg}`);
+                errors.push(`${provider.provider}: ${msg}`);
             }
         }
 

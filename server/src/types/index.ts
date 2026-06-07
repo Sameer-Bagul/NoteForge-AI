@@ -228,7 +228,7 @@ export type AIProvider = 'gemini' | 'grok' | 'lmstudio' | 'ollama';
 export interface ProviderConfig {
   provider: AIProvider;
   enabled: boolean;
-  apiKeys: string[];   // Multiple keys; tried in order on failure
+  apiKey?: string;   // Single API key
   model: string;
   indexingModel?: string; // Faster model for topic extraction
   baseUrl?: string;   // For local providers (Ollama, LM Studio)
