@@ -93,16 +93,13 @@ Formatting requirements:
         // ─── CLOUD PATH (Gemini / Grok) ──────────────────────────────────────────
         let sourceMaterial = '';
         
-        if (options?.generationMode === 'chronological' && topic.description?.startsWith('Chronological segment from')) {
-            if (onSubProgress) onSubProgress(`Extracting exact chronological chunk for ${provider}...`);
-            console.log(`[Notes] Chronological mode: extracting exact chunk for ${topic.title}`);
-            const match = topic.description.match(/from (\d+)s to (\d+)s/);
-            if (match) {
-               const start = parseInt(match[1]);
-               const end = parseInt(match[2]);
-               const transcript = transcripts[0]; 
-               const segments = transcript.segments.filter(s => s.start >= start && s.start <= end);
-               sourceMaterial = segments.map(s => {
+        if (options?.generationMode === 'chronological' && topic.description?.startsWith('Complete lecture notes for video:')) {
+            if (onSubProgress) onSubProgress(`Extracting complete transcript for ${provider}...`);
+            console.log(`[Notes] Chronological mode: extracting full transcript for ${topic.title}`);
+            const videoId = topic.videoSources[0];
+            const transcript = transcripts.find(t => t.videoId === videoId);
+            if (transcript) {
+               sourceMaterial = transcript.segments.map(s => {
                    const minutes = Math.floor(s.start / 60);
                    const seconds = Math.floor(s.start % 60);
                    return `[${minutes}:${seconds.toString().padStart(2, '0')}] ${s.text}`;
@@ -146,16 +143,13 @@ Format as markdown.`;
         // ─── LOCAL PATH (Ollama / LMStudio) ──────────────────────────────────────
         let sourceMaterial = '';
         
-        if (options?.generationMode === 'chronological' && topic.description?.startsWith('Chronological segment from')) {
-            if (onSubProgress) onSubProgress(`Extracting exact chronological chunk for local provider...`);
-            console.log(`[Notes] Chronological mode: extracting exact chunk for ${topic.title}`);
-            const match = topic.description.match(/from (\d+)s to (\d+)s/);
-            if (match) {
-               const start = parseInt(match[1]);
-               const end = parseInt(match[2]);
-               const transcript = transcripts[0]; 
-               const segments = transcript.segments.filter(s => s.start >= start && s.start <= end);
-               sourceMaterial = segments.map(s => {
+        if (options?.generationMode === 'chronological' && topic.description?.startsWith('Complete lecture notes for video:')) {
+            if (onSubProgress) onSubProgress(`Extracting complete transcript for local provider...`);
+            console.log(`[Notes] Chronological mode: extracting full transcript for ${topic.title}`);
+            const videoId = topic.videoSources[0];
+            const transcript = transcripts.find(t => t.videoId === videoId);
+            if (transcript) {
+               sourceMaterial = transcript.segments.map(s => {
                    const minutes = Math.floor(s.start / 60);
                    const seconds = Math.floor(s.start % 60);
                    return `[${minutes}:${seconds.toString().padStart(2, '0')}] ${s.text}`;
@@ -245,20 +239,17 @@ Use markdown: ## headings, paragraphs, and \`\`\`mermaid or code blocks.`;
     let prompt: string;
     let sourceMaterial = '';
 
-    if (options?.generationMode === 'chronological' && topic.description?.startsWith('Chronological segment from')) {
-        const match = topic.description.match(/from (\d+)s to (\d+)s/);
-        if (match) {
-           const start = parseInt(match[1]);
-           const end = parseInt(match[2]);
-           const transcript = transcripts[0]; 
-           const segments = transcript.segments.filter(s => s.start >= start && s.start <= end);
-           sourceMaterial = segments.map(s => {
+    if (options?.generationMode === 'chronological' && topic.description?.startsWith('Complete lecture notes for video:')) {
+        const videoId = topic.videoSources[0];
+        const transcript = transcripts.find(t => t.videoId === videoId);
+        if (transcript) {
+           sourceMaterial = transcript.segments.map(s => {
                const minutes = Math.floor(s.start / 60);
                const seconds = Math.floor(s.start % 60);
                return `[${minutes}:${seconds.toString().padStart(2, '0')}] ${s.text}`;
            }).join('\n');
         }
-        prompt = `Write comprehensive running notes for: "${topic.title}" based on this chronological excerpt:\n\n${sourceMaterial}\n\nInclude INTERLINKING to previous concepts and inject additional world-knowledge context if applicable.`;
+        prompt = `Write comprehensive running notes for: "${topic.title}" based on this complete lecture transcript:\n\n${sourceMaterial}\n\nInclude INTERLINKING to previous concepts and inject additional world-knowledge context if applicable.`;
     } else {
         if (isCloud) {
           const fullTranscriptText = transcripts

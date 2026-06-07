@@ -78,67 +78,22 @@ export class IndexService {
     return index;
   }
 
-  // Generate chronological chunks (Lecture Mode)
+  // Generate chronological chapters (1 Video = 1 Chapter)
   private async generateChronologicalIndex(transcripts: VideoTranscript[]): Promise<TopicNode[]> {
-    const CHUNK_DURATION = 5 * 60; // 5 minutes
     const orderedTopics: TopicNode[] = [];
     let topicIndex = 1;
 
     for (const transcript of transcripts) {
-      let currentChunkText = "";
-      let chunkStartTime = 0;
-      let chunkEndTime = 0;
-
-      const processChunk = async (text: string, start: number, end: number) => {
-        if (!text.trim()) return;
-
-        const minutes = Math.floor(start / 60);
-        const seconds = Math.floor(start % 60);
-        const timestampStr = `[${minutes}:${seconds.toString().padStart(2, '0')}]`;
-
-        // Ask LLM to generate a single chapter title for this text
-        const prompt = `Read the following video transcript segment starting at ${timestampStr}. Provide a concise, descriptive chapter title for this segment.
-Transcript:
-"""
-${text.slice(0, 3000)}...
-"""
-
-Return ONLY a valid JSON object in this format: {"title": "Chapter Title Here"}`;
-
-        try {
-          const result = await llmService.generateJSONLocal<{ title: string }>(prompt);
-          orderedTopics.push({
-            id: `chronological-${uuidv4()}`,
-            title: `${timestampStr} ${result?.title || 'Chapter ' + topicIndex}`,
-            description: `Chronological segment from ${start}s to ${end}s`,
-            subtopics: [],
-            videoSources: [transcript.videoId],
-            order: topicIndex++
-          });
-        } catch (e) {
-          orderedTopics.push({
-            id: `chronological-${uuidv4()}`,
-            title: `${timestampStr} Chapter ${topicIndex}`,
-            description: `Chronological segment`,
-            subtopics: [],
-            videoSources: [transcript.videoId],
-            order: topicIndex++
-          });
-        }
-      };
-
-      for (let i = 0; i < transcript.segments.length; i++) {
-        const seg = transcript.segments[i];
-        if (currentChunkText === "") chunkStartTime = seg.start;
-        currentChunkText += seg.text + " ";
-        chunkEndTime = seg.start + seg.duration;
-
-        if (chunkEndTime - chunkStartTime >= CHUNK_DURATION || i === transcript.segments.length - 1) {
-          await processChunk(currentChunkText, chunkStartTime, chunkEndTime);
-          currentChunkText = "";
-        }
-      }
+      orderedTopics.push({
+        id: `video-${transcript.videoId}-${uuidv4()}`,
+        title: transcripts.length > 1 ? `Lecture ${topicIndex}: ${transcript.videoInfo.title}` : transcript.videoInfo.title,
+        description: `Complete lecture notes for video: ${transcript.videoId}`,
+        subtopics: [],
+        videoSources: [transcript.videoId],
+        order: topicIndex++
+      });
     }
+
     return orderedTopics;
   }
 
