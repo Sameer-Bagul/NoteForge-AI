@@ -5,6 +5,7 @@ import { notesService } from '../services/notes.service.js';
 import { llmService } from '../services/llm.service.js';
 import { multiLlmService } from '../services/multi-llm.service.js';
 import { SSEStream } from '../utils/sse.js';
+import { pdfService } from '../services/pdf.service.js';
 
 export class ProcessController {
   static async startJob(req: Request, res: Response) {
@@ -283,6 +284,45 @@ export class ProcessController {
       res.status(500).json({
         success: false,
         error: error instanceof Error ? error.message : 'Failed to update notebook'
+      });
+    }
+  }
+
+  static async exportPdf(req: Request, res: Response) {
+    try {
+      const { indexId } = req.params as { indexId: string };
+      console.log(`\n📄 PDF Export request for index: ${indexId}`);
+
+      const notebook = notesService.loadNotebook(indexId);
+      if (!notebook) {
+        return res.status(404).json({ success: false, error: 'Notebook not found' });
+      }
+
+      const index = notebook.index;
+
+      const notesList = [];
+      for (const chapter of notebook.chapters) {
+        if (chapter.topics && Array.isArray(chapter.topics)) {
+          notesList.push(...chapter.topics);
+        }
+      }
+
+      if (notesList.length === 0) {
+        return res.status(404).json({ success: false, error: 'No notes found for this index' });
+      }
+
+      const pdfBuffer = await pdfService.generatePDF(index, notesList);
+
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${index.title.replace(/[^a-zA-Z0-9_-]/g, '_')}_Notes.pdf"`);
+      res.send(pdfBuffer);
+      
+      console.log(`✅ PDF generated and sent successfully`);
+    } catch (error) {
+      console.error(`❌ Error generating PDF:`, error);
+      res.status(500).json({
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to generate PDF'
       });
     }
   }

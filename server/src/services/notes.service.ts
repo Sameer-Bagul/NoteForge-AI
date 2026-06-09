@@ -24,6 +24,15 @@ const __dirname = path.dirname(__filename);
 const NOTES_DIR = path.join(__dirname, '../../storage/notes');
 const NOTEBOOKS_DIR = path.join(__dirname, '../../storage/notebooks');
 
+const FORMATTING_INSTRUCTIONS = `CRITICAL FORMATTING RULES:
+1. NEVER output an empty heading. Every single heading MUST immediately be followed by detailed paragraphs, tables, or bulleted lists. Empty headings are strictly forbidden.
+2. Use markdown blockquotes (>) for important tips, warnings, or callouts (e.g., > **💡 Tip:** ...).
+3. Use markdown tables for comparisons or structured data.
+4. If generating Mermaid diagrams (\`\`\`mermaid), ONLY use simple, strictly valid syntax (like 'graph TD', 'sequenceDiagram'). Avoid complex unsupported shapes or syntax that causes parser errors. Every node must have a valid ID without special characters.
+5. Code blocks must include language tags (e.g., \`\`\`javascript).
+6. Highlight key terms in **bold** on first mention.
+7. Ensure the content is dense, educational, and deeply explanatory.`;
+
 // Ensure storage directories exist
 [NOTES_DIR, NOTEBOOKS_DIR].forEach((dir: string) => {
   if (!fs.existsSync(dir)) {
@@ -77,12 +86,8 @@ ${creativityGuidance}
 
 ${runningNotesGuidance}
 
-Formatting requirements:
-- Use markdown (##/### headings, flowing paragraphs, bullets only when truly list-like)
-- Code blocks with language tag: \`\`\`javascript ... \`\`\`
-- Mermaid diagrams for architectures/flows: \`\`\`mermaid ... \`\`\`
-- Callouts: > **💡 Tip:** ..., > **⚠️ Warning:** ..., > **📌 Important:** ...
-- Bold for key terms on first mention${userNotesSection}`;
+${FORMATTING_INSTRUCTIONS}
+${userNotesSection}`;
 
     try {
       const isCloud = llmService.isPrimaryCloudProvider();
@@ -233,7 +238,8 @@ Format as markdown. Keep it rich, educational, and readable.`;
 
     const systemPrompt = `You are an expert technical writer. Produce high-quality, long-form study notes.
 ${creativityGuidance} ${userNotesSection}
-Use markdown: ## headings, paragraphs, and \`\`\`mermaid or code blocks.`;
+
+${FORMATTING_INSTRUCTIONS}`;
 
     const isCloud = llmService.isPrimaryCloudProvider();
     let prompt: string;
@@ -318,7 +324,24 @@ Use markdown: ## headings, paragraphs, and \`\`\`mermaid or code blocks.`;
         this.storeTopicNotes(notes);
 
       } catch (error) {
-        console.warn(`Skipping notes for ${topic.title}:`, error);
+        console.warn(`[NotesService] Generation failed for ${topic.title} after all retries:`, error);
+        
+        const placeholderText = `> **⚠️ Generation Failed:** The AI provider rejected the request due to aggressive rate limits or server overload (503/429/Timeout) after multiple retries. \n\nPlease use the UI to manually regenerate this specific chapter when the API has cooled down.`;
+        
+        const sections = this.parseMarkdownToSections(placeholderText);
+        
+        const notes: TopicNotes = {
+          topicId: topic.id,
+          topicTitle: topic.title,
+          summary: "Generation failed due to provider limits.",
+          sections,
+          keyTakeaways: ["Failed to generate - retry needed"],
+          videoSources: [],
+          generatedAt: new Date().toISOString()
+        };
+
+        allNotes.push(notes);
+        this.storeTopicNotes(notes);
       }
     }
     return allNotes;

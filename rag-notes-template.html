@@ -1,0 +1,1648 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chapter 04 — RAG Systems · Notes</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Syne:wght@400;500;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&display=swap" rel="stylesheet">
+<style>
+
+/* ══════════════════════════════════════════
+   DESIGN TOKENS
+══════════════════════════════════════════ */
+:root {
+  /* accent palette */
+  --c-pink:    #FF2D78;  --c-pink-s: #FFE5EF;  --c-pink-m: #FF8AB8;
+  --c-cyan:    #00BFDA;  --c-cyan-s: #D6F6FC;  --c-cyan-m: #60D9ED;
+  --c-lime:    #8DC800;  --c-lime-s: #EDFAC5;  --c-lime-m: #B8E04A;
+  --c-purple:  #7C3AED;  --c-purple-s:#EDE9FE; --c-purple-m:#B18AFF;
+  --c-amber:   #E58A00;  --c-amber-s:#FFF0CC;  --c-amber-m:#FFBC45;
+  --c-teal:    #0D8F72;  --c-teal-s: #D4F5EC;  --c-teal-m: #3CBFA0;
+  --c-red:     #E5373A;  --c-red-s:  #FFE4E4;  --c-red-m:  #FF8080;
+
+  /* neutrals */
+  --bg:       #F6F5EF;
+  --surface:  #FFFFFF;
+  --ink:      #111110;
+  --ink-2:    #3A3A38;
+  --ink-3:    #7A7A78;
+  --ink-4:    #B8B8B5;
+  --border:   #DEDBD3;
+  --border-s: #ECEAE3;
+
+  /* type */
+  --mono: 'JetBrains Mono', monospace;
+  --head: 'Syne', sans-serif;
+  --body: 'DM Sans', sans-serif;
+
+  /* A4 */
+  --pw: 794px;
+  --ph: 1123px;
+  --mx: 52px;   /* margin x */
+  --my: 44px;   /* margin y */
+
+  /* nesting indents */
+  --ind-1: 0px;
+  --ind-2: 16px;
+  --ind-3: 28px;
+  --ind-4: 38px;
+
+  /* border-radii */
+  --r1: 4px;
+  --r2: 8px;
+  --r3: 12px;
+  --r4: 18px;
+}
+
+/* ══════════════════════════════════════════
+   RESET
+══════════════════════════════════════════ */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+body{
+  background:#C8C6BF;
+  font-family:var(--body);
+  color:var(--ink);
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:28px;
+  padding:28px 0 48px;
+}
+
+/* ══════════════════════════════════════════
+   PAGE SHELL
+══════════════════════════════════════════ */
+.page{
+  width:var(--pw);
+  height:var(--ph);
+  min-height:var(--ph);
+  background:var(--surface);
+  overflow:hidden;
+  position:relative;
+  display:flex;
+  flex-direction:column;
+  box-shadow:0 6px 48px rgba(0,0,0,.22);
+}
+
+/* running header strip */
+.run-head{
+  height:32px;
+  background:var(--ink);
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding:0 var(--mx);
+  flex-shrink:0;
+}
+.run-head-left{
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+.run-chapter{
+  font-family:var(--mono);
+  font-size:9px;
+  font-weight:700;
+  letter-spacing:.16em;
+  text-transform:uppercase;
+  color:#fff;
+}
+.run-dot{
+  width:3px;height:3px;border-radius:50%;background:#555;
+}
+.run-topic{
+  font-family:var(--mono);
+  font-size:9px;
+  letter-spacing:.08em;
+  color:#888;
+}
+.run-page{
+  font-family:var(--mono);
+  font-size:9px;
+  color:#555;
+  letter-spacing:.1em;
+}
+
+/* accent bar top */
+.accent-bar{
+  height:4px;
+  flex-shrink:0;
+  display:flex;
+}
+.ab-seg{flex:1;}
+
+/* content area */
+.content{
+  padding:var(--my) var(--mx);
+  flex:1;
+  overflow:hidden;
+  display:flex;
+  flex-direction:column;
+}
+
+/* running footer */
+.run-foot{
+  height:26px;
+  border-top:1px solid var(--border);
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding:0 var(--mx);
+  flex-shrink:0;
+}
+.foot-tag{
+  font-family:var(--mono);
+  font-size:8.5px;
+  letter-spacing:.1em;
+  color:var(--ink-4);
+  text-transform:uppercase;
+}
+.foot-pills{
+  display:flex;gap:5px;
+}
+.foot-pill{
+  font-family:var(--mono);
+  font-size:7.5px;
+  font-weight:600;
+  letter-spacing:.06em;
+  padding:1.5px 7px;
+  border-radius:99px;
+  text-transform:uppercase;
+}
+
+/* ══════════════════════════════════════════
+   COVER PAGE SPECIFICS
+══════════════════════════════════════════ */
+.cover-body{
+  flex:1;
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+}
+.chapter-eyebrow{
+  font-family:var(--mono);
+  font-size:10px;
+  font-weight:600;
+  letter-spacing:.18em;
+  text-transform:uppercase;
+  color:var(--ink-3);
+  margin-bottom:10px;
+}
+.chapter-num{
+  font-family:var(--head);
+  font-size:110px;
+  font-weight:800;
+  line-height:1;
+  letter-spacing:-.04em;
+  color:var(--c-pink);
+  margin-bottom:2px;
+}
+.chapter-title{
+  font-family:var(--head);
+  font-size:38px;
+  font-weight:800;
+  letter-spacing:-.025em;
+  color:var(--ink);
+  line-height:1.1;
+  margin-bottom:16px;
+}
+.chapter-desc{
+  font-size:13px;
+  line-height:1.75;
+  color:var(--ink-2);
+  max-width:560px;
+  border-left:3px solid var(--c-pink);
+  padding-left:14px;
+  margin-bottom:24px;
+}
+
+/* TOC */
+.toc-grid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:6px;
+  margin-top:8px;
+}
+.toc-item{
+  display:flex;
+  align-items:flex-start;
+  gap:10px;
+  background:var(--bg);
+  border-radius:var(--r2);
+  padding:8px 12px;
+  border:1px solid var(--border-s);
+}
+.toc-num{
+  font-family:var(--mono);
+  font-size:9px;
+  font-weight:700;
+  color:#fff;
+  padding:2px 6px;
+  border-radius:var(--r1);
+  flex-shrink:0;
+  margin-top:1px;
+}
+.toc-text{
+  display:flex;flex-direction:column;gap:1px;
+}
+.toc-section{
+  font-size:11px;
+  font-weight:600;
+  color:var(--ink);
+}
+.toc-sub{
+  font-family:var(--mono);
+  font-size:9px;
+  color:var(--ink-3);
+  line-height:1.5;
+}
+
+/* cover stats bar */
+.cover-stats{
+  display:flex;
+  gap:0;
+  border:1px solid var(--border);
+  border-radius:var(--r3);
+  overflow:hidden;
+  margin-top:20px;
+}
+.cstat{
+  flex:1;
+  padding:10px 14px;
+  border-right:1px solid var(--border);
+  display:flex;flex-direction:column;gap:2px;
+}
+.cstat:last-child{border-right:none;}
+.cstat-val{
+  font-family:var(--head);
+  font-size:22px;
+  font-weight:800;
+  letter-spacing:-.02em;
+}
+.cstat-lbl{
+  font-family:var(--mono);
+  font-size:8.5px;
+  letter-spacing:.1em;
+  text-transform:uppercase;
+  color:var(--ink-3);
+}
+
+/* ══════════════════════════════════════════
+   CHAPTER / SECTION HEADINGS  (hierarchy)
+══════════════════════════════════════════ */
+
+/* H1 — Chapter title on content pages */
+.h-chap{
+  font-family:var(--head);
+  font-size:28px;
+  font-weight:800;
+  letter-spacing:-.02em;
+  color:var(--ink);
+  display:flex;
+  align-items:center;
+  gap:10px;
+  margin-bottom:4px;
+}
+.h-chap .chap-badge{
+  font-family:var(--mono);
+  font-size:9px;
+  font-weight:700;
+  letter-spacing:.14em;
+  text-transform:uppercase;
+  padding:4px 10px;
+  border-radius:var(--r1);
+  color:#fff;
+}
+.h-chap-rule{
+  height:2px;
+  background:var(--ink);
+  border-radius:1px;
+  margin-bottom:18px;
+}
+
+/* H2 — Section (4.1, 4.2 …) */
+.h-sec{
+  display:flex;
+  align-items:baseline;
+  gap:8px;
+  margin: 14px 0 6px var(--ind-1);
+  padding-bottom:5px;
+  border-bottom:1px solid var(--border);
+}
+.h-sec-num{
+  font-family:var(--mono);
+  font-size:11px;
+  font-weight:700;
+  color:var(--ink-3);
+  min-width:32px;
+  flex-shrink:0;
+}
+.h-sec-text{
+  font-family:var(--head);
+  font-size:17px;
+  font-weight:700;
+  color:var(--ink);
+  letter-spacing:-.01em;
+}
+.h-sec-tag{
+  font-family:var(--mono);
+  font-size:8.5px;
+  font-weight:600;
+  letter-spacing:.1em;
+  text-transform:uppercase;
+  padding:2px 8px;
+  border-radius:99px;
+  margin-left:auto;
+  flex-shrink:0;
+}
+
+/* H3 — Sub-section (4.1.1 …) */
+.h-sub{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  margin:10px 0 4px var(--ind-2);
+}
+.h-sub-num{
+  font-family:var(--mono);
+  font-size:9.5px;
+  font-weight:600;
+  color:var(--ink-4);
+  min-width:36px;
+  flex-shrink:0;
+}
+.h-sub-text{
+  font-family:var(--body);
+  font-size:13.5px;
+  font-weight:600;
+  color:var(--ink);
+}
+.h-sub-mark{
+  width:6px;height:6px;border-radius:1px;flex-shrink:0;
+  margin-right:1px;
+}
+
+/* H4 — Sub-sub topic */
+.h-topic{
+  display:flex;
+  align-items:center;
+  gap:5px;
+  margin:7px 0 3px var(--ind-3);
+}
+.h-topic-num{
+  font-family:var(--mono);
+  font-size:8.5px;
+  color:var(--ink-4);
+  min-width:44px;
+  flex-shrink:0;
+}
+.h-topic-text{
+  font-size:12px;
+  font-weight:600;
+  color:var(--ink-2);
+  font-family:var(--mono);
+  text-transform:uppercase;
+  letter-spacing:.06em;
+}
+.h-topic-line{
+  flex:1;height:1px;background:var(--border-s);
+}
+
+/* H5 — leaf detail */
+.h-leaf{
+  display:flex;
+  align-items:center;
+  gap:5px;
+  margin:5px 0 2px var(--ind-4);
+}
+.h-leaf::before{
+  content:'◆';
+  font-size:6px;
+  color:var(--ink-4);
+  flex-shrink:0;
+}
+.h-leaf-text{
+  font-size:11px;
+  font-weight:700;
+  color:var(--ink-3);
+  font-family:var(--mono);
+  letter-spacing:.05em;
+}
+
+/* ══════════════════════════════════════════
+   BODY TEXT + INLINE
+══════════════════════════════════════════ */
+.body-text{
+  font-size:12.5px;
+  line-height:1.8;
+  color:var(--ink-2);
+}
+.body-text.ind-2{ margin-left:var(--ind-2); }
+.body-text.ind-3{ margin-left:var(--ind-3); }
+.body-text.ind-4{ margin-left:var(--ind-4); }
+.body-text.sm{ font-size:11.5px; line-height:1.7; }
+
+code{
+  font-family:var(--mono);
+  font-size:11px;
+  background:#F0EDE5;
+  color:var(--c-pink);
+  padding:1.5px 6px;
+  border-radius:3px;
+  font-weight:600;
+}
+
+mark{
+  background:var(--c-lime-s);
+  color:#355700;
+  padding:0 3px;
+  border-radius:2px;
+}
+mark.pk{ background:var(--c-pink-s); color:#8B0033; }
+mark.cy{ background:var(--c-cyan-s); color:#005060; }
+mark.pu{ background:var(--c-purple-s); color:#4B1E9E; }
+mark.am{ background:var(--c-amber-s); color:#7A4700; }
+
+.sup-note{
+  font-family:var(--mono);
+  font-size:8px;
+  color:var(--c-pink);
+  font-weight:700;
+  vertical-align:super;
+  line-height:0;
+}
+
+/* ══════════════════════════════════════════
+   MARGIN COLUMN LAYOUT
+   (narrow left gutter for chapter numbering)
+══════════════════════════════════════════ */
+.col-layout{
+  display:grid;
+  grid-template-columns:42px 1fr;
+  gap:0 12px;
+  align-items:start;
+}
+.col-num{
+  font-family:var(--mono);
+  font-size:9px;
+  color:var(--ink-4);
+  text-align:right;
+  padding-top:3px;
+  line-height:1.8;
+}
+
+/* ══════════════════════════════════════════
+   NESTED BULLET LISTS
+══════════════════════════════════════════ */
+.nb{  /* root list */
+  list-style:none;padding:0;margin:4px 0 6px var(--ind-2);
+  display:flex;flex-direction:column;gap:2px;
+}
+.nb li{
+  display:flex;align-items:flex-start;gap:7px;
+  font-size:12px;color:var(--ink-2);line-height:1.7;
+}
+.nb-dot{
+  width:6px;height:6px;border-radius:50%;flex-shrink:0;margin-top:5.5px;
+}
+/* nested level 2 */
+.nb-2{
+  list-style:none;padding:0;margin:2px 0 0 20px;
+  display:flex;flex-direction:column;gap:1px;
+}
+.nb-2 li{
+  display:flex;align-items:flex-start;gap:6px;
+  font-size:11px;color:var(--ink-3);line-height:1.65;
+}
+.nb-dot-2{
+  width:4px;height:4px;border-radius:1px;flex-shrink:0;margin-top:5.5px;
+}
+/* nested level 3 */
+.nb-3{
+  list-style:none;padding:0;margin:1px 0 0 18px;
+  display:flex;flex-direction:column;gap:1px;
+}
+.nb-3 li{
+  display:flex;align-items:flex-start;gap:5px;
+  font-size:10.5px;color:var(--ink-4);line-height:1.6;font-family:var(--mono);
+}
+.nb-3 li::before{content:'↳';font-size:9px;flex-shrink:0;margin-top:2px;color:var(--ink-4);}
+
+/* numbered nested */
+.nn{
+  list-style:none;padding:0;margin:4px 0 6px var(--ind-2);
+  display:flex;flex-direction:column;gap:3px;
+  counter-reset:nn-ctr;
+}
+.nn>li{
+  display:flex;align-items:flex-start;gap:8px;
+  font-size:12px;color:var(--ink-2);line-height:1.7;
+  counter-increment:nn-ctr;
+}
+.nn>li::before{
+  content:counter(nn-ctr,decimal-leading-zero);
+  font-family:var(--mono);font-size:8.5px;font-weight:700;
+  color:#fff;
+  width:17px;height:17px;border-radius:3px;
+  display:flex;align-items:center;justify-content:center;
+  flex-shrink:0;margin-top:2px;
+}
+.nn .nn-2{
+  list-style:none;padding:0;margin:2px 0 0 22px;
+  display:flex;flex-direction:column;gap:1px;
+  counter-reset:nn2-ctr;
+}
+.nn .nn-2 li{
+  display:flex;align-items:flex-start;gap:6px;
+  font-size:11px;color:var(--ink-3);line-height:1.6;
+  counter-increment:nn2-ctr;
+}
+.nn .nn-2 li::before{
+  content:counter(nn-ctr) '.' counter(nn2-ctr);
+  font-family:var(--mono);font-size:8px;color:var(--ink-4);
+  flex-shrink:0;margin-top:2px;min-width:22px;
+}
+
+/* ══════════════════════════════════════════
+   CODE BLOCKS
+══════════════════════════════════════════ */
+.code-block{
+  background:#0F0F11;
+  border-radius:var(--r3);
+  overflow:hidden;
+  margin:8px 0 8px var(--ind-2);
+  font-family:var(--mono);
+  border:1px solid #2A2A30;
+}
+.code-block.ind-3{ margin-left:var(--ind-3); }
+.code-topbar{
+  background:#1A1A1F;
+  padding:6px 12px;
+  display:flex;align-items:center;justify-content:space-between;
+  border-bottom:1px solid #2A2A30;
+}
+.code-dots{display:flex;gap:5px;}
+.code-dot{width:8px;height:8px;border-radius:50%;}
+.dot-r{background:#FF5F57;}.dot-y{background:#FEBC2E;}.dot-g{background:#28C840;}
+.code-meta{
+  display:flex;align-items:center;gap:8px;
+}
+.code-lang{
+  font-family:var(--mono);font-size:8.5px;font-weight:600;
+  color:#555;letter-spacing:.1em;text-transform:uppercase;
+}
+.code-file{
+  font-family:var(--mono);font-size:8.5px;color:#3A3A45;
+  letter-spacing:.06em;
+}
+.code-body{
+  padding:12px 16px;
+  font-size:11px;line-height:1.7;color:#CDD6F4;
+  overflow-x:auto;
+}
+.code-body pre{white-space:pre-wrap;word-break:break-word;}
+
+/* dracula-style syntax */
+.kw{color:#CBA6F7;}   /* keyword - mauve */
+.fn{color:#A6E3A1;}   /* function - green */
+.str{color:#A6DA95;}  /* string - lighter green */
+.cm{color:#45475A;font-style:italic;} /* comment */
+.num{color:#FAB387;} /* number - peach */
+.cl{color:#89DCEB;}  /* class - sky */
+.op{color:#CBA6F7;}  /* operator */
+.at{color:#F38BA8;}  /* attribute - red */
+.bt{color:#89B4FA;}  /* builtin - blue */
+.self{color:#F5C2E7;} /* self - pink */
+.dec{color:#F9E2AF;}  /* decorator */
+
+/* inline code in code blocks */
+.code-body code{background:transparent;color:var(--at);padding:0;font-size:inherit;}
+
+/* line numbers gutter */
+.code-ln{
+  display:grid;
+  grid-template-columns:32px 1fr;
+  gap:0 10px;
+}
+.ln-nums{
+  color:#3A3A50;font-size:10px;line-height:1.7;text-align:right;
+  user-select:none;padding-top:0;
+}
+
+/* ══════════════════════════════════════════
+   CALLOUT / QUOTE / ASIDE BOXES
+══════════════════════════════════════════ */
+.callout{
+  border-left:3px solid;
+  border-radius:0 var(--r2) var(--r2) 0;
+  padding:9px 12px;
+  margin:7px 0 7px var(--ind-2);
+  font-size:11.5px;line-height:1.7;
+}
+.callout.ind-3{margin-left:var(--ind-3);}
+.callout-head{
+  font-family:var(--mono);font-size:8.5px;font-weight:700;
+  letter-spacing:.12em;text-transform:uppercase;
+  margin-bottom:4px;display:flex;align-items:center;gap:5px;
+}
+.callout.info   {border-color:var(--c-cyan);  background:var(--c-cyan-s);}
+.callout.info   .callout-head{color:var(--c-cyan);}
+.callout.info   .callout-body{color:#004555;}
+.callout.warn   {border-color:var(--c-amber); background:var(--c-amber-s);}
+.callout.warn   .callout-head{color:var(--c-amber);}
+.callout.warn   .callout-body{color:#5C3300;}
+.callout.danger {border-color:var(--c-red);   background:var(--c-red-s);}
+.callout.danger .callout-head{color:var(--c-red);}
+.callout.danger .callout-body{color:#6B0000;}
+.callout.tip    {border-color:var(--c-purple);background:var(--c-purple-s);}
+.callout.tip    .callout-head{color:var(--c-purple);}
+.callout.tip    .callout-body{color:#300E7A;}
+.callout.ok     {border-color:var(--c-teal);  background:var(--c-teal-s);}
+.callout.ok     .callout-head{color:var(--c-teal);}
+.callout.ok     .callout-body{color:#084430;}
+.callout.quote  {border-color:var(--c-pink);  background:var(--c-pink-s);border-left-width:4px;}
+.callout.quote  .callout-body{color:#7A0031;font-style:italic;font-size:12.5px;}
+.callout-body{font-size:11.5px;line-height:1.7;}
+.callout-attr{
+  display:block;margin-top:4px;font-family:var(--mono);font-size:8.5px;
+  font-weight:700;letter-spacing:.1em;text-transform:uppercase;opacity:.6;
+}
+
+/* ══════════════════════════════════════════
+   DEFINITION / TERM BOX
+══════════════════════════════════════════ */
+.def-block{
+  display:grid;
+  grid-template-columns:auto 1fr;
+  gap:0;
+  border:1px solid var(--border);
+  border-radius:var(--r2);
+  overflow:hidden;
+  margin:6px 0 6px var(--ind-2);
+  font-size:11.5px;
+}
+.def-term{
+  background:var(--ink);
+  color:#fff;
+  font-family:var(--mono);
+  font-size:10px;
+  font-weight:600;
+  padding:7px 12px;
+  display:flex;
+  align-items:center;
+  white-space:nowrap;
+  letter-spacing:.04em;
+}
+.def-desc{
+  background:var(--bg);
+  padding:7px 12px;
+  color:var(--ink-2);
+  line-height:1.6;
+  font-size:11.5px;
+}
+
+/* ══════════════════════════════════════════
+   TABLES
+══════════════════════════════════════════ */
+.tbl{
+  width:100%;border-collapse:separate;border-spacing:0;
+  font-size:11px;
+  margin:6px 0 8px var(--ind-2);
+  border:1px solid var(--border);
+  border-radius:var(--r2);
+  overflow:hidden;
+}
+.tbl th{
+  background:var(--ink);color:#fff;
+  font-family:var(--mono);font-size:8.5px;font-weight:600;
+  letter-spacing:.1em;text-transform:uppercase;
+  padding:6px 11px;text-align:left;
+}
+.tbl td{
+  padding:5.5px 11px;
+  border-bottom:1px solid var(--border-s);
+  color:var(--ink-2);vertical-align:top;
+}
+.tbl tr:last-child td{border-bottom:none;}
+.tbl tr:nth-child(even) td{background:var(--bg);}
+.tbl td.mono{font-family:var(--mono);font-size:10px;font-weight:600;color:var(--ink);}
+.tbl td.good{color:var(--c-teal);font-weight:700;}
+.tbl td.bad {color:var(--c-red); font-weight:700;}
+.tbl td.mid {color:var(--c-amber);font-weight:700;}
+.tbl.ind-3{margin-left:var(--ind-3);}
+
+/* ══════════════════════════════════════════
+   FORMULA / MATH
+══════════════════════════════════════════ */
+.formula{
+  background:var(--ink);
+  color:#fff;
+  border-radius:var(--r2);
+  padding:10px 16px;
+  font-family:var(--mono);
+  font-size:13px;
+  text-align:center;
+  margin:7px 0 7px var(--ind-2);
+  letter-spacing:.03em;
+  display:flex;flex-direction:column;gap:4px;
+}
+.formula-lbl{
+  font-size:8px;color:#555;font-weight:700;letter-spacing:.14em;text-transform:uppercase;
+}
+.formula-expr{color:#CBA6F7;font-size:13px;}
+.formula.ind-3{margin-left:var(--ind-3);}
+
+/* ══════════════════════════════════════════
+   FLOW PIPELINE
+══════════════════════════════════════════ */
+.pipeline{
+  display:flex;align-items:stretch;gap:0;
+  margin:8px 0 8px var(--ind-2);
+  border:1px solid var(--border);
+  border-radius:var(--r2);
+  overflow:hidden;
+}
+.pipe-node{
+  flex:1;
+  padding:8px 10px;
+  text-align:center;
+  border-right:1px solid var(--border);
+  position:relative;
+}
+.pipe-node:last-child{border-right:none;}
+.pipe-icon{font-size:16px;display:block;margin-bottom:3px;}
+.pipe-lbl{
+  font-family:var(--mono);font-size:8.5px;font-weight:700;
+  letter-spacing:.08em;text-transform:uppercase;color:var(--ink);
+  display:block;
+}
+.pipe-sub{font-size:9px;color:var(--ink-3);display:block;margin-top:1px;}
+.pipe-node.active{background:var(--ink);}
+.pipe-node.active .pipe-lbl,.pipe-node.active .pipe-sub{color:#fff!important;}
+.pipe-node.pk{background:var(--c-pink-s);}
+.pipe-node.pk .pipe-lbl{color:var(--c-pink);}
+.pipe-node.cy{background:var(--c-cyan-s);}
+.pipe-node.cy .pipe-lbl{color:var(--c-cyan);}
+.pipe-node.li{background:var(--c-lime-s);}
+.pipe-node.li .pipe-lbl{color:var(--c-lime);}
+.pipe-node.pu{background:var(--c-purple-s);}
+.pipe-node.pu .pipe-lbl{color:var(--c-purple);}
+.pipe-node.am{background:var(--c-amber-s);}
+.pipe-node.am .pipe-lbl{color:var(--c-amber);}
+.pipe-node.te{background:var(--c-teal-s);}
+.pipe-node.te .pipe-lbl{color:var(--c-teal);}
+.pipe-node.ind-3{margin-left:var(--ind-3);}
+
+/* ══════════════════════════════════════════
+   GRID LAYOUTS
+══════════════════════════════════════════ */
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:6px 0 8px var(--ind-2);}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin:6px 0 8px var(--ind-2);}
+.g2.ind-3,.g3.ind-3{margin-left:var(--ind-3);}
+
+/* mini stat card */
+.mstat{
+  background:var(--bg);border-radius:var(--r2);
+  padding:9px 12px;border:1px solid var(--border-s);
+}
+.mstat-val{
+  font-family:var(--head);font-size:20px;font-weight:800;letter-spacing:-.02em;
+}
+.mstat-lbl{font-family:var(--mono);font-size:8px;color:var(--ink-3);letter-spacing:.1em;text-transform:uppercase;margin-top:2px;}
+.mstat-sub{font-family:var(--mono);font-size:8.5px;color:var(--ink-4);margin-top:1px;}
+
+/* generic card */
+.card{
+  background:var(--bg);border-radius:var(--r2);
+  padding:10px 13px;border:1px solid var(--border-s);
+}
+.card-head{
+  font-family:var(--mono);font-size:9px;font-weight:700;
+  letter-spacing:.1em;text-transform:uppercase;
+  color:var(--ink-3);margin-bottom:5px;
+  display:flex;align-items:center;gap:5px;
+}
+.card-body{font-size:11.5px;color:var(--ink-2);line-height:1.65;}
+
+/* ══════════════════════════════════════════
+   ANNOTATION / STICKY
+══════════════════════════════════════════ */
+.annot{
+  border-radius:var(--r2);
+  padding:8px 11px;
+  font-family:var(--mono);
+  font-size:10.5px;
+  line-height:1.6;
+  border:1px dashed;
+}
+.annot.yellow{background:#FFFDE7;color:#554400;border-color:#E8D000;}
+.annot.blue  {background:var(--c-cyan-s);color:#003E4F;border-color:var(--c-cyan);}
+.annot.pink  {background:var(--c-pink-s);color:#7A0031;border-color:var(--c-pink-m);}
+.annot-head  {font-size:8.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;margin-bottom:3px;opacity:.65;}
+
+/* ══════════════════════════════════════════
+   DIVIDERS
+══════════════════════════════════════════ */
+.div-line{height:1px;background:var(--border);margin:10px 0;}
+.div-thick{height:2px;background:var(--ink);margin:14px 0;}
+.div-dot{
+  display:flex;align-items:center;gap:8px;margin:10px 0;
+}
+.div-dot span{width:3px;height:3px;border-radius:50%;background:var(--border);}
+.div-dot::before,.div-dot::after{content:'';flex:1;height:1px;background:var(--border);}
+
+/* ══════════════════════════════════════════
+   PRINT
+══════════════════════════════════════════ */
+@media print{
+  body{background:#fff;padding:0;gap:0;}
+  .page{box-shadow:none;page-break-after:always;}
+}
+
+/* utilities */
+.mt1{margin-top:4px;}.mt2{margin-top:8px;}.mt3{margin-top:14px;}.mt4{margin-top:20px;}
+.mb1{margin-bottom:4px;}.mb2{margin-bottom:8px;}.mb3{margin-bottom:14px;}
+.row{display:flex;align-items:flex-start;gap:10px;}
+.flex1{flex:1;}
+.pill-sm{
+  font-family:var(--mono);font-size:8px;font-weight:700;letter-spacing:.06em;
+  padding:2px 8px;border-radius:99px;text-transform:uppercase;display:inline-block;
+}
+.pill-sm.pk{background:var(--c-pink-s);color:var(--c-pink);}
+.pill-sm.cy{background:var(--c-cyan-s);color:#006070;}
+.pill-sm.li{background:var(--c-lime-s);color:#3D6500;}
+.pill-sm.pu{background:var(--c-purple-s);color:var(--c-purple);}
+.pill-sm.am{background:var(--c-amber-s);color:#7A4700;}
+.pill-sm.te{background:var(--c-teal-s);color:var(--c-teal);}
+
+</style>
+</head>
+<body>
+
+<!-- ════════════════════════════════════════════
+     PAGE 1 — CHAPTER COVER
+════════════════════════════════════════════ -->
+<div class="page">
+
+  <!-- accent bar -->
+  <div class="accent-bar">
+    <div class="ab-seg" style="background:var(--c-pink)"></div>
+    <div class="ab-seg" style="background:var(--c-cyan)"></div>
+    <div class="ab-seg" style="background:var(--c-lime)"></div>
+    <div class="ab-seg" style="background:var(--c-purple)"></div>
+    <div class="ab-seg" style="background:var(--c-amber)"></div>
+  </div>
+
+  <!-- running header -->
+  <div class="run-head">
+    <div class="run-head-left">
+      <span class="run-chapter">AI / ML Engineering · Notes</span>
+      <span class="run-dot"></span>
+      <span class="run-topic">Chapter 04 — Retrieval-Augmented Generation</span>
+    </div>
+    <span class="run-page">01 / 04</span>
+  </div>
+
+  <div class="content">
+    <div class="cover-body">
+
+      <div class="chapter-eyebrow">Chapter 04 of 12 · Module III — Production LLM Systems</div>
+      <div class="chapter-num">04</div>
+      <div class="chapter-title">Retrieval-Augmented<br>Generation (RAG)</div>
+      <div class="chapter-desc">
+        A structured deep-dive into the architecture, chunking strategies, embedding models,
+        vector retrieval, reranking, prompt construction, and evaluation of production-grade RAG
+        pipelines. Covers naive → advanced → modular RAG progressions.
+      </div>
+
+      <!-- TOC -->
+      <div style="font-family:var(--mono);font-size:8.5px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);margin-bottom:8px;">Table of Contents</div>
+      <div class="toc-grid">
+        <div class="toc-item">
+          <span class="toc-num" style="background:var(--c-pink)">4.1</span>
+          <div class="toc-text">
+            <span class="toc-section">Foundations of RAG</span>
+            <span class="toc-sub">Motivation · Architecture · Taxonomy</span>
+          </div>
+        </div>
+        <div class="toc-item">
+          <span class="toc-num" style="background:var(--c-cyan)">4.2</span>
+          <div class="toc-text">
+            <span class="toc-section">Document Ingestion & Chunking</span>
+            <span class="toc-sub">Loaders · Splitters · Strategies</span>
+          </div>
+        </div>
+        <div class="toc-item">
+          <span class="toc-num" style="background:var(--c-lime)">4.3</span>
+          <div class="toc-text">
+            <span class="toc-section">Embedding Models</span>
+            <span class="toc-sub">Dense · Sparse · Hybrid · Fine-tuning</span>
+          </div>
+        </div>
+        <div class="toc-item">
+          <span class="toc-num" style="background:var(--c-purple)">4.4</span>
+          <div class="toc-text">
+            <span class="toc-section">Vector Stores & Retrieval</span>
+            <span class="toc-sub">ANN · HNSW · Filtering · Reranking</span>
+          </div>
+        </div>
+        <div class="toc-item">
+          <span class="toc-num" style="background:var(--c-amber)">4.5</span>
+          <div class="toc-text">
+            <span class="toc-section">Prompt Construction</span>
+            <span class="toc-sub">Stuffing · Map-Reduce · Refine</span>
+          </div>
+        </div>
+        <div class="toc-item">
+          <span class="toc-num" style="background:var(--c-teal)">4.6</span>
+          <div class="toc-text">
+            <span class="toc-section">Evaluation & Tracing</span>
+            <span class="toc-sub">RAGAS · LangSmith · Metrics</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Stats bar -->
+      <div class="cover-stats mt3">
+        <div class="cstat">
+          <span class="cstat-val" style="color:var(--c-pink)">6</span>
+          <span class="cstat-lbl">Sections</span>
+        </div>
+        <div class="cstat">
+          <span class="cstat-val" style="color:var(--c-purple)">18</span>
+          <span class="cstat-lbl">Sub-topics</span>
+        </div>
+        <div class="cstat">
+          <span class="cstat-val" style="color:var(--c-cyan)">9</span>
+          <span class="cstat-lbl">Code Blocks</span>
+        </div>
+        <div class="cstat">
+          <span class="cstat-val" style="color:var(--c-lime)">4</span>
+          <span class="cstat-lbl">Pages</span>
+        </div>
+        <div class="cstat">
+          <span class="cstat-val" style="color:var(--c-amber)">~45</span>
+          <span class="cstat-lbl">Min Read</span>
+        </div>
+      </div>
+
+      <!-- prereqs -->
+      <div class="mt3 row" style="align-items:center;gap:8px;">
+        <span style="font-family:var(--mono);font-size:8.5px;color:var(--ink-3);letter-spacing:.1em;text-transform:uppercase;white-space:nowrap;">Prerequisites:</span>
+        <span class="pill-sm pk">Chapter 02 — LLMs</span>
+        <span class="pill-sm cy">Chapter 03 — Embeddings</span>
+        <span class="pill-sm li">Linear Algebra basics</span>
+        <span class="pill-sm am">Python 3.10+</span>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="run-foot">
+    <span class="foot-tag">Retrieval-Augmented Generation</span>
+    <div class="foot-pills">
+      <span class="foot-pill" style="background:var(--c-pink-s);color:var(--c-pink)">LangChain</span>
+      <span class="foot-pill" style="background:var(--c-purple-s);color:var(--c-purple)">FAISS</span>
+      <span class="foot-pill" style="background:var(--c-cyan-s);color:#005A6A">OpenAI</span>
+    </div>
+  </div>
+</div>
+
+
+<!-- ════════════════════════════════════════════
+     PAGE 2 — §4.1 + §4.2
+════════════════════════════════════════════ -->
+<div class="page">
+
+  <div class="accent-bar">
+    <div class="ab-seg" style="background:var(--c-pink);flex:3"></div>
+    <div class="ab-seg" style="background:var(--border)"></div>
+  </div>
+  <div class="run-head">
+    <div class="run-head-left">
+      <span class="run-chapter">RAG Systems</span>
+      <span class="run-dot"></span>
+      <span class="run-topic">§4.1 Foundations · §4.2 Ingestion &amp; Chunking</span>
+    </div>
+    <span class="run-page">02 / 04</span>
+  </div>
+
+  <div class="content">
+
+    <!-- ── H1 ── -->
+    <div class="h-chap">
+      Foundations of RAG
+      <span class="chap-badge" style="background:var(--c-pink)">§ 4.1</span>
+    </div>
+    <div class="h-chap-rule"></div>
+
+    <!-- §4.1.1 -->
+    <div class="h-sec">
+      <span class="h-sec-num">4.1.1</span>
+      <span class="h-sec-text">Motivation — Why RAG?</span>
+      <span class="h-sec-tag" style="background:var(--c-pink-s);color:var(--c-pink)">Core Concept</span>
+    </div>
+
+    <p class="body-text ind-2">
+      LLMs have <mark>parametric knowledge</mark> baked into weights at training time. This creates three critical gaps:
+    </p>
+
+    <ul class="nb mt1">
+      <li><span class="nb-dot" style="background:var(--c-pink)"></span>
+        <div><strong>Knowledge cutoff</strong> — the model can't answer about events after its training date
+          <ul class="nb-2">
+            <li><span class="nb-dot-2" style="background:var(--c-pink-m)"></span> RAG injects live documents at inference — no retraining needed</li>
+            <li><span class="nb-dot-2" style="background:var(--c-pink-m)"></span> Retrieval timestamp can be logged for auditability</li>
+          </ul>
+        </div>
+      </li>
+      <li><span class="nb-dot" style="background:var(--c-amber)"></span>
+        <div><strong>Hallucination</strong> — models confabulate when uncertain
+          <ul class="nb-2">
+            <li><span class="nb-dot-2" style="background:var(--c-amber-m)"></span> Grounding context forces the model to cite retrieved chunks</li>
+            <li><span class="nb-dot-2" style="background:var(--c-amber-m)"></span> Set <code>temperature=0</code> + strict system prompt for max fidelity</li>
+          </ul>
+        </div>
+      </li>
+      <li><span class="nb-dot" style="background:var(--c-purple)"></span>
+        <div><strong>Private / proprietary data</strong> — can't fine-tune on confidential docs safely
+          <ul class="nb-2">
+            <li><span class="nb-dot-2" style="background:var(--c-purple-m)"></span> RAG stays in your infra — data never leaves unless you call the LLM</li>
+          </ul>
+        </div>
+      </li>
+    </ul>
+
+    <div class="callout quote ind-2">
+      <div class="callout-body">
+        "Don't fine-tune when you can retrieve. RAG gives you current, domain-specific knowledge at zero retraining cost — and you can update the knowledge base any time."
+        <span class="callout-attr">— Production RAG Engineering</span>
+      </div>
+    </div>
+
+    <!-- §4.1.2 -->
+    <div class="h-sec">
+      <span class="h-sec-num">4.1.2</span>
+      <span class="h-sec-text">Two-Phase Architecture</span>
+      <span class="h-sec-tag" style="background:var(--c-cyan-s);color:#005A6A">Architecture</span>
+    </div>
+
+    <div class="pipeline">
+      <div class="pipe-node pk"><span class="pipe-icon">📄</span><span class="pipe-lbl">Ingest</span><span class="pipe-sub">Load docs</span></div>
+      <div class="pipe-node cy"><span class="pipe-icon">✂️</span><span class="pipe-lbl">Chunk</span><span class="pipe-sub">Split + overlap</span></div>
+      <div class="pipe-node li"><span class="pipe-icon">🔢</span><span class="pipe-lbl">Embed</span><span class="pipe-sub">→ float[]</span></div>
+      <div class="pipe-node pu"><span class="pipe-icon">🗄️</span><span class="pipe-lbl">Index</span><span class="pipe-sub">Vector store</span></div>
+      <div class="pipe-node am"><span class="pipe-icon">🔍</span><span class="pipe-lbl">Retrieve</span><span class="pipe-sub">ANN top-K</span></div>
+      <div class="pipe-node te"><span class="pipe-icon">🧠</span><span class="pipe-lbl">Generate</span><span class="pipe-sub">LLM call</span></div>
+    </div>
+
+    <div class="g2 mt1">
+      <div class="card">
+        <div class="card-head" style="color:var(--c-pink)">⬇ Offline — Indexing Phase</div>
+        <ol class="nn" style="margin-left:0">
+          <li>Load raw docs (PDF, HTML, MD, DB)</li>
+          <li>Split into overlapping chunks
+            <ul class="nn-2">
+              <li>4.1 — Fixed-size / Recursive</li>
+              <li>4.2 — Semantic boundary detection</li>
+            </ul>
+          </li>
+          <li>Embed via embedding model</li>
+          <li>Upsert vectors + metadata to store</li>
+        </ol>
+      </div>
+      <div class="card">
+        <div class="card-head" style="color:var(--c-cyan)">⚡ Online — Query Phase</div>
+        <ol class="nn" style="margin-left:0">
+          <li>Embed incoming user query
+            <ul class="nn-2">
+              <li>4.1 — Same model as indexing!</li>
+            </ul>
+          </li>
+          <li>ANN search → Top-K candidates</li>
+          <li>Optional rerank + metadata filter</li>
+          <li>Construct prompt → LLM → respond</li>
+        </ol>
+      </div>
+    </div>
+
+    <!-- ── H1 §4.2 ── -->
+    <div class="h-chap mt3">
+      Document Ingestion &amp; Chunking
+      <span class="chap-badge" style="background:var(--c-cyan)">§ 4.2</span>
+    </div>
+    <div class="h-chap-rule"></div>
+
+    <!-- §4.2.1 -->
+    <div class="h-sec">
+      <span class="h-sec-num">4.2.1</span>
+      <span class="h-sec-text">Document Loaders</span>
+    </div>
+
+    <div class="h-sub">
+      <span class="h-sub-num">4.2.1.a</span>
+      <span class="h-sub-mark" style="background:var(--c-cyan)"></span>
+      <span class="h-sub-text">Common loader types &amp; when to use them</span>
+    </div>
+
+    <table class="tbl">
+      <thead>
+        <tr><th>Loader</th><th>Source</th><th>Preserves Layout</th><th>Notes</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="mono">PyPDFLoader</td><td>PDF files</td><td class="mid">Partial</td><td>Loses tables; use <code>pdfplumber</code> for tables</td></tr>
+        <tr><td class="mono">UnstructuredLoader</td><td>PDF, DOCX, HTML</td><td class="good">Yes</td><td>Best for mixed docs; slower</td></tr>
+        <tr><td class="mono">WebBaseLoader</td><td>URLs</td><td class="bad">No</td><td>Strips HTML; good for articles</td></tr>
+        <tr><td class="mono">CSVLoader</td><td>Tabular CSV</td><td class="good">Yes</td><td>Each row = 1 document</td></tr>
+        <tr><td class="mono">NotionDBLoader</td><td>Notion DB</td><td class="mid">Partial</td><td>Requires Notion API key</td></tr>
+      </tbody>
+    </table>
+
+    <!-- §4.2.2 -->
+    <div class="h-sec">
+      <span class="h-sec-num">4.2.2</span>
+      <span class="h-sec-text">Chunking Strategies</span>
+      <span class="h-sec-tag" style="background:var(--c-lime-s);color:#3D6500">Critical</span>
+    </div>
+
+    <div class="h-sub">
+      <span class="h-sub-num">4.2.2.a</span>
+      <span class="h-sub-mark" style="background:var(--c-lime)"></span>
+      <span class="h-sub-text">Fixed-size (Naive)</span>
+    </div>
+    <p class="body-text ind-3 sm">Split every N tokens regardless of content boundaries. Fast but semantically lossy.</p>
+
+    <div class="h-topic" style="margin-top:6px">
+      <span class="h-topic-num">4.2.2.a.i</span>
+      <span class="h-topic-text">Parameters</span>
+      <span class="h-topic-line"></span>
+    </div>
+    <div class="g3 ind-3 mb1" style="margin-top:4px">
+      <div class="mstat"><span class="mstat-val" style="color:var(--c-lime)">512</span><span class="mstat-lbl">chunk_size (tokens)</span><span class="mstat-sub">sweet spot for retrieval</span></div>
+      <div class="mstat"><span class="mstat-val" style="color:var(--c-cyan)">64</span><span class="mstat-lbl">chunk_overlap</span><span class="mstat-sub">~12.5% overlap ratio</span></div>
+      <div class="mstat"><span class="mstat-val" style="color:var(--c-purple)">8191</span><span class="mstat-lbl">model ctx limit</span><span class="mstat-sub">text-embedding-3-small</span></div>
+    </div>
+
+    <div class="h-sub">
+      <span class="h-sub-num">4.2.2.b</span>
+      <span class="h-sub-mark" style="background:var(--c-purple)"></span>
+      <span class="h-sub-text">Recursive Character Splitter (Recommended)</span>
+    </div>
+    <p class="body-text ind-3 sm">Splits on a priority hierarchy of separators: <code>"\n\n"</code> → <code>"\n"</code> → <code>" "</code> → <code>""</code></p>
+
+    <div class="code-block ind-3 mt1">
+      <div class="code-topbar">
+        <div class="code-dots"><div class="code-dot dot-r"></div><div class="code-dot dot-y"></div><div class="code-dot dot-g"></div></div>
+        <div class="code-meta"><span class="code-file">chunking.py</span><span class="code-lang">Python</span></div>
+      </div>
+      <div class="code-body"><pre><span class="kw">from</span> <span class="cl">langchain.text_splitter</span> <span class="kw">import</span> <span class="fn">RecursiveCharacterTextSplitter</span>
+
+splitter = <span class="fn">RecursiveCharacterTextSplitter</span>(
+    chunk_size=<span class="num">512</span>,          <span class="cm"># target chunk size in tokens</span>
+    chunk_overlap=<span class="num">64</span>,       <span class="cm"># sliding window overlap</span>
+    separators=[<span class="str">"\n\n"</span>, <span class="str">"\n"</span>, <span class="str">" "</span>, <span class="str">""</span>],
+    length_function=<span class="fn">len</span>,
+    add_start_index=<span class="kw">True</span>,   <span class="cm"># store char offset in metadata</span>
+)
+chunks = splitter.<span class="fn">split_documents</span>(docs)</pre></div>
+    </div>
+
+    <div class="h-sub">
+      <span class="h-sub-num">4.2.2.c</span>
+      <span class="h-sub-mark" style="background:var(--c-amber)"></span>
+      <span class="h-sub-text">Advanced Strategies</span>
+    </div>
+
+    <ul class="nb ind-3 mt1">
+      <li><span class="nb-dot" style="background:var(--c-amber)"></span>
+        <div><strong>Semantic chunking</strong> — embed each sentence, split at cosine distance drops
+          <ul class="nb-2">
+            <li><span class="nb-dot-2" style="background:var(--c-amber-m)"></span> Finds natural topic boundaries automatically</li>
+            <li><span class="nb-dot-2" style="background:var(--c-amber-m)"></span> 2–3× slower at index time; better retrieval precision</li>
+            <ul class="nb-3"><li>Use <code>SemanticChunker</code> from LangChain Experimental</li></ul>
+          </ul>
+        </div>
+      </li>
+      <li><span class="nb-dot" style="background:var(--c-teal)"></span>
+        <div><strong>Parent-document retrieval</strong> — index small child chunks, return large parent
+          <ul class="nb-2">
+            <li><span class="nb-dot-2" style="background:var(--c-teal-m)"></span> Child chunk size ~128 tokens for precise matching</li>
+            <li><span class="nb-dot-2" style="background:var(--c-teal-m)"></span> Parent chunk returned ~1024 tokens for rich context</li>
+            <ul class="nb-3"><li>Best for long-form documents like legal or medical PDFs</li></ul>
+          </ul>
+        </div>
+      </li>
+    </ul>
+
+    <div class="callout warn ind-2 mt2">
+      <div class="callout-head">⚠️ Common Mistake</div>
+      <div class="callout-body">Don't chunk on <code>page_content</code> alone — always preserve <mark class="am">source, page_num, section</mark> metadata. Without it, you can't filter by source or build citations.</div>
+    </div>
+
+  </div>
+
+  <div class="run-foot">
+    <span class="foot-tag">§4.1 Foundations · §4.2 Chunking</span>
+    <div class="foot-pills">
+      <span class="foot-pill" style="background:var(--c-pink-s);color:var(--c-pink)">RAG</span>
+      <span class="foot-pill" style="background:var(--c-lime-s);color:#3D6500">Chunking</span>
+    </div>
+  </div>
+</div>
+
+
+<!-- ════════════════════════════════════════════
+     PAGE 3 — §4.3 Embeddings + §4.4 Vector Stores
+════════════════════════════════════════════ -->
+<div class="page">
+
+  <div class="accent-bar">
+    <div class="ab-seg" style="background:var(--border)"></div>
+    <div class="ab-seg" style="background:var(--c-lime);flex:2"></div>
+    <div class="ab-seg" style="background:var(--c-purple);flex:2"></div>
+  </div>
+  <div class="run-head">
+    <div class="run-head-left">
+      <span class="run-chapter">RAG Systems</span>
+      <span class="run-dot"></span>
+      <span class="run-topic">§4.3 Embedding Models · §4.4 Vector Stores &amp; Retrieval</span>
+    </div>
+    <span class="run-page">03 / 04</span>
+  </div>
+
+  <div class="content">
+
+    <div class="h-chap">
+      Embedding Models
+      <span class="chap-badge" style="background:var(--c-lime)">§ 4.3</span>
+    </div>
+    <div class="h-chap-rule"></div>
+
+    <!-- §4.3.1 -->
+    <div class="h-sec">
+      <span class="h-sec-num">4.3.1</span>
+      <span class="h-sec-text">What are Embeddings?</span>
+    </div>
+
+    <p class="body-text ind-2">
+      An embedding model maps a string → a <mark>dense float vector</mark> in high-dimensional semantic space.
+      Semantically similar texts cluster nearby; retrieval = nearest-neighbour search.
+    </p>
+
+    <div class="formula ind-2 mt1">
+      <div class="formula-lbl">Cosine Similarity — Retrieval Score</div>
+      <div class="formula-expr">sim(q, d) = (q · d) / (‖q‖ × ‖d‖) ∈ [−1, 1]</div>
+    </div>
+
+    <!-- §4.3.2 -->
+    <div class="h-sec">
+      <span class="h-sec-num">4.3.2</span>
+      <span class="h-sec-text">Model Comparison</span>
+    </div>
+
+    <table class="tbl">
+      <thead>
+        <tr><th>Model</th><th>Dims</th><th>Max Tokens</th><th>Cost</th><th>Best For</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="mono">text-embedding-3-small</td><td>1536</td><td>8191</td><td class="good">Low</td><td>General purpose, production default</td></tr>
+        <tr><td class="mono">text-embedding-3-large</td><td>3072</td><td>8191</td><td class="mid">Med</td><td>High-accuracy retrieval tasks</td></tr>
+        <tr><td class="mono">bge-m3 (BAAI)</td><td>1024</td><td>8192</td><td class="good">Free</td><td>Multilingual, self-hosted</td></tr>
+        <tr><td class="mono">cohere-embed-v3</td><td>1024</td><td>512</td><td class="mid">Med</td><td>Asymmetric Q→A retrieval</td></tr>
+      </tbody>
+    </table>
+
+    <!-- §4.3.3 -->
+    <div class="h-sec">
+      <span class="h-sec-num">4.3.3</span>
+      <span class="h-sec-text">Hybrid Search — Dense + Sparse</span>
+    </div>
+
+    <div class="h-sub">
+      <span class="h-sub-num">4.3.3.a</span>
+      <span class="h-sub-mark" style="background:var(--c-lime)"></span>
+      <span class="h-sub-text">Why hybrid?</span>
+    </div>
+    <ul class="nb ind-3">
+      <li><span class="nb-dot" style="background:var(--c-lime)"></span>Dense retrieval excels at <mark>semantic</mark> queries ("what is the policy on X")</li>
+      <li><span class="nb-dot" style="background:var(--c-cyan)"></span>Sparse / BM25 excels at <mark class="cy">keyword exact-match</mark> (product codes, names, IDs)</li>
+      <li><span class="nb-dot" style="background:var(--c-purple)"></span>Hybrid fuses both via <mark class="pu">Reciprocal Rank Fusion (RRF)</mark> — almost always beats either alone</li>
+    </ul>
+
+    <div class="h-topic">
+      <span class="h-topic-num">4.3.3.b</span>
+      <span class="h-topic-text">RRF Formula</span>
+      <span class="h-topic-line"></span>
+    </div>
+    <div class="formula ind-3">
+      <div class="formula-lbl">Reciprocal Rank Fusion Score</div>
+      <div class="formula-expr">RRF(d) = Σ  1 / (k + rank<sub>i</sub>(d))   where k = 60</div>
+    </div>
+
+    <!-- ═══ §4.4 ═══ -->
+    <div class="h-chap mt2">
+      Vector Stores &amp; Retrieval
+      <span class="chap-badge" style="background:var(--c-purple)">§ 4.4</span>
+    </div>
+    <div class="h-chap-rule"></div>
+
+    <div class="h-sec">
+      <span class="h-sec-num">4.4.1</span>
+      <span class="h-sec-text">ANN Index Algorithms</span>
+    </div>
+
+    <div class="h-sub">
+      <span class="h-sub-num">4.4.1.a</span>
+      <span class="h-sub-mark" style="background:var(--c-purple)"></span>
+      <span class="h-sub-text">HNSW (Hierarchical Navigable Small World)</span>
+    </div>
+    <p class="body-text ind-3 sm">Default index in most vector stores. Navigates a <mark class="pu">layered proximity graph</mark> — upper layers for long hops, lower for precision.</p>
+
+    <div class="h-leaf" style="margin-left:var(--ind-4)">
+      <span class="h-leaf-text">Key Params</span>
+    </div>
+    <div class="g3 ind-4 mb1">
+      <div class="mstat"><span class="mstat-val" style="font-size:16px;color:var(--c-purple)">M=16</span><span class="mstat-lbl">edges/node</span><span class="mstat-sub">higher = better recall</span></div>
+      <div class="mstat"><span class="mstat-val" style="font-size:16px;color:var(--c-cyan)">ef=200</span><span class="mstat-lbl">search width</span><span class="mstat-sub">trade speed/recall</span></div>
+      <div class="mstat"><span class="mstat-val" style="font-size:16px;color:var(--c-lime)">O(log n)</span><span class="mstat-lbl">search complexity</span><span class="mstat-sub">scales to billions</span></div>
+    </div>
+
+    <div class="h-sec">
+      <span class="h-sec-num">4.4.2</span>
+      <span class="h-sec-text">Reranking Pipeline</span>
+      <span class="h-sec-tag" style="background:var(--c-pink-s);color:var(--c-pink)">High Impact</span>
+    </div>
+
+    <div class="h-sub">
+      <span class="h-sub-num">4.4.2.a</span>
+      <span class="h-sub-mark" style="background:var(--c-pink)"></span>
+      <span class="h-sub-text">Two-stage retrieval</span>
+    </div>
+    <ol class="nn ind-3 mt1">
+      <li><strong>Stage 1 — Recall</strong>: ANN retrieves Top-50 candidates cheaply (bi-encoder)
+        <ul class="nn-2">
+          <li>5.1 — Run cosine sim in vector store (fast, approximate)</li>
+          <li>5.2 — Apply metadata pre-filters (date, source, category)</li>
+        </ul>
+      </li>
+      <li><strong>Stage 2 — Precision</strong>: Cross-encoder reranks Top-50 → Top-5 (expensive but accurate)
+        <ul class="nn-2">
+          <li>5.1 — Cohere Rerank / BGE-Reranker-v2 / MS-MARCO</li>
+          <li>5.2 — Cross-encoder sees (query, chunk) together — much more nuanced</li>
+        </ul>
+      </li>
+    </ol>
+
+    <div class="code-block ind-2 mt1">
+      <div class="code-topbar">
+        <div class="code-dots"><div class="code-dot dot-r"></div><div class="code-dot dot-y"></div><div class="code-dot dot-g"></div></div>
+        <div class="code-meta"><span class="code-file">reranker.py</span><span class="code-lang">Python</span></div>
+      </div>
+      <div class="code-body"><pre><span class="kw">import</span> <span class="cl">cohere</span>
+
+co = <span class="cl">cohere</span>.<span class="fn">Client</span>(<span class="str">"COHERE_API_KEY"</span>)
+
+<span class="cm"># Stage 1: get broad candidates from vector store</span>
+candidates = vectorstore.<span class="fn">similarity_search</span>(query, k=<span class="num">50</span>)
+docs_text = [d.page_content <span class="kw">for</span> d <span class="kw">in</span> candidates]
+
+<span class="cm"># Stage 2: rerank to top-5</span>
+reranked = co.rerank(
+    query=query,
+    documents=docs_text,
+    top_n=<span class="num">5</span>,
+    model=<span class="str">"rerank-multilingual-v3.0"</span>
+)
+top_chunks = [candidates[r.index] <span class="kw">for</span> r <span class="kw">in</span> reranked.results]</pre></div>
+    </div>
+
+    <div class="g2 mt1">
+      <div class="callout tip">
+        <div class="callout-head">💡 Tip — Metadata Filtering</div>
+        <div class="callout-body">Add <code>filter={"source": "handbook"}</code> to your <code>similarity_search</code> call to restrict retrieval to a subset of your corpus. All major stores support this.</div>
+      </div>
+      <div class="callout info">
+        <div class="callout-head">ℹ️ When to skip reranking</div>
+        <div class="callout-body">If corpus &lt;10K chunks and latency &lt;500ms is critical, skip reranking. ANN alone is fine. Add reranker when you hit precision complaints.</div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="run-foot">
+    <span class="foot-tag">§4.3 Embeddings · §4.4 Vector Stores</span>
+    <div class="foot-pills">
+      <span class="foot-pill" style="background:var(--c-lime-s);color:#3D6500">Hybrid Search</span>
+      <span class="foot-pill" style="background:var(--c-purple-s);color:var(--c-purple)">HNSW</span>
+    </div>
+  </div>
+</div>
+
+
+<!-- ════════════════════════════════════════════
+     PAGE 4 — §4.5 Prompt Construction + §4.6 Evaluation
+════════════════════════════════════════════ -->
+<div class="page">
+
+  <div class="accent-bar">
+    <div class="ab-seg" style="background:var(--border)"></div>
+    <div class="ab-seg" style="background:var(--border)"></div>
+    <div class="ab-seg" style="background:var(--c-amber);flex:2"></div>
+    <div class="ab-seg" style="background:var(--c-teal);flex:2"></div>
+  </div>
+  <div class="run-head">
+    <div class="run-head-left">
+      <span class="run-chapter">RAG Systems</span>
+      <span class="run-dot"></span>
+      <span class="run-topic">§4.5 Prompt Construction · §4.6 Evaluation &amp; Tracing</span>
+    </div>
+    <span class="run-page">04 / 04</span>
+  </div>
+
+  <div class="content">
+
+    <div class="h-chap">
+      Prompt Construction
+      <span class="chap-badge" style="background:var(--c-amber)">§ 4.5</span>
+    </div>
+    <div class="h-chap-rule"></div>
+
+    <div class="h-sec">
+      <span class="h-sec-num">4.5.1</span>
+      <span class="h-sec-text">Chain Types</span>
+    </div>
+
+    <table class="tbl">
+      <thead>
+        <tr><th>Chain Type</th><th>How it Works</th><th>Fits Context?</th><th>LLM Calls</th><th>Use When</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="mono">stuff</td><td>All chunks → single prompt</td><td class="good">Must fit</td><td class="good">1</td><td>Small corpora, short chunks</td></tr>
+        <tr><td class="mono">map_reduce</td><td>Summarise each chunk → combine</td><td class="good">Each fits</td><td class="bad">N+1</td><td>Many/long chunks, summarisation</td></tr>
+        <tr><td class="mono">refine</td><td>Iteratively refine answer per chunk</td><td class="good">Each fits</td><td class="bad">N</td><td>Sequential reasoning tasks</td></tr>
+        <tr><td class="mono">map_rerank</td><td>Score each chunk independently</td><td class="good">Each fits</td><td class="bad">N</td><td>Finding the single best answer</td></tr>
+      </tbody>
+    </table>
+
+    <div class="h-sec">
+      <span class="h-sec-num">4.5.2</span>
+      <span class="h-sec-text">Prompt Template Anatomy</span>
+    </div>
+
+    <div class="code-block ind-2">
+      <div class="code-topbar">
+        <div class="code-dots"><div class="code-dot dot-r"></div><div class="code-dot dot-y"></div><div class="code-dot dot-g"></div></div>
+        <div class="code-meta"><span class="code-file">prompt.py</span><span class="code-lang">Python</span></div>
+      </div>
+      <div class="code-body"><pre><span class="kw">from</span> <span class="cl">langchain.prompts</span> <span class="kw">import</span> <span class="fn">ChatPromptTemplate</span>, <span class="fn">SystemMessagePromptTemplate</span>
+
+SYSTEM = <span class="str">"""You are a precise Q&amp;A assistant. Rules:
+1. Answer ONLY from the provided context.
+2. If the context doesn't contain the answer, say: "I don't know based on the provided documents."
+3. Never fabricate facts. Quote relevant sentences with [Source: {source}] tags.
+4. Keep answers concise — max 3 sentences unless asked to elaborate."""</span>
+
+HUMAN = <span class="str">"""Context (retrieved chunks):
+---
+{context}
+---
+Question: {question}"""</span>
+
+prompt = <span class="fn">ChatPromptTemplate</span>.<span class="fn">from_messages</span>([
+    (<span class="str">"system"</span>, SYSTEM),
+    (<span class="str">"human"</span>, HUMAN),
+])</pre></div>
+    </div>
+
+    <div class="h-sub">
+      <span class="h-sub-num">4.5.2.a</span>
+      <span class="h-sub-mark" style="background:var(--c-amber)"></span>
+      <span class="h-sub-text">Key prompt engineering rules for RAG</span>
+    </div>
+    <ul class="nb ind-3">
+      <li><span class="nb-dot" style="background:var(--c-amber)"></span>Always include an explicit <mark class="am">"if you don't know, say so"</mark> fallback — prevents hallucination</li>
+      <li><span class="nb-dot" style="background:var(--c-pink)"></span>Delimit context with clear markers (<code>---</code> or XML tags) so LLM can't confuse it with instruction</li>
+      <li><span class="nb-dot" style="background:var(--c-cyan)"></span>Include citation instructions — forces grounding + enables post-hoc verification</li>
+    </ul>
+
+    <!-- §4.6 -->
+    <div class="h-chap mt2">
+      Evaluation &amp; Tracing
+      <span class="chap-badge" style="background:var(--c-teal)">§ 4.6</span>
+    </div>
+    <div class="h-chap-rule"></div>
+
+    <div class="h-sec">
+      <span class="h-sec-num">4.6.1</span>
+      <span class="h-sec-text">RAGAS Metrics</span>
+      <span class="h-sec-tag" style="background:var(--c-teal-s);color:var(--c-teal)">Must Know</span>
+    </div>
+
+    <div class="g2 mt1">
+      <div>
+        <div class="def-block">
+          <span class="def-term">Faithfulness</span>
+          <span class="def-desc">% of answer claims that are grounded in the retrieved context. Score 0–1.</span>
+        </div>
+        <div class="def-block">
+          <span class="def-term">Answer Relevancy</span>
+          <span class="def-desc">cosine_sim(answer, question). Penalises verbose or off-topic replies.</span>
+        </div>
+        <div class="def-block">
+          <span class="def-term">Context Recall</span>
+          <span class="def-desc">% of ground-truth sentences covered by retrieved chunks.</span>
+        </div>
+        <div class="def-block">
+          <span class="def-term">Context Precision</span>
+          <span class="def-desc">% of retrieved chunks that are actually relevant. Penalises noise.</span>
+        </div>
+      </div>
+      <div>
+        <div class="code-block" style="margin-left:0">
+          <div class="code-topbar">
+            <div class="code-dots"><div class="code-dot dot-r"></div><div class="code-dot dot-y"></div><div class="code-dot dot-g"></div></div>
+            <div class="code-meta"><span class="code-file">eval.py</span><span class="code-lang">Python</span></div>
+          </div>
+          <div class="code-body"><pre><span class="kw">from</span> <span class="cl">ragas</span> <span class="kw">import</span> <span class="fn">evaluate</span>
+<span class="kw">from</span> <span class="cl">ragas.metrics</span> <span class="kw">import</span> (
+    <span class="fn">faithfulness</span>,
+    <span class="fn">answer_relevancy</span>,
+    <span class="fn">context_recall</span>,
+)
+<span class="kw">from</span> <span class="cl">datasets</span> <span class="kw">import</span> <span class="fn">Dataset</span>
+
+data = {
+  <span class="str">"question"</span>: [<span class="str">"What is RAG?"</span>],
+  <span class="str">"answer"</span>: [answer],
+  <span class="str">"contexts"</span>: [[c.page_content]],
+  <span class="str">"ground_truth"</span>: [gt],
+}
+result = <span class="fn">evaluate</span>(
+    <span class="fn">Dataset</span>.<span class="fn">from_dict</span>(data),
+    metrics=[<span class="fn">faithfulness</span>,
+             <span class="fn">answer_relevancy</span>,
+             <span class="fn">context_recall</span>],
+)
+<span class="fn">print</span>(result)</pre></div>
+        </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- §4.6.2 -->
+    <div class="h-sec">
+      <span class="h-sec-num">4.6.2</span>
+      <span class="h-sec-text">Debugging Failure Modes</span>
+    </div>
+
+    <div class="h-sub">
+      <span class="h-sub-num">4.6.2.a</span>
+      <span class="h-sub-mark" style="background:var(--c-red)"></span>
+      <span class="h-sub-text">Failure taxonomy &amp; fixes</span>
+    </div>
+    <table class="tbl ind-3">
+      <thead><tr><th>Failure</th><th>Symptom</th><th>Root Cause</th><th>Fix</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">Bad Retrieval</td><td>Wrong chunks returned</td><td>Embedding mismatch / no rerank</td><td>Hybrid search + reranker</td></tr>
+        <tr><td class="mono">Low Faithfulness</td><td>Answer not in context</td><td>LLM hallucinating</td><td><code>temp=0</code> + strict prompt</td></tr>
+        <tr><td class="mono">Low Recall</td><td>Missed info</td><td>Chunk too small / K too low</td><td>↑ chunk size or ↑ K</td></tr>
+        <tr><td class="mono">Noisy Context</td><td>Verbose/irrelevant answer</td><td>K too high, no filter</td><td>Rerank + metadata filter</td></tr>
+      </tbody>
+    </table>
+
+    <div class="g2 mt1">
+      <div class="callout ok">
+        <div class="callout-head">✅ Production Checklist</div>
+        <div class="callout-body">
+          Hybrid BM25+dense · Metadata filters · Reranker · Dedicated eval set · Log every retrieval · Version your index · Monitor faithfulness score
+        </div>
+      </div>
+      <div class="annot yellow">
+        <div class="annot-head">📌 Quick References</div>
+        RAGAS · LangSmith · Trulens<br>
+        Pinecone · Qdrant · Weaviate · pgvector<br>
+        LlamaIndex · LangChain · Haystack<br>
+        BGE · Cohere · OpenAI Embed
+      </div>
+    </div>
+
+    <div class="callout quote ind-2 mt2">
+      <div class="callout-body">
+        "The retrieval step is your bottleneck. A perfect LLM with bad retrieval equals bad answers. Fix retrieval first, everything else second."
+        <span class="callout-attr">— production RAG engineering, 2024</span>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="run-foot">
+    <span class="foot-tag">§4.5 Prompting · §4.6 Evaluation — End of Chapter 04</span>
+    <div class="foot-pills">
+      <span class="foot-pill" style="background:var(--c-amber-s);color:#7A4700">Prompts</span>
+      <span class="foot-pill" style="background:var(--c-teal-s);color:var(--c-teal)">RAGAS</span>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

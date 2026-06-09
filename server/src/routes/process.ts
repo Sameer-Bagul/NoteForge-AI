@@ -30,6 +30,9 @@ router.patch('/notebook/:notebookId', ProcessController.updateNotebook);
 // Get index by ID
 router.get('/index/:indexId', ProcessController.getIndex);
 
+// Export index and notes to PDF
+router.get('/export/:indexId', ProcessController.exportPdf);
+
 // Health check for LLM
 router.get('/llm/health', ProcessController.getLlmHealth);
 

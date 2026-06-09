@@ -178,7 +178,7 @@ async function executeWithBackoff<T>(
     operationName: string,
     operation: () => Promise<T>,
     isCloud: boolean,
-    maxRetries: number = 3
+    maxRetries: number = 5
 ): Promise<T> {
     let attempt = 0;
     while (true) {
@@ -186,13 +186,22 @@ async function executeWithBackoff<T>(
             return await operation();
         } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
-            const is429 = msg.includes('429') || msg.includes('Too Many Requests') || msg.includes('RESOURCE_EXHAUSTED');
+            const isRetryable = 
+                msg.includes('429') || 
+                msg.includes('Too Many Requests') || 
+                msg.includes('RESOURCE_EXHAUSTED') ||
+                msg.includes('503') ||
+                msg.includes('504') ||
+                msg.includes('500') ||
+                msg.includes('timeout') ||
+                msg.includes('ECONNRESET');
             
-            if (is429 && isCloud && attempt < maxRetries) {
+            if (isRetryable && isCloud && attempt < maxRetries) {
                 attempt++;
-                // Exponential backoff: 5s, 15s, 45s
-                const waitMs = Math.pow(3, attempt - 1) * 5000;
-                console.warn(`[MultiLLM] ⏳ ${operationName} hit rate limit (429). Retry ${attempt}/${maxRetries} in ${waitMs / 1000}s...`);
+                // Exponential backoff: 5s, 15s, 45s, 120s...
+                let waitMs = Math.pow(3, attempt - 1) * 5000;
+                if (waitMs > 120000) waitMs = 120000; // Cap at 2 minutes
+                console.warn(`[MultiLLM] ⏳ ${operationName} failed (${msg.substring(0, 50)}...). Retry ${attempt}/${maxRetries} in ${waitMs / 1000}s...`);
                 await new Promise(r => setTimeout(r, waitMs));
                 continue;
             }

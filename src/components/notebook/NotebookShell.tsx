@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
     BookOpen, List, GitBranch, HelpCircle, Briefcase,
-    ArrowLeft, Download, Clock, Hash, FileText
+    ArrowLeft, Download, Clock, Hash, FileText, Loader2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -12,6 +12,7 @@ import { InterviewTab } from './InterviewTab';
 import { VideoNotes } from '@/types';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
+import { api } from '@/services/api';
 
 interface NotebookShellProps {
     notes: VideoNotes;
@@ -107,8 +108,34 @@ export function NotebookShell({ notes, onReset }: NotebookShellProps) {
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
-        URL.revokeObjectURL(url);
         toast({ title: 'Downloaded!', description: 'Notebook saved as Markdown.' });
+    };
+
+    const [isExportingPdf, setIsExportingPdf] = useState(false);
+
+    const handleDownloadPdf = async () => {
+        try {
+            setIsExportingPdf(true);
+            toast({ title: 'Generating PDF...', description: 'This may take a few seconds.' });
+            
+            const response = await api.exportPdf(notes.videoId);
+            
+            // Assuming response is a blob
+            const url = window.URL.createObjectURL(new Blob([response.data]));
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', `${notes.title.replace(/[^a-z0-9]/gi, '_')}_Notes.pdf`);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            
+            toast({ title: 'PDF Exported!', description: 'Your beautifully styled notes are ready.' });
+        } catch (error) {
+            console.error('PDF Export failed:', error);
+            toast({ title: 'Export Failed', description: 'Could not generate PDF.', variant: 'destructive' });
+        } finally {
+            setIsExportingPdf(false);
+        }
     };
 
     // Build mindmap topics list
@@ -145,10 +172,16 @@ export function NotebookShell({ notes, onReset }: NotebookShellProps) {
                         </div>
                     </div>
 
-                    <Button variant="outline" onClick={handleDownloadAll} className="shrink-0 gap-2">
-                        <Download className="w-4 h-4" />
-                        Download
-                    </Button>
+                    <div className="flex items-center gap-2 shrink-0">
+                        <Button variant="outline" onClick={handleDownloadAll} className="gap-2">
+                            <FileText className="w-4 h-4" />
+                            MD
+                        </Button>
+                        <Button onClick={handleDownloadPdf} disabled={isExportingPdf} className="gap-2">
+                            {isExportingPdf ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                            Export PDF
+                        </Button>
+                    </div>
                 </div>
             </div>
 

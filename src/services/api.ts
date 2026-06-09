@@ -61,6 +61,17 @@ export const api = {
     return result.data || result;
   },
 
+  async exportPdf(indexId: string): Promise<{ data: Blob }> {
+    log('Exporting PDF for index:', indexId);
+    const response = await fetch(`${API_BASE}/process/export/${indexId}`);
+    if (!response.ok) {
+      console.error('API Error: Failed to export PDF');
+      throw new Error('Failed to export PDF');
+    }
+    const blob = await response.blob();
+    return { data: blob };
+  },
+
   async approveIndex(jobId: string, index: any): Promise<{ success: boolean; message: string }> {
     log('Approving index for job:', jobId);
     const response = await fetch(`${API_BASE}/process/${jobId}/approve-index`, {
