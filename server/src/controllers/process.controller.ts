@@ -185,11 +185,44 @@ export class ProcessController {
         success: true,
         message: 'Index approved, continuing with notes generation'
       });
+
     } catch (error) {
       console.error(`❌ Error approving index:`, error);
       res.status(500).json({
         success: false,
         error: error instanceof Error ? error.message : 'Failed to approve index'
+      });
+    }
+  }
+
+  static async resumeJob(req: Request, res: Response) {
+    try {
+      const { jobId } = req.params as { jobId: string };
+      console.log(`\n▶️ Resume request for job: ${jobId}`);
+
+      const job = jobService.getJob(jobId);
+      if (!job) {
+        return res.status(404).json({ success: false, error: 'Job not found' });
+      }
+
+      if (job.status !== 'paused-rate-limit') {
+        return res.status(400).json({ success: false, error: `Job cannot be resumed from status: ${job.status}` });
+      }
+
+      // Start resume in background
+      jobService.resumeJob(jobId).catch((err: Error) => {
+        console.error(`❌ Failed to resume job ${jobId}:`, err);
+      });
+
+      res.json({
+        success: true,
+        message: 'Job resumed successfully'
+      });
+    } catch (error) {
+      console.error(`❌ Error resuming job:`, error);
+      res.status(500).json({
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to resume job'
       });
     }
   }
@@ -311,7 +344,8 @@ export class ProcessController {
         return res.status(404).json({ success: false, error: 'No notes found for this index' });
       }
 
-      const pdfBuffer = await pdfService.generatePDF(index, notesList);
+      const theme = (req.query.theme as string) || 'modern';
+      const pdfBuffer = await pdfService.generatePDF(index, notesList, theme);
 
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `attachment; filename="${index.title.replace(/[^a-zA-Z0-9_-]/g, '_')}_Notes.pdf"`);

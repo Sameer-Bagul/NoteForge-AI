@@ -279,15 +279,23 @@ ${FORMATTING_INSTRUCTIONS}`;
     transcripts: VideoTranscript[],
     onProgress?: (progress: { currentItem: number; totalItems: number; itemName: string; subProgress?: string }) => void,
     onDelta?: (topicId: string, textDelta: string) => void,
-    options?: JobOptions
+    options?: JobOptions,
+    existingNotes: TopicNotes[] = []
   ): Promise<TopicNotes[]> {
-    const allNotes: TopicNotes[] = [];
+    const allNotes: TopicNotes[] = [...existingNotes];
 
     // We no longer clear the RAG index so we can reuse the persistent timestamped chunks
     // ragService.clearIndex();
 
     for (let i = 0; i < index.topics.length; i++) {
       const topic = index.topics[i];
+      
+      // Skip if this topic was already generated (used for resuming)
+      if (allNotes.some(n => n.topicId === topic.id && n.summary !== "Generation failed due to provider limits.")) {
+        console.log(`[NotesService] Skipping already generated topic: ${topic.title}`);
+        continue;
+      }
+      
       try {
         if (onProgress) {
           onProgress({
@@ -323,10 +331,17 @@ ${FORMATTING_INSTRUCTIONS}`;
         allNotes.push(notes);
         this.storeTopicNotes(notes);
 
-      } catch (error) {
+      } catch (error: any) {
+        if (error.name === 'RateLimitExhaustedError') {
+          console.error(`[NotesService] RATE LIMIT EXHAUSTED on ${topic.title}. Pausing job...`);
+          // Attach the notes we've successfully generated so far to the error
+          error.partialNotes = allNotes;
+          throw error;
+        }
+
         console.warn(`[NotesService] Generation failed for ${topic.title} after all retries:`, error);
         
-        const placeholderText = `> **⚠️ Generation Failed:** The AI provider rejected the request due to aggressive rate limits or server overload (503/429/Timeout) after multiple retries. \n\nPlease use the UI to manually regenerate this specific chapter when the API has cooled down.`;
+        const placeholderText = `> **⚠️ Generation Failed:** The AI provider rejected the request due to an unexpected error: ${error.message}. \n\nPlease use the UI to manually regenerate this specific chapter when the API has cooled down.`;
         
         const sections = this.parseMarkdownToSections(placeholderText);
         

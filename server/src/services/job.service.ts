@@ -258,8 +258,108 @@ export class JobService extends EventEmitter {
 
       console.log(`\n🎉 Job ${jobId} completed successfully!\n`);
 
-    } catch (error) {
+    } catch (error: any) {
+      if (error.name === 'RateLimitExhaustedError') {
+        console.warn(`[JobService] Job ${jobId} paused due to API Rate Limits. Progress saved.`);
+        
+        const currentStep = job.currentStep;
+        this.updateStep(jobId, currentStep, 'error', 'API Rate Limit Exhausted. Please wait before resuming.');
+        this.updateJob(jobId, {
+          status: 'paused-rate-limit',
+          partialNotes: error.partialNotes || []
+        });
+        return;
+      }
+
       console.error(`Job ${jobId} continuation failed:`, error);
+
+      const currentStep = job.currentStep;
+      this.updateStep(jobId, currentStep, 'error', error instanceof Error ? error.message : 'Unknown error');
+      this.updateJob(jobId, {
+        status: 'error',
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+      throw error;
+    }
+  }
+
+  // Resume a paused job
+  async resumeJob(jobId: string): Promise<void> {
+    const job = this.getJob(jobId);
+
+    if (!job) {
+      throw new Error('Job not found');
+    }
+
+    if (job.status !== 'paused-rate-limit') {
+      throw new Error(`Job is not paused due to rate limits (current status: ${job.status})`);
+    }
+
+    if (!job.index || !job.transcripts) {
+      throw new Error('Job missing index or transcripts');
+    }
+
+    console.log(`\n▶️ Resuming job ${jobId} after rate limit pause`);
+    
+    const { index, transcripts, partialNotes } = job;
+    const title = index.title;
+
+    try {
+      this.updateStep(jobId, 3, 'active', 'Resuming notes generation...');
+      this.updateJob(jobId, { status: 'generating-notes', currentStep: 3, error: undefined });
+
+      const allNotes = await notesService.generateAllNotes(
+        index,
+        transcripts,
+        (progress: any) => {
+          this.updateStep(jobId, 3, 'active', undefined, progress);
+        },
+        (topicId: string, delta: string) => {
+          this.emit(`note:delta:${jobId}`, { topicId, delta });
+        },
+        job.options,
+        partialNotes || []
+      );
+      this.updateStep(jobId, 3, 'complete', `Generated notes for ${allNotes.length} topics`);
+      console.log(`✅ Step 4 complete: Generated notes for ${allNotes.length} topics`);
+
+      // Step 5: Assemble notebook
+      console.log(`📖 Step 5: Assembling notebook...`);
+      this.updateStep(jobId, 4, 'active');
+      this.updateJob(jobId, { status: 'assembling-notebook', currentStep: 4 });
+
+      const notebook = await notesService.assembleNotebook(
+        title || 'Untitled Notebook',
+        index,
+        allNotes,
+        transcripts
+      );
+
+      this.updateJob(jobId, {
+        notebook,
+        status: 'complete',
+        currentStep: 5,
+        partialNotes: undefined // Clear partial notes on completion
+      });
+      this.updateStep(jobId, 4, 'complete', 'Notebook assembled successfully');
+      console.log(`✅ Step 5 complete: Notebook assembled`);
+
+      console.log(`\n🎉 Job ${jobId} completed successfully after resume!\n`);
+
+    } catch (error: any) {
+      if (error.name === 'RateLimitExhaustedError') {
+        console.warn(`[JobService] Job ${jobId} paused AGAIN due to API Rate Limits. Progress saved.`);
+        
+        const currentStep = job.currentStep;
+        this.updateStep(jobId, currentStep, 'error', 'API Rate Limit Exhausted again. Please wait before resuming.');
+        this.updateJob(jobId, {
+          status: 'paused-rate-limit',
+          partialNotes: error.partialNotes || []
+        });
+        return;
+      }
+
+      console.error(`Job ${jobId} resume failed:`, error);
 
       const currentStep = job.currentStep;
       this.updateStep(jobId, currentStep, 'error', error instanceof Error ? error.message : 'Unknown error');

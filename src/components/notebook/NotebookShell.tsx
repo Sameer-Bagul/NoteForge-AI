@@ -3,6 +3,7 @@ import {
     BookOpen, List, GitBranch, HelpCircle, Briefcase,
     ArrowLeft, Download, Clock, Hash, FileText, Loader2
 } from 'lucide-react';
+import { useSettings } from '@/context/SettingsContext';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { RunningNotesViewer } from './RunningNotesViewer';
@@ -111,6 +112,7 @@ export function NotebookShell({ notes, onReset }: NotebookShellProps) {
         toast({ title: 'Downloaded!', description: 'Notebook saved as Markdown.' });
     };
 
+    const { settings } = useSettings();
     const [isExportingPdf, setIsExportingPdf] = useState(false);
 
     const handleDownloadPdf = async () => {
@@ -118,7 +120,8 @@ export function NotebookShell({ notes, onReset }: NotebookShellProps) {
             setIsExportingPdf(true);
             toast({ title: 'Generating PDF...', description: 'This may take a few seconds.' });
             
-            const response = await api.exportPdf(notes.videoId);
+            const exportId = notes.notebookId || notes.videoId;
+            const response = await api.exportPdf(exportId, settings.pdfTheme || 'modern');
             
             // Assuming response is a blob
             const url = window.URL.createObjectURL(new Blob([response.data]));
@@ -253,7 +256,7 @@ export function NotebookShell({ notes, onReset }: NotebookShellProps) {
                 {/* ── Mind Maps Tab ─────────────────────────────────────── */}
                 <TabsContent value="mindmap" className="mt-0">
                     <MindMapTab
-                        notebookId={notes.videoId}
+                        notebookId={notes.notebookId || notes.videoId}
                         topics={mapTopics}
                         fullContent={notes.fullContent}
                         existingMindMaps={notes.mindMaps}
@@ -263,7 +266,7 @@ export function NotebookShell({ notes, onReset }: NotebookShellProps) {
                 {/* ── Quiz Tab ──────────────────────────────────────────── */}
                 <TabsContent value="quiz" className="mt-0">
                     <QuizTab
-                        notebookId={notes.videoId}
+                        notebookId={notes.notebookId || notes.videoId}
                         topicTitles={topicTitles}
                         fullContent={notes.fullContent}
                         existingQuiz={notes.quiz}
@@ -273,7 +276,7 @@ export function NotebookShell({ notes, onReset }: NotebookShellProps) {
                 {/* ── Interview Tab ─────────────────────────────────────── */}
                 <TabsContent value="interview" className="mt-0">
                     <InterviewTab
-                        notebookId={notes.videoId}
+                        notebookId={notes.notebookId || notes.videoId}
                         topicTitles={topicTitles}
                         fullContent={notes.fullContent}
                         existingQuestions={notes.interviewQA}

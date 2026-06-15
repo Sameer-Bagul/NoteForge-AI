@@ -169,7 +169,8 @@ export type ProcessingStatus =
   | 'generating-notes'
   | 'assembling-notebook'
   | 'complete'
-  | 'error';
+  | 'error'
+  | 'paused-rate-limit';
 
 /**
  * 1 = Strict      – only transcript content, no AI additions
@@ -209,6 +210,7 @@ export interface ProcessingJob {
   transcripts: VideoTranscript[];
   index?: UnifiedIndex;
   notebook?: Notebook;
+  partialNotes?: any[]; // Stores notes generated before a rate limit pause
   error?: string;
   options?: JobOptions;   // User-provided notes + creativity level
   createdAt: string;

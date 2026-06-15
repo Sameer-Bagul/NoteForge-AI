@@ -6,13 +6,13 @@ import { IndexReview } from '@/components/IndexReview';
 import ResultsView from '@/components/ResultsView';
 import { ServerPulse } from '@/components/ServerPulse';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Loader2, Brain } from 'lucide-react';
+import { ArrowLeft, Loader2, Brain, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 const Process = () => {
     const { jobId } = useParams<{ jobId: string }>();
     const navigate = useNavigate();
-    const { state, approveIndex, reset, logs, startProcessing } = useProcessing(jobId);
+    const { state, approveIndex, reset, logs, startProcessing, resumeJob } = useProcessing(jobId);
 
     useEffect(() => {
         if (!jobId) {
@@ -120,6 +120,33 @@ const Process = () => {
                         <Button onClick={handleReset} variant="outline" size="lg">
                             Return to Home
                         </Button>
+                    </div>
+                );
+
+            case 'paused-rate-limit':
+                return (
+                    <div className="flex flex-col items-center justify-center h-[60vh] gap-6 text-center fade-in">
+                        <div className="w-20 h-20 rounded-full bg-orange-500/10 flex items-center justify-center border border-orange-500/20">
+                            <AlertCircle className="w-10 h-10 text-orange-500" />
+                        </div>
+                        <div className="space-y-2">
+                            <h2 className="text-2xl font-bold">API Quota Exhausted</h2>
+                            <p className="text-muted-foreground max-w-md">
+                                The AI provider has severely rate-limited the generation engine (likely due to free tier limits). The job has been safely paused and all progress is saved.
+                            </p>
+                        </div>
+                        <div className="flex gap-4 mt-4">
+                            <Button onClick={handleReset} variant="outline" size="lg">
+                                Return to Home
+                            </Button>
+                            <Button 
+                                onClick={resumeJob} 
+                                size="lg"
+                                className="bg-orange-500 hover:bg-orange-600 text-white"
+                            >
+                                Resume Generation
+                            </Button>
+                        </div>
                     </div>
                 );
 

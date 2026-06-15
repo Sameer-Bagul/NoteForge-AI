@@ -174,6 +174,13 @@ async function enforceRateLimit(provider: string, isCloud: boolean): Promise<voi
     lastCallTime.set(provider, Date.now());
 }
 
+export class RateLimitExhaustedError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = 'RateLimitExhaustedError';
+    }
+}
+
 async function executeWithBackoff<T>(
     operationName: string,
     operation: () => Promise<T>,
@@ -196,14 +203,18 @@ async function executeWithBackoff<T>(
                 msg.includes('timeout') ||
                 msg.includes('ECONNRESET');
             
-            if (isRetryable && isCloud && attempt < maxRetries) {
-                attempt++;
-                // Exponential backoff: 5s, 15s, 45s, 120s...
-                let waitMs = Math.pow(3, attempt - 1) * 5000;
-                if (waitMs > 120000) waitMs = 120000; // Cap at 2 minutes
-                console.warn(`[MultiLLM] ⏳ ${operationName} failed (${msg.substring(0, 50)}...). Retry ${attempt}/${maxRetries} in ${waitMs / 1000}s...`);
-                await new Promise(r => setTimeout(r, waitMs));
-                continue;
+            if (isRetryable && isCloud) {
+                if (attempt < maxRetries) {
+                    attempt++;
+                    // Exponential backoff: 5s, 15s, 45s, 120s...
+                    let waitMs = Math.pow(3, attempt - 1) * 5000;
+                    if (waitMs > 120000) waitMs = 120000; // Cap at 2 minutes
+                    console.warn(`[MultiLLM] ⏳ ${operationName} failed (${msg.substring(0, 50)}...). Retry ${attempt}/${maxRetries} in ${waitMs / 1000}s...`);
+                    await new Promise(r => setTimeout(r, waitMs));
+                    continue;
+                } else {
+                    throw new RateLimitExhaustedError(`Rate limit exhausted for ${operationName}: ${msg}`);
+                }
             }
             throw err;
         }

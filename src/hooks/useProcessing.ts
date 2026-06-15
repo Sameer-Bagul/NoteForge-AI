@@ -56,6 +56,7 @@ export const useProcessing = (initialJobId?: string | null) => {
         case 'assembling-notebook': return 'assembling';
         case 'complete': return 'complete';
         case 'error': return 'error';
+        case 'paused-rate-limit': return 'paused-rate-limit';
         default: return backendStatus;
       }
     };
@@ -98,6 +99,7 @@ export const useProcessing = (initialJobId?: string | null) => {
         newState.topicIndex = topicIndex;
         newState.notes = {
           videoId: jobStatus.videoInfo?.id || 'unknown',
+          notebookId: jobStatus.notebook.id,
           title: jobStatus.notebook.title,
           index: topicIndex,
           notes: allTopicNotes.map((note: any) => ({
@@ -281,6 +283,27 @@ export const useProcessing = (initialJobId?: string | null) => {
     }
   }, [connectToStream]);
 
+  const resumeJob = useCallback(async () => {
+    const jobId = currentJobIdRef.current;
+    if (!jobId) return;
+
+    try {
+      addLog('Resuming job generation...', 'info');
+      await api.resumeJob(jobId);
+      setState(prev => ({
+        ...prev,
+        status: 'generating',
+      }));
+
+      if (!eventSourceRef.current) {
+        connectToStream(jobId);
+      }
+    } catch (error) {
+      console.error('Error resuming job:', error);
+      addLog('Failed to resume job', 'error');
+    }
+  }, [connectToStream, addLog]);
+
   const reset = useCallback(() => {
     if (eventSourceRef.current) {
       eventSourceRef.current.close();
@@ -307,6 +330,7 @@ export const useProcessing = (initialJobId?: string | null) => {
     logs,
     startProcessing,
     approveIndex,
+    resumeJob,
     reset,
   };
 };

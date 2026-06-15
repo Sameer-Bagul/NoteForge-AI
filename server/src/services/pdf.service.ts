@@ -36,13 +36,47 @@ export class PdfService {
     return this.cssCache;
   }
 
-  public async generatePDF(index: UnifiedIndex, notesList: TopicNotes[]): Promise<Buffer> {
+  public async generatePDF(index: UnifiedIndex, notesList: TopicNotes[], theme: string = 'modern'): Promise<Buffer> {
     const css = this.getCss();
 
     // Group notes by topicId for quick lookup
     const notesMap = new Map<string, TopicNotes>();
     for (const n of notesList) {
       notesMap.set(n.topicId, n);
+    }
+
+    let themeOverrides = '';
+    if (theme === 'dark') {
+      themeOverrides = `
+        :root {
+          --surface: #111111;
+          --bg: #000000;
+          --ink: #FFFFFF;
+          --ink-2: #E0E0E0;
+          --ink-3: #AAAAAA;
+          --border: #333333;
+          --border-s: #222222;
+        }
+      `;
+    } else if (theme === 'academic') {
+      themeOverrides = `
+        :root {
+          --head: 'Times New Roman', serif;
+          --body: 'Times New Roman', serif;
+          --c-pink: #000000; --c-cyan: #000000; --c-lime: #000000;
+          --c-purple: #000000; --c-amber: #000000; --c-teal: #000000;
+        }
+        .accent-bar { display: none; }
+      `;
+    } else if (theme === 'corporate') {
+      themeOverrides = `
+        :root {
+          --c-pink: #0A58CA; --c-cyan: #0A58CA; --c-lime: #0A58CA;
+          --c-purple: #0A58CA; --c-amber: #0A58CA; --c-teal: #0A58CA;
+          --head: 'Inter', sans-serif;
+          --body: 'Inter', sans-serif;
+        }
+      `;
     }
 
     let htmlContent = `
@@ -52,18 +86,19 @@ export class PdfService {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>${index.title} · Notes</title>
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Syne:wght@400;500;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Syne:wght@400;500;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
 <script>
   document.addEventListener('DOMContentLoaded', () => {
-    mermaid.initialize({ startOnLoad: true, theme: 'default', securityLevel: 'loose' });
+    mermaid.initialize({ startOnLoad: true, theme: '${theme === 'dark' ? 'dark' : 'default'}', securityLevel: 'loose' });
   });
 </script>
 <style>
 ${css}
+${themeOverrides}
 </style>
 </head>
-<body>
+<body class="theme-${theme}">
 `;
 
     // Cover Page

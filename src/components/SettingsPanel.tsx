@@ -261,6 +261,7 @@ export function SettingsPanel() {
     const [localTaskMapping, setLocalTaskMapping] = useState(settings.taskMapping);
     const [localPineconeApiKey, setLocalPineconeApiKey] = useState(settings.pineconeApiKey || '');
     const [localPineconeIndex, setLocalPineconeIndex] = useState(settings.pineconeIndex || '');
+    const [localPdfTheme, setLocalPdfTheme] = useState(settings.pdfTheme || 'modern');
     const [saved, setSaved] = useState(false);
     const [ollamaModels, setOllamaModels] = useState<string[]>([]);
     const [fetchingModels, setFetchingModels] = useState(false);
@@ -299,6 +300,7 @@ export function SettingsPanel() {
             taskMapping: localTaskMapping,
             pineconeApiKey: localPineconeApiKey,
             pineconeIndex: localPineconeIndex,
+            pdfTheme: localPdfTheme as any,
         });
         await saveToBackend();
         setSaved(true);
@@ -327,8 +329,9 @@ export function SettingsPanel() {
             setLocalTaskMapping(settings.taskMapping);
             setLocalPineconeApiKey(settings.pineconeApiKey || '');
             setLocalPineconeIndex(settings.pineconeIndex || '');
+            setLocalPdfTheme(settings.pdfTheme || 'modern');
         }
-    }, [isSettingsOpen, settings.providers, settings.taskMapping, fetchOllamaModels]);
+    }, [isSettingsOpen, settings.providers, settings.taskMapping, settings.pdfTheme, fetchOllamaModels]);
 
     const enabledCount = localProviders.filter(p => p.enabled).length;
 
@@ -371,6 +374,12 @@ export function SettingsPanel() {
                                 className="h-full rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-0 text-sm font-bold uppercase tracking-widest transition-all"
                             >
                                 Vector Storage
+                            </TabsTrigger>
+                            <TabsTrigger
+                                value="pdf"
+                                className="h-full rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-0 text-sm font-bold uppercase tracking-widest transition-all"
+                            >
+                                PDF Theme
                             </TabsTrigger>
                         </TabsList>
                     </div>
@@ -492,6 +501,39 @@ export function SettingsPanel() {
                                         onChange={e => { setLocalPineconeIndex(e.target.value); setSaved(false); }}
                                     />
                                     <p className="text-[11px] text-muted-foreground">The name of the index you created in your Pinecone dashboard (Dimensions: 768 for Nomic, 1536 for OpenAI).</p>
+                                </div>
+                            </div>
+                        </TabsContent>
+
+                        <TabsContent value="pdf" className="p-6 m-0 space-y-8 outline-none max-w-2xl mx-auto">
+                            <div className="text-center space-y-2 mb-4">
+                                <div className="inline-flex p-3 rounded-full bg-primary/10 text-primary mb-2">
+                                    <Settings2 className="w-6 h-6" />
+                                </div>
+                                <h3 className="text-lg font-bold tracking-tight">PDF Export Aesthetics</h3>
+                                <p className="text-sm text-muted-foreground max-w-md mx-auto">
+                                    Choose the default theme for your generated PDF notebooks.
+                                </p>
+                            </div>
+
+                            <div className="space-y-6">
+                                <div className="space-y-2">
+                                    <Label className="text-sm font-bold tracking-tight">PDF Theme</Label>
+                                    <Select 
+                                        value={localPdfTheme} 
+                                        onValueChange={v => { setLocalPdfTheme(v as any); setSaved(false); }}
+                                    >
+                                        <SelectTrigger className="w-full">
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="modern">Modern Bento (Default)</SelectItem>
+                                            <SelectItem value="academic">Academic (Serif, Minimal)</SelectItem>
+                                            <SelectItem value="dark">Dark Mode (Inverted)</SelectItem>
+                                            <SelectItem value="corporate">Corporate (Clean, Blue Accent)</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                    <p className="text-[11px] text-muted-foreground">This theme is applied when compiling markdown into the final PDF.</p>
                                 </div>
                             </div>
                         </TabsContent>

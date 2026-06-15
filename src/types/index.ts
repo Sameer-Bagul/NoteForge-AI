@@ -1,5 +1,5 @@
 export type ProcessingStatus = 'idle' | 'extracting' | 'indexing' | 'awaiting-approval' | 'generating' | 'assembling' | 'complete' | 'error'
-  | 'extracting-transcripts' | 'analyzing-content' | 'generating-index' | 'generating-notes' | 'assembling-notebook';
+  | 'extracting-transcripts' | 'analyzing-content' | 'generating-index' | 'generating-notes' | 'assembling-notebook' | 'paused-rate-limit';
 
 export interface VideoInfo {
   id: string;
@@ -150,6 +150,7 @@ export interface Notebook {
 
 export interface VideoNotes {
   videoId: string;
+  notebookId?: string;
   title: string;
   index: TopicIndex[];
   notes: TopicNotes[];

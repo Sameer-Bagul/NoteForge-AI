@@ -48,7 +48,8 @@ function loadFromStorage(): AppSettings {
 
         return {
             providers: mergedProviders,
-            taskMapping: parsed.taskMapping || DEFAULT_SETTINGS.taskMapping
+            taskMapping: parsed.taskMapping || DEFAULT_SETTINGS.taskMapping,
+            pdfTheme: parsed.pdfTheme || DEFAULT_SETTINGS.pdfTheme
         };
     } catch {
         return DEFAULT_SETTINGS;

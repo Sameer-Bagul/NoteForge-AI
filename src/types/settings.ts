@@ -16,11 +16,14 @@ export interface TaskMapping {
     features: AIProvider | 'auto';
 }
 
+export type PdfTheme = 'modern' | 'academic' | 'dark' | 'corporate';
+
 export interface AppSettings {
     providers: ProviderConfig[];
     taskMapping: TaskMapping;
     pineconeApiKey?: string;
     pineconeIndex?: string;
+    pdfTheme?: PdfTheme;
 }
 
 export const PROVIDER_LABELS: Record<AIProvider, string> = {
@@ -99,4 +102,5 @@ export const DEFAULT_SETTINGS: AppSettings = {
         indexing: 'auto',
         features: 'auto',
     },
+    pdfTheme: 'modern',
 };

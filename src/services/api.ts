@@ -61,9 +61,9 @@ export const api = {
     return result.data || result;
   },
 
-  async exportPdf(indexId: string): Promise<{ data: Blob }> {
-    log('Exporting PDF for index:', indexId);
-    const response = await fetch(`${API_BASE}/process/export/${indexId}`);
+  async exportPdf(indexId: string, theme: string = 'modern'): Promise<{ data: Blob }> {
+    log('Exporting PDF for index:', indexId, 'with theme:', theme);
+    const response = await fetch(`${API_BASE}/process/export/${indexId}?theme=${theme}`);
     if (!response.ok) {
       console.error('API Error: Failed to export PDF');
       throw new Error('Failed to export PDF');
@@ -86,6 +86,22 @@ export const api = {
     }
     const data = await response.json();
     log('Approve response:', data);
+    return data;
+  },
+
+  async resumeJob(jobId: string): Promise<{ success: boolean; message: string }> {
+    log('Resuming job:', jobId);
+    const response = await fetch(`${API_BASE}/process/${jobId}/resume`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    if (!response.ok) {
+      const error = await response.text();
+      console.error('API Error:', error);
+      throw new Error('Failed to resume job');
+    }
+    const data = await response.json();
+    log('Resume response:', data);
     return data;
   },
 

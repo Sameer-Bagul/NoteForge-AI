@@ -15,6 +15,9 @@ router.get('/status/:jobId', ProcessController.getJobStatus);
 // Update and approve index
 router.put('/:jobId/approve-index', ProcessController.approveIndex);
 
+// Resume a paused job
+router.post('/:jobId/resume', ProcessController.resumeJob);
+
 // Get all jobs
 router.get('/jobs', ProcessController.listJobs);
 
