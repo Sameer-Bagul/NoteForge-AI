@@ -1,67 +1,31 @@
-# Phase 2: RAG Optimization & SQLite Migration
+# Phase 2: Hybrid AI Architecture & Enterprise Resilience
 
-This phase addresses the structural and scalable limitations of the current NoteForge architecture. We will shift from flat JSON files to a relational database, and optimize AI prompt payload sizes to prevent API token exhaustion on massive playlists.
+Based on expert suggestions, we have heavily optimized our Phase 2 plan. The core focus is on bulletproof persistence (resuming jobs exactly where they left off) and dropping unnecessary complex tech (like Vector DBs) in favor of fast, deterministic code.
 
-## User Review Required
+## Phase 2.1: SQLite Migration & Bulletproof Resumption (Highest Priority)
+Without a database, a laptop shutdown or API quota error destroys hours of processing. We will introduce Prisma ORM and SQLite.
+- **Granular Job Schema:** We will track `currentVideo` and `currentChapter` in the database. 
+- **Why?** If a video has 15 chapters and the API fails on Chapter 12, the system will pause. When you click "Play" tomorrow, it will instantly resume at Chapter 12 without re-processing the first 11 chapters.
 
-> [!WARNING]
-> **Data Migration Alert**
-> We are migrating away from the `storage/` directory (JSON files) to a local `sqlite` database. Existing notebooks and jobs stored in JSON files will not automatically transfer over to the new database unless we write a migration script. For a development environment, it is usually acceptable to start fresh. Are you okay with starting fresh with the new database?
+## Phase 2.2: Single-Shot JSON Generation
+Right now, the app separates Notes, Mindmaps, Quizzes, and Interview Q&As into separate generation cycles.
+- **Unified Prompts:** We will update the LLM prompt to generate Deep Study Notes, Flashcards, and Quizzes in a **single JSON API call**. 
+- **Why?** Combining 4 API calls into 1 cuts our RPM (Requests Per Minute) by massive amounts, speeding up assembly and saving quota.
 
-## Open Questions
+## Phase 2.3: Adaptive Backoff & Smart Key Rotation
+We will abandon the hardcoded "7-second delay" and implement adaptive throttling.
+- **Exponential Backoff:** The system runs fast (e.g., 2s delay). If we receive a `429 RESOURCE_EXHAUSTED` error, the cooldown instantly doubles (4s -> 8s -> 16s) until it succeeds, then resets.
+- **Smart Key Pool:** The settings will accept multiple API keys. If a key is completely exhausted, the system marks it with an `exhaustedUntil` timestamp (disabling it until tomorrow) and seamlessly switches to the next available key.
 
-> [!IMPORTANT]
-> 1. Should we keep the existing Pinecone vector database integration exactly as it is, or do you want to explore moving vector embeddings into a local SQLite vector extension (sqlite-vss) to keep the app 100% local? (Sticking with Pinecone is faster to implement).
-> 2. What is the maximum number of chunks (Top-K) you want to pull for a topic during RAG generation? More chunks = more context, but higher token usage. I recommend K=15 as a default.
-
-## Proposed Changes
-
----
-
-### Database Layer (Prisma & SQLite)
-
-We will integrate Prisma ORM with SQLite for persistent, fast data storage.
-
-#### [NEW] server/prisma/schema.prisma
-Define the relational schema:
-- `Job`: Tracks processing state, error logs, and video count.
-- `Notebook`: The final compiled study guide, containing mind maps, quizzes, and markdown content.
-- `TopicIndex`: The unified table of contents.
-- `Transcript`: Extracted YouTube captions mapped to video IDs.
-
-#### [MODIFY] server/package.json
-- Add `prisma` and `@prisma/client` dependencies.
-- Add npm scripts for database generation and migration (`prisma generate`, `prisma db push`).
-
-#### [MODIFY] server/src/services/job.service.ts
-- Rip out `fs.readFileSync` and `fs.writeFileSync`.
-- Replace with `prisma.job.create`, `prisma.job.update`, `prisma.job.findMany`.
-
-#### [MODIFY] server/src/services/notes.service.ts
-- Replace file system operations with `prisma.notebook.upsert` and `prisma.notebook.findUnique`.
+## Phase 2.4: Deterministic Chunking (Removing Pinecone)
+We previously considered using Pinecone and RAG to filter large transcripts. This was overkill.
+- **Timestamp Slicing:** Since we already know the start and end timestamps of every chapter, we don't need AI or Vector Search to find the relevant transcript chunk! We will simply use Javascript to slice the exact lines of transcript that fall within the chapter's timestamps. 
+- **Why?** This is 100% free, takes zero milliseconds, and requires zero external databases. It drops token usage massively without any AI overhead.
 
 ---
 
-### AI Optimization (RAG Chunking)
-
-We will stop sending 100% of a video's transcript to the LLM and instead query our vector database for precisely what we need.
-
-#### [MODIFY] server/src/services/rag.service.ts
-- Enhance the `query` function to fetch the Top-K relevant transcript chunks based on a specific `topic.title` and `topic.subtopics`.
-
-#### [MODIFY] server/src/services/notes.service.ts
-- Inside `generateTopicNotes`, instead of mapping over all transcripts and appending them raw, we will:
-  1. Call `ragService.query(topic.title)` to get the most relevant snippets.
-  2. Assemble a highly dense, token-efficient context block.
-  3. Feed this filtered context block to Gemini/Ollama.
-
-## Verification Plan
-
-### Automated Tests
-- Run `npx prisma db push` to verify the schema compiles and the SQLite file is created successfully.
-
-### Manual Verification
-- Start a new playlist job.
-- Verify in the server console that Prisma is successfully writing job states to the database instead of `storage/jobs`.
-- Monitor the backend logs during `generateTopicNotes` to confirm the prompt payload is significantly smaller (reduced token count) and only contains relevant chunks from Pinecone.
-- Refresh the application and ensure past jobs load instantly from the SQLite database.
+## What about Phase 3? (Future Scope)
+Once Phase 2 is stable, Phase 3 will introduce **Master Course Synthesis**. After all chapters of a playlist finish, the AI will perform one massive synthesis pass to generate:
+- A One-Page Cheat Sheet
+- Final Exam/Interview Revision Notes
+- A Master Course Summary
