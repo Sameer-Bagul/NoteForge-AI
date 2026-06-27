@@ -1,5 +1,7 @@
 # Phase 2: Hybrid AI Architecture & Enterprise Resilience
 
+![Final Phase 2 System Architecture](./assets/final-system-architecture.png)
+
 Based on expert suggestions, we have heavily optimized our Phase 2 plan. The core focus is on bulletproof persistence (resuming jobs exactly where they left off) and dropping unnecessary complex tech (like Vector DBs) in favor of fast, deterministic code.
 
 ## Phase 2.1: SQLite Migration & Bulletproof Resumption (Highest Priority)

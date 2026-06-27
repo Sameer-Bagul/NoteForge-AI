@@ -1,0 +1,64 @@
+User Client [icon: monitor] {
+  React SPA [icon: react]
+  PDF Exporter [icon: file-text]
+  Settings Dashboard [icon: settings]
+}
+
+API Gateway [icon: server] {
+  Express Router [icon: node-js]
+  Middleware [icon: shield]
+}
+
+Core Backend Services [icon: cpu] {
+  Job Manager [icon: list]
+  Notebook Assembler [icon: book-open]
+  Timestamp Chunker [icon: scissors]
+  
+  Queue Worker [icon: layers] {
+    Adaptive Backoff [icon: clock]
+    7s Delay Throttler [icon: pause-circle]
+  }
+}
+
+Database Layer [icon: database] {
+  Prisma ORM [icon: terminal]
+  SQLite [icon: database] {
+    Jobs Table [icon: table]
+    Notebooks Table [icon: table]
+    API Keys Pool [icon: key]
+  }
+}
+
+LLM Routing Layer [icon: git-merge] {
+  Multi-LLM Service [icon: activity]
+  API Key Rotator [icon: refresh-cw]
+  JSON Compiler [icon: file-json]
+}
+
+External AI Services [icon: cloud] {
+  Gemini 2.5 Flash [icon: google]
+  Ollama Local [icon: server]
+}
+
+React SPA > Express Router: Submit Request
+Express Router > Middleware: Validate
+Middleware > Job Manager: Initialize Job
+
+Job Manager > Prisma ORM: Create Job (Pending)
+Job Manager > Queue Worker: Add Job
+
+Queue Worker > Job Manager: Process Video
+Job Manager > Timestamp Chunker: Slicing Chapters
+Timestamp Chunker > Multi-LLM Service: Send Transcript Chunk
+
+Multi-LLM Service > API Key Rotator: Get Active Key
+API Key Rotator > JSON Compiler: Inject Key
+JSON Compiler > Gemini 2.5 Flash: Single-Shot Prompt
+
+Gemini 2.5 Flash > Adaptive Backoff: 429 Error
+Adaptive Backoff > API Key Rotator: Mark Key Exhausted
+
+Gemini 2.5 Flash > Notebook Assembler: JSON Response
+Notebook Assembler > Prisma ORM: Update Progress
+Prisma ORM > SQLite: Write State
+Job Manager > React SPA: SSE Events
