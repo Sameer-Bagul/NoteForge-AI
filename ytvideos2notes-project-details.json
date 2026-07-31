@@ -1,0 +1,103 @@
+{
+  "_id": "portfolio-admin-panel-001",
+  "title": "Portfolio CMS - Admin Dashboard",
+  "slug": "portfolio-cms-admin",
+  "shortDescription": "A comprehensive, full-stack Content Management System tailored specifically for developers to manage their dynamic portfolios.",
+  "description": "The Portfolio CMS Admin Panel is the centralized command center for my personal portfolio ecosystem. Designed to abstract away the need for hardcoded content updates, this robust application allows for seamless management of projects, blog posts, skills, work experience, and incoming messages from a beautifully crafted, dark-themed interface. Built as a desktop-first application leveraging Electron alongside a modern web stack, it provides the performance of a native app with the flexibility of web technologies. The project incorporates a dedicated backend server built with Express and MongoDB to ensure data persistence, secure authentication, and optimized API delivery to the public-facing portfolio.\n\nThe frontend is heavily optimized using Vite, React 18, and TypeScript, establishing a strictly typed, lightning-fast development environment. The UI layer is meticulously constructed utilizing Tailwind CSS and Shadcn UI, resulting in a cohesive, accessible, and premium design language that perfectly complements the dark mode aesthetic. Real-time form validations, rich text editing via Tiptap, and drag-and-drop ordering capabilities (via dnd-kit) elevate the content authoring experience, making it both intuitive and powerful.\n\nOn the backend, a secure REST API architecture handles everything from JWT-based authorization and rate limiting to complex data validations using Joi. By decoupling the administrative interface from the public portfolio via this API layer, the architecture ensures maximum security, scalability, and ease of maintenance, allowing the public site to remain lightweight while the admin panel handles the heavy lifting of data manipulation and asset management.",
+  "category": "cms",
+  "isFeatured": true,
+  "status": "In Production",
+  "role": "Lead Full Stack Engineer",
+  "clientOrCompany": "Personal Project",
+  "duration": "Ongoing Development",
+  "targetAudience": "Developers / Content Creators",
+  "techStackBreakdown": {
+    "frontend": ["React 18", "TypeScript", "Vite", "Tailwind CSS", "Shadcn UI", "Framer Motion", "Tiptap Editor", "dnd-kit", "React Router", "Tanstack Query", "React Hook Form", "Zod"],
+    "backend": ["Node.js", "Express", "MongoDB", "Mongoose", "JSON Web Tokens (JWT)", "Bcrypt.js", "Joi Validation", "Helmet", "Cors"],
+    "infrastructure": ["Electron (Desktop App)", "Electron Builder", "Nodemon", "ESLint", "PostCSS"]
+  },
+  "myContributions": [
+    "Architected and implemented a complete full-stack CMS, bridging a Vite/React frontend with an Express/MongoDB backend.",
+    "Integrated Electron to package the web dashboard as a standalone cross-platform desktop application.",
+    "Engineered a secure authentication system featuring JWT tokens, bcrypt password hashing, and API rate limiting.",
+    "Designed a premium, dark-mode exclusive UI using Shadcn UI components and Tailwind CSS for rapid, consistent styling.",
+    "Developed a rich text editing experience integrating the Tiptap editor for writing formatted blog posts and detailed project descriptions.",
+    "Implemented complex drag-and-drop functionality using dnd-kit for reordering portfolio sections, projects, and skills seamlessly.",
+    "Built dynamic dashboard routes managing disparate data entities: Projects, Testimonials, Achievements, Skills, Experience, Blog, Messages, and Personal Info.",
+    "Integrated specialized modules for GitHub and Pinterest, aggregating external content and statistics into the central dashboard.",
+    "Configured an automated build pipeline using electron-builder to generate production-ready executables for Linux and Windows.",
+    "Authored comprehensive API documentation and deployment guides to standardize future feature expansions."
+  ],
+  "image": "https://raw.githubusercontent.com/Sameer-Bagul/Portfolio_CMS/main/admin/public/screenshot-dashboard.png",
+  "gallery": [
+    { "url": "https://raw.githubusercontent.com/Sameer-Bagul/Portfolio_CMS/main/admin/public/gallery/projects-view.png", "caption": "The Projects management interface with drag-and-drop reordering." },
+    { "url": "https://raw.githubusercontent.com/Sameer-Bagul/Portfolio_CMS/main/admin/public/gallery/blog-editor.png", "caption": "Rich text editing environment for composing blog posts using Tiptap." },
+    { "url": "https://raw.githubusercontent.com/Sameer-Bagul/Portfolio_CMS/main/admin/public/gallery/skills-matrix.png", "caption": "Skills categorization and proficiency tracking module." },
+    { "url": "https://raw.githubusercontent.com/Sameer-Bagul/Portfolio_CMS/main/admin/public/gallery/messages-inbox.png", "caption": "Secure inbox for viewing and managing contact form submissions." }
+  ],
+  "architectureDiagram": "https://raw.githubusercontent.com/Sameer-Bagul/Portfolio_CMS/main/admin/public/architecture-flow.png",
+  "liveUrl": "",
+  "githubUrl": "https://github.com/Sameer-Bagul/Portfolio_CMS",
+  "apiDocsUrl": "https://github.com/Sameer-Bagul/Portfolio_CMS/tree/main/admin/server",
+  "contributors": ["Sameer Bagul (Full Stack Developer)"],
+  "features": [
+    "Unified Dashboard: A centralized overview of portfolio metrics, pending messages, and recent content updates.",
+    "Secure Authentication: Login portal protected by JWTs, rate limiting, and encrypted password validation.",
+    "Project Management: Full CRUD capabilities for portfolio projects, including image uploads, tags, and rich descriptions.",
+    "Blog Authoring: Integrated Tiptap markdown editor for writing, formatting, and publishing technical articles.",
+    "Skills Organization: Categorize and rate technical skills, allowing dynamic rendering on the public frontend.",
+    "Experience Tracking: Manage chronological work history, company details, roles, and key responsibilities.",
+    "Testimonial Curation: Store and manage client endorsements, quotes, and reviewer information.",
+    "Achievement Logging: Track professional milestones, certifications, and awards.",
+    "Message Inbox: Receive, read, and archive inquiries submitted through the public portfolio contact form.",
+    "Personal Info Hub: Centralize social links, bio texts, resume links, and general site configuration.",
+    "GitHub Integration: Specialized view for pulling and caching GitHub statistics, repository data, and contribution graphs.",
+    "Pinterest Integration: Module to manage curated inspiration boards or design references.",
+    "Drag-and-Drop Reordering: Utilize dnd-kit to visually sort the display order of items like projects or skills.",
+    "Cross-Platform Desktop App: Packaged with Electron for native installation on Linux and Windows.",
+    "Dark Mode Aesthetics: Beautifully crafted, high-contrast dark theme optimized for developer environments.",
+    "Robust API Layer: Express.js backend with strict Joi validation schemas ensuring data integrity.",
+    "Database Backups: Built-in scripting capabilities (via backend utils) to export and backup MongoDB collections."
+  ],
+  "challenges": [
+    "Desktop App Integration: Merging a modern Vite development server with Electron required careful configuration to ensure hot-reloading worked seamlessly alongside native node modules without cross-origin resource sharing (CORS) conflicts.",
+    "Rich Text Data Persistence: Ensuring that complex HTML strings generated by Tiptap were safely sanitized, stored in MongoDB, and correctly hydrated on the public frontend without introducing XSS vulnerabilities.",
+    "Drag-and-Drop State Synchronization: Implementing dnd-kit required complex state management to ensure that visual reordering instantly updated the database sequence indices accurately, handling edge cases where multiple rapid sorts occurred.",
+    "API Security: Exposing a custom backend meant implementing strict rate limiting and Helmet headers to prevent brute-force login attempts and common web vulnerabilities against the admin routes."
+  ],
+  "learnings": [
+    "Deepened expertise in Electron IPC (Inter-Process Communication) and packaging modern React applications as native executables.",
+    "Mastered the integration of headless UI components (Shadcn/Radix) for creating highly accessible, unstyled primitives that can be completely customized.",
+    "Improved backend validation strategies using Joi schemas to enforce strict data structures before they ever hit the Mongoose models.",
+    "Gained valuable experience in managing complex global state for an administration portal using React Context and custom hooks.",
+    "Learned best practices for building secure, decoupled full-stack architectures where the CMS operates independently of the public-facing client."
+  ],
+  "metrics": [
+    "Reduced portfolio update time from minutes of hardcoding to seconds via the GUI.",
+    "Achieved 100% Lighthouse scores for accessibility within the admin dashboard utilizing Radix primitives.",
+    "Successfully packaged and distributed functional cross-platform builds under 100MB.",
+    "Implemented automated database backup scripts that safeguard 10+ distinct data collections."
+  ],
+  "clientTestimonial": {
+    "name": "Sameer Bagul",
+    "role": "Creator",
+    "quote": "Building my own CMS was the best decision for my portfolio. It gives me total control over my data and a customized, distraction-free environment to document my work."
+  },
+  "relatedBlogs": [
+    {
+      "title": "Why I built my own CMS instead of using WordPress or Sanity",
+      "slug": "building-custom-portfolio-cms"
+    },
+    {
+      "title": "Packaging Vite and React into an Electron App",
+      "slug": "vite-react-electron-tutorial"
+    }
+  ],
+  "futureRoadmap": [
+    "Implement image optimization and automatic WebP conversion upon upload.",
+    "Add a detailed analytics tab parsing Google Analytics or Vercel Web Analytics data directly within the dashboard.",
+    "Integrate a fully functional notes application (Notes App) natively into the sidebar for scratchpad ideas.",
+    "Add WebSockets to the backend for real-time notifications when a user submits a contact form on the public site.",
+    "Develop a dynamic theme customizer allowing the public portfolio's color palette to be changed via the admin panel."
+  ]
+}

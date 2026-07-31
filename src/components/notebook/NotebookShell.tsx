@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
     BookOpen, List, GitBranch, HelpCircle, Briefcase,
-    ArrowLeft, Download, Clock, Hash, FileText, Loader2
+    ArrowLeft, Download, Clock, Hash, FileText, Loader2, Sparkles
 } from 'lucide-react';
 import { useSettings } from '@/context/SettingsContext';
 import { Button } from '@/components/ui/button';
@@ -150,6 +150,39 @@ export function NotebookShell({ notes, onReset }: NotebookShellProps) {
 
     const topicTitles = notes.index.map(t => t.title);
 
+    const handleExportCmsJson = () => {
+        const payload = {
+            title: notes.title,
+            content: notes.fullContent,
+            description: `Video notes generated for ${notes.title}`,
+            tags: ['youtube', 'ai-notes'],
+            notebook: notes,
+            quiz: notes.quiz || [],
+            interviewQA: notes.interviewQA || [],
+            mindMaps: notes.mindMaps || null,
+            videoSources: notes.notes?.flatMap(n => n.videoSources || []) || [],
+            keyTakeaways: notes.notes?.flatMap(n => n.keyTakeaways || []) || []
+        };
+
+        const jsonString = JSON.stringify(payload, null, 2);
+        
+        // Copy to clipboard
+        navigator.clipboard.writeText(jsonString);
+
+        // Download JSON file
+        const blob = new Blob([jsonString], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${notes.title.replace(/[^a-z0-9]/gi, '_')}_CMS_Note.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        toast({ title: 'JSON Exported & Copied!', description: 'Downloaded .json file and copied payload to clipboard.' });
+    };
+
     return (
         <div className="w-full fade-in">
             {/* ── Notebook Header ─────────────────────────────────────── */}
@@ -176,6 +209,10 @@ export function NotebookShell({ notes, onReset }: NotebookShellProps) {
                     </div>
 
                     <div className="flex items-center gap-2 shrink-0">
+                        <Button variant="outline" onClick={handleExportCmsJson} className="gap-2 border-primary/40 text-primary hover:bg-primary/10">
+                            <Sparkles className="w-4 h-4 text-primary" />
+                            Export CMS JSON
+                        </Button>
                         <Button variant="outline" onClick={handleDownloadAll} className="gap-2">
                             <FileText className="w-4 h-4" />
                             MD
