@@ -1,4 +1,5 @@
 import { ChatOllama, OllamaEmbeddings } from "@langchain/ollama";
+import { ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings } from "@langchain/google-genai";
 import { MemoryVectorStore } from "langchain/vectorstores/memory";
 import { PineconeStore } from "@langchain/pinecone";
 import { Pinecone as PineconeClient } from "@pinecone-database/pinecone";
@@ -26,29 +27,53 @@ const GraphState = Annotation.Root({
 });
 
 export class RAGService {
-    private llm: ChatOllama;
-    private embeddings: OllamaEmbeddings;
+    private llm: any;
+    private embeddings: any;
     private vectorStore?: any; // MemoryVectorStore | PineconeStore
     private retriever?: EnsembleRetriever;
     private ragChain?: any;
     private pineconeClient?: PineconeClient;
 
-    constructor() {
-        this.llm = new ChatOllama({
-            model: process.env.OLLAMA_MODEL || 'llama3.1',
-            baseUrl: process.env.OLLAMA_BASE_URL || 'http://localhost:11434',
-            temperature: 0
-        });
-        this.embeddings = new OllamaEmbeddings({
-            model: process.env.OLLAMA_EMBEDDING_MODEL || 'nomic-embed-text',
-            baseUrl: process.env.OLLAMA_BASE_URL || 'http://localhost:11434'
-        });
+    private initProviders() {
+        if (this.llm && this.embeddings) return;
+
+        const settings = getSettings();
+        const primaryProvider = settings.providers.filter(p => p.enabled).sort((a, b) => a.priority - b.priority)[0];
+        
+        if (primaryProvider?.provider === 'gemini') {
+            console.log('[RAG] Initializing Google GenAI for RAG...');
+            const apiKey = primaryProvider.apiKey || process.env.GEMINI_API_KEY;
+            if (!apiKey) throw new Error("Gemini API key is required for RAG");
+            
+            this.llm = new ChatGoogleGenerativeAI({
+                model: primaryProvider.model || 'gemini-flash-latest',
+                temperature: 0,
+                apiKey
+            });
+            this.embeddings = new GoogleGenerativeAIEmbeddings({
+                model: 'text-embedding-004',
+                apiKey
+            });
+        } else {
+            console.log('[RAG] Initializing Ollama for RAG...');
+            const ollamaSettings = settings.providers.find(p => p.provider === 'ollama') || {} as any;
+            this.llm = new ChatOllama({
+                model: ollamaSettings.model || process.env.OLLAMA_MODEL || 'llama3.1',
+                baseUrl: ollamaSettings.baseUrl || process.env.OLLAMA_BASE_URL || 'http://localhost:11434',
+                temperature: 0
+            });
+            this.embeddings = new OllamaEmbeddings({
+                model: process.env.OLLAMA_EMBEDDING_MODEL || 'nomic-embed-text',
+                baseUrl: ollamaSettings.baseUrl || process.env.OLLAMA_BASE_URL || 'http://localhost:11434'
+            });
+        }
     }
 
     /**
      * Build the RAG index from transcripts
      */
     async indexTranscripts(transcripts: VideoTranscript[], onProgress?: (msg: string) => void) {
+        this.initProviders();
         if (onProgress) onProgress(`Indexing ${transcripts.length} transcripts...`);
         console.log(`[RAG] Indexing ${transcripts.length} transcripts...`);
 
@@ -216,6 +241,7 @@ export class RAGService {
      * Retrieve context and generate answer using LangGraph
      */
     async generateGroundedNotes(topic: string, transcripts: VideoTranscript[], onProgress?: (msg: string) => void): Promise<string> {
+        this.initProviders();
         if (!this.ragChain) {
             await this.indexTranscripts(transcripts, onProgress);
         }
@@ -248,6 +274,7 @@ export class RAGService {
      * Manual context retrieval if needed
      */
     async retrieveContext(query: string, transcripts: VideoTranscript[], onProgress?: (msg: string) => void, k: number = 20): Promise<string> {
+        this.initProviders();
         if (!this.retriever) {
             await this.indexTranscripts(transcripts, onProgress);
         }
@@ -266,6 +293,8 @@ export class RAGService {
      * Clear the current index to prepare for a new set of transcripts
      */
     clearIndex() {
+        this.llm = undefined;
+        this.embeddings = undefined;
         this.vectorStore = undefined;
         this.retriever = undefined;
         this.ragChain = undefined;

@@ -64,20 +64,21 @@ export const IS_LOCAL_PROVIDER: Record<AIProvider, boolean> = {
 export const DEFAULT_SETTINGS: AppSettings = {
     providers: [
         {
-            provider: 'ollama',
+            provider: 'gemini',
             enabled: true,
+            apiKey: '',
+            model: 'gemini-flash-latest',
+            indexingModel: 'gemini-flash-latest',
+            baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
+            priority: 1,
+        },
+        {
+            provider: 'ollama',
+            enabled: false,
             apiKey: '',
             model: 'qwen2.5-coder:7b',
             indexingModel: 'qwen2.5-coder:1.5b',
             baseUrl: 'http://localhost:11434',
-            priority: 1,
-        },
-        {
-            provider: 'gemini',
-            enabled: true,
-            apiKey: '',
-            model: 'gemini-3.5-flash',
-            baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
             priority: 2,
         },
         {

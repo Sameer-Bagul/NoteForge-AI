@@ -20,13 +20,22 @@ const __dirname = path.dirname(__filename);
 const DEFAULT_SETTINGS: AppSettings = {
     providers: [
         {
-            provider: 'ollama',
+            provider: 'gemini',
             enabled: true,
+            apiKey: process.env.GEMINI_API_KEY || (process.env.GEMINI_API_KEYS ? process.env.GEMINI_API_KEYS.split(',')[0].trim() : ''),
+            model: process.env.GEMINI_MODEL || 'gemini-flash-latest',
+            indexingModel: 'gemini-flash-latest',
+            baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
+            priority: 1,
+        },
+        {
+            provider: 'ollama',
+            enabled: false,
             apiKey: '',
             model: process.env.OLLAMA_MODEL || 'qwen2.5-coder:7b',
             indexingModel: 'qwen2.5-coder:1.5b',
             baseUrl: process.env.OLLAMA_BASE_URL || 'http://localhost:11434',
-            priority: 1,
+            priority: 2,
         },
         {
             provider: 'lmstudio',
@@ -37,20 +46,12 @@ const DEFAULT_SETTINGS: AppSettings = {
             priority: 3,
         },
         {
-            provider: 'gemini',
-            enabled: false,
-            apiKey: process.env.GEMINI_API_KEY || (process.env.GEMINI_API_KEYS ? process.env.GEMINI_API_KEYS.split(',')[0].trim() : ''),
-            model: process.env.GEMINI_MODEL || 'gemini-flash-latest',
-            baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
-            priority: 1,
-        },
-        {
             provider: 'grok',
             enabled: false,
             apiKey: process.env.GROK_API_KEY || (process.env.GROK_API_KEYS ? process.env.GROK_API_KEYS.split(',')[0].trim() : ''),
             model: 'grok-beta',
             baseUrl: 'https://api.x.ai/v1',
-            priority: 2,
+            priority: 4,
         },
     ],
     taskMapping: {
@@ -469,6 +470,11 @@ export class MultiLLMService {
         const settings = getSettings();
         const mappedProvider = this.getProviderForTask(task);
 
+        // If mapped provider is a cloud provider (like Gemini), use the primary provider for this task
+        if (mappedProvider && CLOUD_PROVIDERS.has(mappedProvider.provider)) {
+            return this.generate(prompt, systemPrompt, task);
+        }
+
         // If mapped provider is local, use it.
         // Otherwise, look for any enabled local provider.
         let providers: ProviderConfig[] = [];
@@ -481,8 +487,7 @@ export class MultiLLMService {
         }
 
         if (providers.length === 0) {
-            // No local provider configured — fall back to full chat (uses cloud)
-            console.warn('[MultiLLM] No local provider available, falling back to cloud for local task');
+            // No local provider configured — fall back to primary active provider (Gemini)
             return this.generate(prompt, systemPrompt, task);
         }
 

@@ -13,6 +13,7 @@
   "dependencies": {
     "@langchain/community": "^0.3.59",
     "@langchain/core": "^0.3.80",
+    "@langchain/google-genai": "^2.3.2",
     "@langchain/langgraph": "^0.2.49",
     "@langchain/ollama": "^0.1.6",
     "@langchain/pinecone": "^0.1.3",
