@@ -114,99 +114,159 @@
     <div class="mermaid-container">
         <div class="mermaid">
             graph TD
-                %% Custom Colorful Styles
-                classDef user fill:#3b82f6,stroke:#2563eb,stroke-width:2px,color:#fff,rx:10,ry:10;
-                classDef frontend fill:#8b5cf6,stroke:#7c3aed,stroke-width:2px,color:#fff,rx:10,ry:10;
-                classDef backend fill:#10b981,stroke:#059669,stroke-width:2px,color:#fff,rx:10,ry:10;
-                classDef llm fill:#f59e0b,stroke:#d97706,stroke-width:2px,color:#fff,rx:10,ry:10;
-                classDef db fill:#ef4444,stroke:#dc2626,stroke-width:2px,color:#fff,rx:10,ry:10;
-                classDef process fill:#64748b,stroke:#475569,stroke-width:2px,color:#fff,rx:10,ry:10;
 
-                %% --- LAYER 1: FRONTEND ---
-                subgraph Layer1 ["React UI Layer"]
+                %% =========================
+                %% PROFESSIONAL STYLING
+                %% =========================
+
+                classDef default fill:#f8f9fa,stroke:#ced4da,stroke-width:1px,color:#212529;
+                classDef component fill:#e9ecef,stroke:#adb5bd,stroke-width:2px,color:#212529;
+                classDef database fill:#e3f2fd,stroke:#90caf9,stroke-width:2px,color:#0d47a1;
+                classDef external fill:#f3e5f5,stroke:#ce93d8,stroke-width:2px,color:#4a148c;
+                classDef workflow fill:#fff3e0,stroke:#ffb74d,stroke-width:2px,color:#e65100;
+
+
+                %% =========================
+                %% LAYER 1: CLIENT
+                %% =========================
+
+                subgraph Layer1 ["Client Layer · React"]
                     direction LR
-                    User(["🧑‍💻 User"]):::user
-                    UI["🖥️ Dashboard"]:::frontend
-                    Settings["⚙️ Settings"]:::frontend
+
+                    Dashboard["Dashboard"]:::component
+                    Settings["Settings"]:::component
                 end
 
-                %% --- LAYER 2: BACKEND & RAG ---
-                subgraph Layer2 ["Backend Orchestration Layer (Node.js & LangGraph)"]
+
+                %% =========================
+                %% LAYER 2: API + INGESTION
+                %% =========================
+
+                subgraph Layer2 ["API & Ingestion · Node.js"]
                     direction LR
-                    Router["🔀 API Router"]:::backend
-                    YTFetcher["🎥 YouTube Fetcher"]:::process
-                    Chunker["✂️ Text Splitter"]:::process
-                    Embedder["🔢 Embeddings"]:::process
-                    AgentStart(("LangGraph Start")):::process
-                    NodeRewrite["🔄 Rewrite Query"]:::process
-                    NodeRetrieve["🔍 Retrieve & Draft"]:::process
-                    NodeCritique["⚖️ Critique Node"]:::process
+
+                    APIRouter["API Router"]:::component
+                    YTFetcher["YouTube Transcript Fetcher"]:::component
+                    TextChunker["Text Chunker"]:::component
+                    Embeddings["Embedding Generator"]:::component
                 end
 
-                %% --- LAYER 3: DATABASES & LLMS ---
-                subgraph Layer3 ["Microservices, Cloud, Databases and LLMs"]
+
+                %% =========================
+                %% LAYER 3: STORAGE
+                %% =========================
+
+                subgraph Layer3 ["Storage Layer"]
                     direction LR
-                    SettingsStorage[("💾 settings.json")]:::db
-                    VDB[("🧠 Vector Store")]:::db
-                    LLMService["🤖 Service Loader"]:::process
-                    RouterLLM{"🚦 Provider Router"}:::process
-                    Gemini["✨ Gemini Cloud API"]:::llm
-                    Ollama["🦙 Local Ollama"]:::llm
-                    Other["🌐 Other APIs"]:::llm
+
+                    VectorStore[("Vector Store")]:::database
+                    SettingsDB[("settings.json")]:::database
                 end
 
-                %% Force Layer stacking top to bottom
+
+                %% =========================
+                %% LAYER 4: LANGGRAPH
+                %% =========================
+
+                subgraph Layer4 ["Generation Workflow · LangGraph"]
+                    direction LR
+
+                    Start(("Start")):::workflow
+                    QueryRewriter["Query Rewriter"]:::workflow
+                    RetrieverDrafter["Retrieve + Draft"]:::workflow
+                    Critic["Critic"]:::workflow
+                end
+
+
+                %% =========================
+                %% LAYER 5: LLM INFRASTRUCTURE
+                %% =========================
+
+                subgraph Layer5 ["LLM Infrastructure"]
+                    direction LR
+
+                    ProviderRouter["Provider Router"]:::component
+
+                    Gemini["Gemini Cloud"]:::external
+                    Ollama["Local Ollama"]:::external
+                    OtherAPI["Other LLM APIs"]:::external
+                end
+
+
+                %% =========================
+                %% LAYER ORDER
+                %% =========================
+
                 Layer1 ~~~ Layer2
                 Layer2 ~~~ Layer3
+                Layer3 ~~~ Layer4
+                Layer4 ~~~ Layer5
 
-                %% Inner Layer 1
-                User -.->|"Configure"| Settings
-                User -->|"1. Input YT URL"| UI
 
-                %% Main Execution Flow (Layer 1 -> Layer 2)
-                UI -->|"2. POST /api/generate"| Router
-                Router -->|"3. Fetch Transcript"| YTFetcher
-                YTFetcher -->|"4. Return Text"| Chunker
-                Chunker -->|"5. Chunk Text"| Embedder
-                
-                %% Embeddings (Layer 2 -> Layer 3)
-                Embedder -->|"6. Save to DB"| VDB
-                Embedder -->|"Get Embeddings"| RouterLLM
-                
-                %% Note Generation Flow (Layer 2 loop)
-                Router -->|"7. Start Generation"| AgentStart
-                AgentStart --> NodeRewrite
-                NodeRewrite -->|"Refined Query"| NodeRetrieve
-                NodeRetrieve -->|"Fetch Context"| VDB
-                NodeRetrieve -->|"Draft Notes"| RouterLLM
-                NodeRetrieve --> NodeCritique
-                
-                %% Feedback Loop & Return
-                NodeCritique -->|"If Hallucinations > 0 (Retry)"| NodeRewrite
-                NodeCritique -->|"8. Approved Notes"| Router
-                
-                %% Config & LLM (Layer 1 -> Layer 3)
-                Settings -->|"Save"| SettingsStorage
-                SettingsStorage -.->|"Load Config"| LLMService
-                LLMService --> RouterLLM
-                RouterLLM -.-> Gemini
-                RouterLLM -.-> Ollama
-                RouterLLM -.-> Other
+                %% =========================
+                %% USER CONFIGURATION
+                %% =========================
 
-                %% Return (Layer 2 -> Layer 1)
-                Router -->|"9. Return Markdown"| UI
+                Settings -->|"Save Configuration"| SettingsDB
+                SettingsDB -.->|"Load Config"| ProviderRouter
+
+
+                %% =========================
+                %% MAIN REQUEST FLOW
+                %% =========================
+
+                Dashboard -->|"POST /api/generate"| APIRouter
+
+                APIRouter -->|"1. Extract Transcript"| YTFetcher
+                YTFetcher -->|"2. Raw Text"| TextChunker
+                TextChunker -->|"3. Chunks"| Embeddings
+
+                Embeddings -->|"Generate Embeddings"| ProviderRouter
+                Embeddings -->|"4. Store Vectors"| VectorStore
+
+
+                %% =========================
+                %% GENERATION WORKFLOW
+                %% =========================
+
+                Embeddings -->|"5. Start Generation"| Start
+
+                Start --> QueryRewriter
+                QueryRewriter -->|"Refined Query"| RetrieverDrafter
+
+                RetrieverDrafter -->|"Retrieve Context"| VectorStore
+                RetrieverDrafter -->|"Generate Draft"| ProviderRouter
+
+                RetrieverDrafter --> Critic
+
+
+                %% =========================
+                %% CRITIQUE / RETRY LOOP
+                %% =========================
+
+                Critic -.->|"Retry if Issues Found"| QueryRewriter
+
+                Critic -->|"6. Approved Notes"| APIRouter
+
+
+                %% =========================
+                %% RESPONSE
+                %% =========================
+
+                APIRouter -->|"7. Markdown Response"| Dashboard
+
+
+                %% =========================
+                %% LLM PROVIDERS
+                %% =========================
+
+                ProviderRouter --> Gemini
+                ProviderRouter --> Ollama
+                ProviderRouter --> OtherAPI
         </div>
     </div>
 
-    <!-- Color Legend -->
-    <div class="legend">
-        <div class="legend-item"><div class="legend-color" style="background-color: #3b82f6;"></div> User / External</div>
-        <div class="legend-item"><div class="legend-color" style="background-color: #8b5cf6;"></div> Frontend</div>
-        <div class="legend-item"><div class="legend-color" style="background-color: #10b981;"></div> Backend API</div>
-        <div class="legend-item"><div class="legend-color" style="background-color: #64748b;"></div> Internal Processes</div>
-        <div class="legend-item"><div class="legend-color" style="background-color: #f59e0b;"></div> AI / LLMs</div>
-        <div class="legend-item"><div class="legend-color" style="background-color: #ef4444;"></div> Databases</div>
-    </div>
+    <!-- Legend removed for cleaner technical diagram format -->
 
 </body>
 </html>

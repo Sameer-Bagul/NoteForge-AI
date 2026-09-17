@@ -22,11 +22,120 @@
 
 NoteForge AI is engineered to handle massive amounts of video data by employing a highly-resilient, deterministic chunking architecture combined with a **Hybrid Multi-Key LLM Router**.
 
-<div align="center">
+```mermaid
+graph TD
+    %% =========================
+    %% PROFESSIONAL STYLING
+    %% =========================
+    classDef default fill:#f8f9fa,stroke:#ced4da,stroke-width:1px,color:#212529;
+    classDef component fill:#e9ecef,stroke:#adb5bd,stroke-width:2px,color:#212529;
+    classDef database fill:#e3f2fd,stroke:#90caf9,stroke-width:2px,color:#0d47a1;
+    classDef external fill:#f3e5f5,stroke:#ce93d8,stroke-width:2px,color:#4a148c;
+    classDef workflow fill:#fff3e0,stroke:#ffb74d,stroke-width:2px,color:#e65100;
 
-![System Architecture](./assets/final-system-architecture.png)
+    %% =========================
+    %% LAYER 1: CLIENT
+    %% =========================
+    subgraph Layer1 ["Client Layer · React"]
+        direction LR
+        Dashboard["Dashboard"]:::component
+        Settings["Settings"]:::component
+    end
 
-</div>
+    %% =========================
+    %% LAYER 2: API + INGESTION
+    %% =========================
+    subgraph Layer2 ["API & Ingestion · Node.js"]
+        direction LR
+        APIRouter["API Router"]:::component
+        YTFetcher["YouTube Transcript Fetcher"]:::component
+        TextChunker["Text Chunker"]:::component
+        Embeddings["Embedding Generator"]:::component
+    end
+
+    %% =========================
+    %% LAYER 3: STORAGE
+    %% =========================
+    subgraph Layer3 ["Storage Layer"]
+        direction LR
+        VectorStore[("Vector Store")]:::database
+        SettingsDB[("settings.json")]:::database
+    end
+
+    %% =========================
+    %% LAYER 4: LANGGRAPH
+    %% =========================
+    subgraph Layer4 ["Generation Workflow · LangGraph"]
+        direction LR
+        Start(("Start")):::workflow
+        QueryRewriter["Query Rewriter"]:::workflow
+        RetrieverDrafter["Retrieve + Draft"]:::workflow
+        Critic["Critic"]:::workflow
+    end
+
+    %% =========================
+    %% LAYER 5: LLM INFRASTRUCTURE
+    %% =========================
+    subgraph Layer5 ["LLM Infrastructure"]
+        direction LR
+        ProviderRouter["Provider Router"]:::component
+        Gemini["Gemini Cloud"]:::external
+        Ollama["Local Ollama"]:::external
+        OtherAPI["Other LLM APIs"]:::external
+    end
+
+    %% =========================
+    %% LAYER ORDER
+    %% =========================
+    Layer1 ~~~ Layer2
+    Layer2 ~~~ Layer3
+    Layer3 ~~~ Layer4
+    Layer4 ~~~ Layer5
+
+    %% =========================
+    %% USER CONFIGURATION
+    %% =========================
+    Settings -->|"Save Configuration"| SettingsDB
+    SettingsDB -.->|"Load Config"| ProviderRouter
+
+    %% =========================
+    %% MAIN REQUEST FLOW
+    %% =========================
+    Dashboard -->|"POST /api/generate"| APIRouter
+    APIRouter -->|"1. Extract Transcript"| YTFetcher
+    YTFetcher -->|"2. Raw Text"| TextChunker
+    TextChunker -->|"3. Chunks"| Embeddings
+    Embeddings -->|"Generate Embeddings"| ProviderRouter
+    Embeddings -->|"4. Store Vectors"| VectorStore
+
+    %% =========================
+    %% GENERATION WORKFLOW
+    %% =========================
+    Embeddings -->|"5. Start Generation"| Start
+    Start --> QueryRewriter
+    QueryRewriter -->|"Refined Query"| RetrieverDrafter
+    RetrieverDrafter -->|"Retrieve Context"| VectorStore
+    RetrieverDrafter -->|"Generate Draft"| ProviderRouter
+    RetrieverDrafter --> Critic
+
+    %% =========================
+    %% CRITIQUE / RETRY LOOP
+    %% =========================
+    Critic -.->|"Retry if Issues Found"| QueryRewriter
+    Critic -->|"6. Approved Notes"| APIRouter
+
+    %% =========================
+    %% RESPONSE
+    %% =========================
+    APIRouter -->|"7. Markdown Response"| Dashboard
+
+    %% =========================
+    %% LLM PROVIDERS
+    %% =========================
+    ProviderRouter --> Gemini
+    ProviderRouter --> Ollama
+    ProviderRouter --> OtherAPI
+```
 
 ### Key Architectural Pillars
 
