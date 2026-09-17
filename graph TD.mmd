@@ -1,0 +1,82 @@
+graph TD
+                %% Custom Colorful Styles
+                classDef user fill:#3b82f6,stroke:#2563eb,stroke-width:2px,color:#fff,rx:10,ry:10;
+                classDef frontend fill:#8b5cf6,stroke:#7c3aed,stroke-width:2px,color:#fff,rx:10,ry:10;
+                classDef backend fill:#10b981,stroke:#059669,stroke-width:2px,color:#fff,rx:10,ry:10;
+                classDef llm fill:#f59e0b,stroke:#d97706,stroke-width:2px,color:#fff,rx:10,ry:10;
+                classDef db fill:#ef4444,stroke:#dc2626,stroke-width:2px,color:#fff,rx:10,ry:10;
+                classDef process fill:#64748b,stroke:#475569,stroke-width:2px,color:#fff,rx:10,ry:10;
+
+                %% --- LAYER 1: FRONTEND ---
+                subgraph Layer1 ["React UI Layer"]
+                    direction LR
+                    User(["🧑‍💻 User"]):::user
+                    UI["🖥️ Dashboard"]:::frontend
+                    Settings["⚙️ Settings"]:::frontend
+                end
+
+                %% --- LAYER 2: BACKEND & RAG ---
+                subgraph Layer2 ["Backend Orchestration Layer (Node.js & LangGraph)"]
+                    direction LR
+                    Router["🔀 API Router"]:::backend
+                    YTFetcher["🎥 YouTube Fetcher"]:::process
+                    Chunker["✂️ Text Splitter"]:::process
+                    Embedder["🔢 Embeddings"]:::process
+                    AgentStart(("LangGraph Start")):::process
+                    NodeRewrite["🔄 Rewrite Query"]:::process
+                    NodeRetrieve["🔍 Retrieve & Draft"]:::process
+                    NodeCritique["⚖️ Critique Node"]:::process
+                end
+
+                %% --- LAYER 3: DATABASES & LLMS ---
+                subgraph Layer3 ["Microservices, Cloud, Databases and LLMs"]
+                    direction LR
+                    SettingsStorage[("💾 settings.json")]:::db
+                    VDB[("🧠 Vector Store")]:::db
+                    LLMService["🤖 Service Loader"]:::process
+                    RouterLLM{"🚦 Provider Router"}:::process
+                    Gemini["✨ Gemini Cloud API"]:::llm
+                    Ollama["🦙 Local Ollama"]:::llm
+                    Other["🌐 Other APIs"]:::llm
+                end
+
+                %% Force Layer stacking top to bottom
+                Layer1 ~~~ Layer2
+                Layer2 ~~~ Layer3
+
+                %% Inner Layer 1
+                User -.->|"Configure"| Settings
+                User -->|"1. Input YT URL"| UI
+
+                %% Main Execution Flow (Layer 1 -> Layer 2)
+                UI -->|"2. POST /api/generate"| Router
+                Router -->|"3. Fetch Transcript"| YTFetcher
+                YTFetcher -->|"4. Return Text"| Chunker
+                Chunker -->|"5. Chunk Text"| Embedder
+                
+                %% Embeddings (Layer 2 -> Layer 3)
+                Embedder -->|"6. Save to DB"| VDB
+                Embedder -->|"Get Embeddings"| RouterLLM
+                
+                %% Note Generation Flow (Layer 2 loop)
+                Router -->|"7. Start Generation"| AgentStart
+                AgentStart --> NodeRewrite
+                NodeRewrite -->|"Refined Query"| NodeRetrieve
+                NodeRetrieve -->|"Fetch Context"| VDB
+                NodeRetrieve -->|"Draft Notes"| RouterLLM
+                NodeRetrieve --> NodeCritique
+                
+                %% Feedback Loop & Return
+                NodeCritique -->|"If Hallucinations > 0 (Retry)"| NodeRewrite
+                NodeCritique -->|"8. Approved Notes"| Router
+                
+                %% Config & LLM (Layer 1 -> Layer 3)
+                Settings -->|"Save"| SettingsStorage
+                SettingsStorage -.->|"Load Config"| LLMService
+                LLMService --> RouterLLM
+                RouterLLM -.-> Gemini
+                RouterLLM -.-> Ollama
+                RouterLLM -.-> Other
+
+                %% Return (Layer 2 -> Layer 1)
+                Router -->|"9. Return Markdown"| UI

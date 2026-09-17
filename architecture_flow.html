@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NoteForge - Architecture Flow</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #0f172a;
+            color: #f8fafc;
+            margin: 0;
+            padding: 40px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        h1 {
+            color: #38bdf8;
+            margin-bottom: 5px;
+            font-size: 2.5rem;
+        }
+        p.subtitle {
+            color: #94a3b8;
+            margin-bottom: 40px;
+            font-size: 1.2rem;
+        }
+        .mermaid-container {
+            background-color: #1e293b;
+            padding: 20px;
+            border-radius: 16px;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+            width: 100%;
+            max-width: 1400px;
+            height: 70vh;
+            display: flex;
+            justify-content: center;
+            overflow: hidden;
+            position: relative;
+        }
+        .mermaid {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .legend {
+            display: flex;
+            gap: 20px;
+            margin-top: 30px;
+            background-color: #1e293b;
+            padding: 15px 30px;
+            border-radius: 8px;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .legend-color {
+            width: 16px;
+            height: 16px;
+            border-radius: 4px;
+        }
+    </style>
+    <!-- Include svg-pan-zoom and Mermaid.js -->
+    <script src="https://cdn.jsdelivr.net/npm/svg-pan-zoom@3.6.1/dist/svg-pan-zoom.min.js"></script>
+    <script type="module">
+        import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+        
+        mermaid.initialize({ 
+            startOnLoad: false,
+            theme: 'dark',
+            flowchart: {
+                useMaxWidth: false,
+                htmlLabels: true,
+                curve: 'basis',
+                nodeSpacing: 50,
+                rankSpacing: 80
+            }
+        });
+
+        // Run mermaid and then initialize pan/zoom
+        await mermaid.run({
+            querySelector: '.mermaid'
+        });
+
+        // The SVG is now rendered. Let's make it zoomable and draggable
+        const svgElement = document.querySelector('.mermaid svg');
+        if (svgElement) {
+            // Ensure the SVG takes up the container space
+            svgElement.style.width = '100%';
+            svgElement.style.height = '100%';
+            svgElement.style.maxWidth = '100%';
+            
+            window.panZoom = svgPanZoom(svgElement, {
+                zoomEnabled: true,
+                controlIconsEnabled: true,
+                fit: true,
+                center: true,
+                minZoom: 0.1,
+                maxZoom: 10
+            });
+        }
+    </script>
+</head>
+<body>
+
+    <h1>NoteForge (YTVideo2Notes)</h1>
+    <p class="subtitle">End-to-End Application Architecture & Data Flow</p>
+
+    <div class="mermaid-container">
+        <div class="mermaid">
+            graph TD
+                %% Custom Colorful Styles
+                classDef user fill:#3b82f6,stroke:#2563eb,stroke-width:2px,color:#fff,rx:10,ry:10;
+                classDef frontend fill:#8b5cf6,stroke:#7c3aed,stroke-width:2px,color:#fff,rx:10,ry:10;
+                classDef backend fill:#10b981,stroke:#059669,stroke-width:2px,color:#fff,rx:10,ry:10;
+                classDef llm fill:#f59e0b,stroke:#d97706,stroke-width:2px,color:#fff,rx:10,ry:10;
+                classDef db fill:#ef4444,stroke:#dc2626,stroke-width:2px,color:#fff,rx:10,ry:10;
+                classDef process fill:#64748b,stroke:#475569,stroke-width:2px,color:#fff,rx:10,ry:10;
+
+                %% --- LAYER 1: FRONTEND ---
+                subgraph Layer1 ["React UI Layer"]
+                    direction LR
+                    User(["🧑‍💻 User"]):::user
+                    UI["🖥️ Dashboard"]:::frontend
+                    Settings["⚙️ Settings"]:::frontend
+                end
+
+                %% --- LAYER 2: BACKEND & RAG ---
+                subgraph Layer2 ["Backend Orchestration Layer (Node.js & LangGraph)"]
+                    direction LR
+                    Router["🔀 API Router"]:::backend
+                    YTFetcher["🎥 YouTube Fetcher"]:::process
+                    Chunker["✂️ Text Splitter"]:::process
+                    Embedder["🔢 Embeddings"]:::process
+                    AgentStart(("LangGraph Start")):::process
+                    NodeRewrite["🔄 Rewrite Query"]:::process
+                    NodeRetrieve["🔍 Retrieve & Draft"]:::process
+                    NodeCritique["⚖️ Critique Node"]:::process
+                end
+
+                %% --- LAYER 3: DATABASES & LLMS ---
+                subgraph Layer3 ["Microservices, Cloud, Databases and LLMs"]
+                    direction LR
+                    SettingsStorage[("💾 settings.json")]:::db
+                    VDB[("🧠 Vector Store")]:::db
+                    LLMService["🤖 Service Loader"]:::process
+                    RouterLLM{"🚦 Provider Router"}:::process
+                    Gemini["✨ Gemini Cloud API"]:::llm
+                    Ollama["🦙 Local Ollama"]:::llm
+                    Other["🌐 Other APIs"]:::llm
+                end
+
+                %% Force Layer stacking top to bottom
+                Layer1 ~~~ Layer2
+                Layer2 ~~~ Layer3
+
+                %% Inner Layer 1
+                User -.->|"Configure"| Settings
+                User -->|"1. Input YT URL"| UI
+
+                %% Main Execution Flow (Layer 1 -> Layer 2)
+                UI -->|"2. POST /api/generate"| Router
+                Router -->|"3. Fetch Transcript"| YTFetcher
+                YTFetcher -->|"4. Return Text"| Chunker
+                Chunker -->|"5. Chunk Text"| Embedder
+                
+                %% Embeddings (Layer 2 -> Layer 3)
+                Embedder -->|"6. Save to DB"| VDB
+                Embedder -->|"Get Embeddings"| RouterLLM
+                
+                %% Note Generation Flow (Layer 2 loop)
+                Router -->|"7. Start Generation"| AgentStart
+                AgentStart --> NodeRewrite
+                NodeRewrite -->|"Refined Query"| NodeRetrieve
+                NodeRetrieve -->|"Fetch Context"| VDB
+                NodeRetrieve -->|"Draft Notes"| RouterLLM
+                NodeRetrieve --> NodeCritique
+                
+                %% Feedback Loop & Return
+                NodeCritique -->|"If Hallucinations > 0 (Retry)"| NodeRewrite
+                NodeCritique -->|"8. Approved Notes"| Router
+                
+                %% Config & LLM (Layer 1 -> Layer 3)
+                Settings -->|"Save"| SettingsStorage
+                SettingsStorage -.->|"Load Config"| LLMService
+                LLMService --> RouterLLM
+                RouterLLM -.-> Gemini
+                RouterLLM -.-> Ollama
+                RouterLLM -.-> Other
+
+                %% Return (Layer 2 -> Layer 1)
+                Router -->|"9. Return Markdown"| UI
+        </div>
+    </div>
+
+    <!-- Color Legend -->
+    <div class="legend">
+        <div class="legend-item"><div class="legend-color" style="background-color: #3b82f6;"></div> User / External</div>
+        <div class="legend-item"><div class="legend-color" style="background-color: #8b5cf6;"></div> Frontend</div>
+        <div class="legend-item"><div class="legend-color" style="background-color: #10b981;"></div> Backend API</div>
+        <div class="legend-item"><div class="legend-color" style="background-color: #64748b;"></div> Internal Processes</div>
+        <div class="legend-item"><div class="legend-color" style="background-color: #f59e0b;"></div> AI / LLMs</div>
+        <div class="legend-item"><div class="legend-color" style="background-color: #ef4444;"></div> Databases</div>
+    </div>
+
+</body>
+</html>
