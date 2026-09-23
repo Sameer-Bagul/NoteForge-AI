@@ -1,0 +1,1 @@
+Turn any YouTube playlist into structured study notes with NoteForge AI—powered by a self-correcting LangGraph pipeline and Hybrid LLM router. Built for scale, zero hallucinations.
