@@ -28,3 +28,18 @@ dist-ssr
 *.sln
 *.sw?
 /remotion-video
+brag-output/
+
+# Application Data & SQLite Databases
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+noteforge.db*
+storage/
+server/storage/
+
+# Tauri & Rust artifacts
+src-tauri/target/
+src-tauri/gen/
+
