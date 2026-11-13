@@ -55,20 +55,28 @@ const Process = () => {
                                 processedVideos={state.processedVideos}
                             />
                         </div>
-                        <div className="space-y-6">
+                        <div className="space-y-4">
                             <ServerPulse logs={logs} />
 
-                            <div className="glass-morphism rounded-xl p-6 border border-white/5 relative overflow-hidden group">
-                                <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:scale-110 transition-transform">
-                                    <Brain className="w-12 h-12 text-primary" />
+                            <div className="rounded-lg border border-border/60 bg-card p-4 space-y-3 text-xs">
+                                <div className="flex items-center justify-between pb-2 border-b border-border/40">
+                                    <span className="font-medium text-foreground">Pipeline Inspector</span>
+                                    <span className="font-mono text-[11px] text-muted-foreground uppercase">{state.status}</span>
                                 </div>
-                                <h3 className="text-lg font-bold mb-2 flex items-center gap-2">
-                                    <span className="w-2 h-2 rounded-full bg-primary" />
-                                    AI Laboratory
-                                </h3>
-                                <p className="text-sm text-muted-foreground leading-relaxed">
-                                    The Hyper-Speed Architecture is currently processing your request using fragment-level caching and parallel indexing.
-                                </p>
+                                <div className="space-y-1.5 text-muted-foreground">
+                                    <div className="flex justify-between">
+                                        <span>Execution Engine</span>
+                                        <span className="font-mono text-foreground">Tauri v2 (Rust Core)</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span>Notebook Store</span>
+                                        <span className="font-mono text-foreground">SQLite (Local)</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span>Key Storage</span>
+                                        <span className="font-mono text-foreground">OS Keychain</span>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>

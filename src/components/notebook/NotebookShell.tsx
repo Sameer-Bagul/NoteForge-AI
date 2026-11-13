@@ -200,74 +200,75 @@ export function NotebookShell({ notes, onReset }: NotebookShellProps) {
     };
 
     return (
-        <div className="w-full fade-in">
-            {/* ── Notebook Header ─────────────────────────────────────── */}
-            <div className="mb-6">
-                <Button variant="ghost" size="sm" onClick={onReset} className="mb-4 -ml-2">
-                    <ArrowLeft className="w-4 h-4" />
-                    Process another video
-                </Button>
+        <div className="w-full">
+            {/* ── Desktop Notebook Toolbar ─────────────────────────────── */}
+            <div className="mb-4 space-y-3">
+                <div className="flex items-center justify-between">
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={onReset}
+                        className="gap-1.5 text-xs text-muted-foreground hover:text-foreground h-8 -ml-2"
+                    >
+                        <ArrowLeft className="w-3.5 h-3.5" />
+                        <span>All Notebooks</span>
+                    </Button>
 
-                <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
-                    <div className="flex-1 min-w-0">
-                        {/* Notebook title with decorative bar */}
-                        <div className="flex items-start gap-3">
-                            <div className="mt-1 w-1.5 h-10 rounded-full bg-gradient-to-b from-primary to-violet-500 shrink-0" />
-                            <div>
-                                <h2 className="text-2xl md:text-3xl font-bold text-foreground leading-tight">{notes.title}</h2>
-                                <div className="flex flex-wrap items-center gap-4 mt-2 text-sm text-muted-foreground">
-                                    <span className="flex items-center gap-1.5"><Hash className="w-3.5 h-3.5" />{notes.index.length} topics</span>
-                                    <span className="flex items-center gap-1.5"><FileText className="w-3.5 h-3.5" />{wordCount.toLocaleString()} words</span>
-                                    <span className="flex items-center gap-1.5"><Clock className="w-3.5 h-3.5" />{readingTime} min read</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="flex items-center gap-2 shrink-0">
+                    <div className="flex items-center gap-1.5">
                         {videoId && (
                             <Button
                                 variant={isStudioMode ? "default" : "outline"}
                                 size="sm"
                                 onClick={() => setIsStudioMode(!isStudioMode)}
-                                className="gap-2"
+                                className="gap-1.5 h-8 text-xs"
                             >
-                                <Tv className="w-4 h-4" />
-                                <span className="hidden sm:inline">{isStudioMode ? "Studio Mode" : "Reader Mode"}</span>
+                                <Tv className="w-3.5 h-3.5" />
+                                <span>{isStudioMode ? "Studio View" : "Reader View"}</span>
                             </Button>
                         )}
-                        <Button variant="outline" onClick={handleExportCmsJson} className="gap-2 border-primary/40 text-primary hover:bg-primary/10">
-                            <Sparkles className="w-4 h-4 text-primary" />
-                            Export CMS JSON
+                        <Button variant="outline" size="sm" onClick={handleExportCmsJson} className="gap-1.5 h-8 text-xs">
+                            <span>CMS JSON</span>
                         </Button>
-                        <Button variant="outline" onClick={handleDownloadAll} className="gap-2">
-                            <FileText className="w-4 h-4" />
-                            MD
+                        <Button variant="outline" size="sm" onClick={handleDownloadAll} className="gap-1.5 h-8 text-xs">
+                            <FileText className="w-3.5 h-3.5" />
+                            <span>Markdown</span>
                         </Button>
-                        <Button onClick={handleDownloadPdf} disabled={isExportingPdf} className="gap-2">
-                            {isExportingPdf ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-                            Export PDF
+                        <Button size="sm" onClick={handleDownloadPdf} disabled={isExportingPdf} className="gap-1.5 h-8 text-xs">
+                            {isExportingPdf ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+                            <span>Print / PDF</span>
                         </Button>
+                    </div>
+                </div>
+
+                {/* Notebook Title Bar */}
+                <div className="pb-3 border-b border-border/40">
+                    <h1 className="text-xl md:text-2xl font-bold text-foreground tracking-tight leading-tight">
+                        {notes.title}
+                    </h1>
+                    <div className="flex flex-wrap items-center gap-4 mt-1.5 text-xs text-muted-foreground font-mono tabular-nums">
+                        <span className="flex items-center gap-1.5"><Hash className="w-3 h-3 text-muted-foreground" />{notes.index.length} topics</span>
+                        <span className="flex items-center gap-1.5"><FileText className="w-3 h-3 text-muted-foreground" />{wordCount.toLocaleString()} words</span>
+                        <span className="flex items-center gap-1.5"><Clock className="w-3 h-3 text-muted-foreground" />{readingTime} min read</span>
                     </div>
                 </div>
             </div>
 
             {/* ── 5-Tab Bar ───────────────────────────────────────────── */}
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-                <TabsList className="w-full justify-start bg-card/60 border border-border/50 p-1 rounded-xl mb-6 overflow-x-auto gap-1 h-auto">
+                <TabsList className="w-full justify-start bg-muted/30 border border-border/50 p-0.5 rounded-lg mb-4 overflow-x-auto gap-0.5 h-9">
                     {[
                         { value: 'notes', icon: BookOpen, label: 'Running Notes' },
-                        { value: 'index', icon: List, label: 'Index' },
-                        { value: 'mindmap', icon: GitBranch, label: 'Mind Maps' },
+                        { value: 'index', icon: List, label: 'Topic Outline' },
+                        { value: 'mindmap', icon: GitBranch, label: 'Mind Map' },
                         { value: 'quiz', icon: HelpCircle, label: 'Quiz' },
-                        { value: 'interview', icon: Briefcase, label: 'Interview' },
+                        { value: 'interview', icon: Briefcase, label: 'Interview Prep' },
                     ].map(tab => (
                         <TabsTrigger
                             key={tab.value}
                             value={tab.value}
-                            className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
+                            className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-xs transition-colors"
                         >
-                            <tab.icon className="w-4 h-4 shrink-0" />
+                            <tab.icon className="w-3.5 h-3.5 shrink-0" />
                             <span className="hidden sm:inline">{tab.label}</span>
                         </TabsTrigger>
                     ))}

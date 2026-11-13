@@ -39,17 +39,17 @@ const Library = () => {
 
   return (
     <div className="space-y-8 fade-in">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between pb-2 border-b border-border/50">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight">Your Library</h2>
-          <p className="text-muted-foreground mt-1">
-            Manage your generated notes and active processing jobs.
+          <h1 className="text-xl font-bold tracking-tight text-foreground">Library</h1>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Your generated study notebooks and saved video indexes
           </p>
         </div>
         <Link to="/">
-          <Button>
-            <FileText className="w-4 h-4 mr-2" />
-            Process New Video
+          <Button size="sm" className="gap-1.5 h-8 text-xs">
+            <FileText className="w-3.5 h-3.5" />
+            <span>New Video</span>
           </Button>
         </Link>
       </div>
@@ -119,96 +119,86 @@ const JobCard = ({ job }: { job: JobStatus }) => {
   const isError = job.status === 'error';
   const isActive = !isComplete && !isError;
 
-  // Determine title - prefer notebook title, then video title, then ID
-  const title = job.notebook?.title || job.videoInfo?.title || `Job ${job.id.slice(0, 8)}`;
-  const thumbnail = job.videoInfo?.thumbnail;
+  const title = job.notebook?.title || job.videos?.[0]?.title || `Job ${job.id.slice(0, 8)}`;
+  const thumbnail = job.videos?.[0]?.thumbnail || (job as any).videoInfo?.thumbnail;
+  const targetLink = isComplete ? `/notebook/${job.notebook?.id || job.notebookId}` : `/process/${job.id}`;
 
   return (
-    <Card className={`flex flex-col h-full overflow-hidden transition-all hover:shadow-md ${isActive ? 'border-primary/50' : ''}`}>
+    <Link
+      to={targetLink}
+      className={`group flex flex-col h-full rounded-lg border border-border/60 bg-card hover:bg-muted/30 transition-colors overflow-hidden ${
+        isActive ? 'border-primary/50' : ''
+      }`}
+    >
       {thumbnail && (
-        <div className="aspect-video w-full overflow-hidden bg-muted relative">
+        <div className="aspect-video w-full overflow-hidden bg-muted relative shrink-0">
           <img
             src={thumbnail}
             alt={title}
-            className="w-full h-full object-cover transition-transform hover:scale-105 duration-500"
+            className="w-full h-full object-cover"
           />
           <div className="absolute top-2 right-2">
-            <Badge variant={isComplete ? 'default' : isError ? 'destructive' : 'secondary'}>
+            <span
+              className={`text-[10px] font-mono font-medium px-2 py-0.5 rounded backdrop-blur-md shadow-xs ${
+                isComplete
+                  ? 'bg-emerald-500/80 text-white'
+                  : isError
+                  ? 'bg-destructive/80 text-white'
+                  : 'bg-background/80 text-foreground border border-border/50'
+              }`}
+            >
               {job.status}
-            </Badge>
+            </span>
           </div>
         </div>
       )}
 
-      <CardHeader className="pb-2">
-        <CardTitle className="line-clamp-2 text-lg leading-tight">
-          {title}
-        </CardTitle>
-        <CardDescription className="flex items-center gap-2 text-xs mt-1">
-          <Calendar className="w-3 h-3" />
-          {formatDistanceToNow(new Date(job.createdAt), { addSuffix: true })}
-        </CardDescription>
-      </CardHeader>
+      <div className="p-3.5 flex-1 flex flex-col justify-between space-y-3">
+        <div className="space-y-1">
+          <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground font-mono tabular-nums">
+            <Calendar className="w-3 h-3" />
+            <span>{formatDistanceToNow(new Date(job.createdAt), { addSuffix: true })}</span>
+          </div>
+          <h3 className="font-medium text-xs text-foreground line-clamp-2 leading-snug group-hover:text-primary transition-colors">
+            {title}
+          </h3>
+        </div>
 
-      <CardContent className="flex-1 pb-2">
-        {isActive && (
-          <div className="space-y-2">
-            <div className="flex justify-between text-xs text-muted-foreground">
-              <span>Progress</span>
-              <span>Step {job.currentStep}/{job.steps?.length || 5}</span>
-            </div>
-            <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-              <div
-                className="h-full bg-primary animate-pulse"
-                style={{ width: `${(job.currentStep / (job.steps?.length || 5)) * 100}%` }}
-              />
-            </div>
-            <p className="text-xs text-muted-foreground mt-2">
-              {job.steps?.[job.currentStep - 1]?.label || 'Processing...'}
-            </p>
+        {isComplete && job.notebook && (
+          <div className="flex items-center gap-3 text-[11px] text-muted-foreground pt-2 border-t border-border/40 font-mono">
+            <span className="flex items-center gap-1">
+              <BookOpen className="w-3 h-3" />
+              <span>{job.notebook.index?.topicCount || job.notebook.chapters?.length || 1} topics</span>
+            </span>
+            <span className="flex items-center gap-1">
+              <Clock className="w-3 h-3" />
+              <span>{job.notebook.metadata?.estimatedReadTime || 5} min read</span>
+            </span>
           </div>
         )}
 
-        {isComplete && job.notebook && (
-          <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
-            <div className="flex items-center gap-1">
-              <BookOpen className="w-3 h-3" />
-              {job.notebook.index.topicCount} Topics
+        {isActive && (
+          <div className="space-y-1.5 pt-2 border-t border-border/40">
+            <div className="flex justify-between text-[11px] text-muted-foreground">
+              <span>Step {job.currentStep}/5</span>
+              <span>In Progress</span>
             </div>
-            <div className="flex items-center gap-1">
-              <Clock className="w-3 h-3" />
-              {job.notebook.metadata.estimatedReadTime} min read
+            <div className="h-1 bg-muted rounded-full overflow-hidden">
+              <div
+                className="h-full bg-primary"
+                style={{ width: `${(job.currentStep / 5) * 100}%` }}
+              />
             </div>
           </div>
         )}
 
         {isError && (
-          <p className="text-xs text-destructive line-clamp-2">
-            {job.error || 'Unknown error occurred'}
+          <p className="text-[11px] text-destructive line-clamp-1 pt-1">
+            {job.error || 'Failed to complete job'}
           </p>
         )}
-      </CardContent>
-
-      <CardFooter className="pt-2">
-        {isComplete ? (
-          <Link to={`/notebook/${job.notebook?.id}`} className="w-full">
-            <Button className="w-full" variant="secondary">
-              View Notebook
-            </Button>
-          </Link>
-        ) : isActive ? (
-          <Link to={`/process/${job.id}`} className="w-full">
-            <Button className="w-full" variant="outline">
-              View Progress
-            </Button>
-          </Link>
-        ) : (
-          <Button className="w-full" variant="ghost" disabled>
-            Failed
-          </Button>
-        )}
-      </CardFooter>
-    </Card>
+      </div>
+    </Link>
   );
 };
 

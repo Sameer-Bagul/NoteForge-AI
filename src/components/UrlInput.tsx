@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Youtube, ArrowRight, List, Play, Brain, Lightbulb, BookOpen, Wand2, FileText, ChevronDown, ChevronUp, Clock, Network } from 'lucide-react';
+import { Youtube, ArrowRight, List, Play, BookOpen, Brain, Lightbulb, Sparkles, FileText, ChevronDown, ChevronUp, Clock, Network } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -11,51 +11,35 @@ const CREATIVITY_LEVELS = [
   {
     level: 1 as const,
     name: 'Strict',
-    icon: BookOpen,
-    description: 'Only what\'s in the video. Pure transcript content, no AI additions.',
-    color: 'border-blue-500/40 bg-blue-500/5 text-blue-400',
-    activeColor: 'border-blue-500 bg-blue-500/15 ring-2 ring-blue-500/30',
-    badge: 'Transcript only',
+    description: 'Pure transcript content with zero AI additions.',
+    badge: 'Transcript',
   },
   {
     level: 2 as const,
     name: 'Balanced',
-    icon: Brain,
-    description: 'Transcript content with brief clarifications on unclear terms.',
-    color: 'border-emerald-500/40 bg-emerald-500/5 text-emerald-400',
-    activeColor: 'border-emerald-500 bg-emerald-500/15 ring-2 ring-emerald-500/30',
-    badge: 'Recommended',
+    description: 'Transcript grounded with concise technical clarifications.',
+    badge: 'Balanced',
   },
   {
     level: 3 as const,
     name: 'Enhanced',
-    icon: Lightbulb,
-    description: 'Transcript + related concepts, examples, and diagrams for deeper understanding.',
-    color: 'border-amber-500/40 bg-amber-500/5 text-amber-400',
-    activeColor: 'border-amber-500 bg-amber-500/15 ring-2 ring-amber-500/30',
-    badge: 'More content',
+    description: 'Enriched with diagrams, code snippets, and structured tables.',
+    badge: 'Diagrams',
   },
   {
     level: 4 as const,
-    name: 'Creative',
-    icon: Wand2,
-    description: 'Deep dives, background theory, real-world applications, and advanced insights.',
-    color: 'border-purple-500/40 bg-purple-500/5 text-purple-400',
-    activeColor: 'border-purple-500 bg-purple-500/15 ring-2 ring-purple-500/30',
-    badge: 'AI enriched',
+    name: 'Deep Dive',
+    description: 'Publication-quality synthesis with background theory & takeaways.',
+    badge: 'Mastery',
   },
 ] as const;
 
 type CreativityLevel = 1 | 2 | 3 | 4;
 
-// ─── Props ─────────────────────────────────────────────────────────────────────
-
 interface UrlInputProps {
   onSubmit: (url: string, userNotes?: string, creativityLevel?: CreativityLevel, generationMode?: 'topical' | 'chronological') => void;
   isLoading?: boolean;
 }
-
-// ─── Component ─────────────────────────────────────────────────────────────────
 
 const UrlInput = ({ onSubmit, isLoading }: UrlInputProps) => {
   const [url, setUrl] = useState('');
@@ -92,120 +76,58 @@ const UrlInput = ({ onSubmit, isLoading }: UrlInputProps) => {
   const selectedLevel = CREATIVITY_LEVELS.find(l => l.level === creativityLevel)!;
 
   return (
-    <div className="w-full max-w-2xl mx-auto">
-      <form onSubmit={handleSubmit} className="space-y-4">
-        {/* URL Input */}
+    <div className="w-full max-w-xl mx-auto space-y-3">
+      <form onSubmit={handleSubmit} className="space-y-3">
+        {/* Main URL Bar */}
         <div className="relative">
-          <div className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground">
-            <Youtube className="w-5 h-5" />
+          <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none">
+            <Youtube className="w-4 h-4" />
           </div>
           <Input
             type="url"
             placeholder="Paste YouTube video or playlist URL..."
             value={url}
             onChange={handleChange}
-            className="pl-12 pr-4 h-14 text-base rounded-xl border-2 focus:border-primary bg-card shadow-sm"
+            className="pl-10 pr-24 h-11 text-sm rounded-lg border border-border/60 bg-card focus-visible:ring-1 focus-visible:ring-primary shadow-none"
             disabled={isLoading}
           />
           {inputType && (
-            <div className="absolute right-4 top-1/2 -translate-y-1/2">
-              <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium ${inputType === 'playlist'
-                ? 'bg-accent text-accent-foreground'
-                : 'bg-secondary text-secondary-foreground'
-                }`}>
-                {inputType === 'playlist' ? (
-                  <><List className="w-3 h-3" />Playlist</>
-                ) : (
-                  <><Play className="w-3 h-3" />Video</>
-                )}
-              </div>
+            <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-mono bg-muted text-muted-foreground border border-border/40">
+                {inputType === 'playlist' ? <List className="w-3 h-3" /> : <Play className="w-3 h-3" />}
+                {inputType}
+              </span>
             </div>
           )}
         </div>
 
-        {/* Advanced Options — collapsible */}
-        <div className="rounded-xl border border-border/60 bg-card/60 backdrop-blur-sm overflow-hidden">
+        {/* Collapsible Options Drawer */}
+        <div className="rounded-lg border border-border/50 bg-card overflow-hidden text-xs">
           <button
             type="button"
             onClick={() => setShowAdvanced(v => !v)}
-            className="w-full flex items-center justify-between px-4 py-3 text-sm text-muted-foreground hover:text-foreground hover:bg-muted/30 transition-colors"
+            className="w-full flex items-center justify-between px-3.5 py-2.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/30 transition-colors"
           >
             <span className="flex items-center gap-2">
-              <FileText className="w-4 h-4" />
-              <span className="font-medium">Advanced Options</span>
-              <span className="text-xs text-muted-foreground/60 ml-1">
-                · {selectedLevel.name} mode
-                {userNotes.trim() ? ' · Notes added' : ''}
+              <FileText className="w-3.5 h-3.5" />
+              <span className="font-medium text-foreground">Synthesis Settings</span>
+              <span className="text-[11px] text-muted-foreground">
+                · {selectedLevel.name}
+                {userNotes.trim() ? ' · With instructions' : ''}
               </span>
             </span>
-            {showAdvanced ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+            {showAdvanced ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
           </button>
 
           {showAdvanced && (
-            <div className="px-4 pb-4 space-y-5 border-t border-border/40">
-              {/* Generation Mode */}
-              <div className="space-y-2 pt-4">
-                <label className="text-sm font-medium text-foreground flex items-center gap-2">
-                  <Network className="w-4 h-4 text-primary" />
-                  Generation Mode
+            <div className="p-3.5 space-y-4 border-t border-border/40 bg-muted/10">
+              {/* Creativity Level: Segmented Control */}
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
+                  Depth & Creativity
                 </label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setGenerationMode('topical')}
-                    className={cn(
-                      'relative flex flex-col items-start gap-1 p-3 rounded-lg border text-left transition-all duration-150',
-                      generationMode === 'topical' ? 'border-primary bg-primary/10 ring-2 ring-primary/30' : 'border-border/40 bg-card hover:bg-muted/50'
-                    )}
-                  >
-                    <div className="flex items-center gap-2 text-foreground font-semibold text-sm">
-                      <Network className="w-4 h-4 text-blue-400" />
-                      Synthesis Mode
-                    </div>
-                    <p className="text-xs text-muted-foreground pr-4">Groups related concepts semantically regardless of timestamps.</p>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setGenerationMode('chronological')}
-                    className={cn(
-                      'relative flex flex-col items-start gap-1 p-3 rounded-lg border text-left transition-all duration-150',
-                      generationMode === 'chronological' ? 'border-primary bg-primary/10 ring-2 ring-primary/30' : 'border-border/40 bg-card hover:bg-muted/50'
-                    )}
-                  >
-                    <div className="flex items-center gap-2 text-foreground font-semibold text-sm">
-                      <Clock className="w-4 h-4 text-orange-400" />
-                      Lecture Mode
-                    </div>
-                    <p className="text-xs text-muted-foreground pr-4">Chronological study guide strictly following the video timeline.</p>
-                  </button>
-                </div>
-              </div>
-
-              {/* User Notes */}
-              <div className="space-y-2 pt-4">
-                <label className="text-sm font-medium text-foreground flex items-center gap-2">
-                  <FileText className="w-4 h-4 text-primary" />
-                  Notes for AI
-                  <span className="text-xs text-muted-foreground font-normal ml-1">optional</span>
-                </label>
-                <Textarea
-                  placeholder={`Give the AI extra context or instructions, e.g.:\n• "Focus on practical examples"\n• "Target audience: beginners. Explain all jargon"\n• "I already know Python basics, skip intro"`}
-                  value={userNotes}
-                  onChange={e => setUserNotes(e.target.value)}
-                  className="resize-none h-24 text-sm bg-background/50 border-border/60 focus-visible:ring-primary/50 placeholder:text-muted-foreground/50"
-                  disabled={isLoading}
-                />
-              </div>
-
-              {/* Creativity Level */}
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-foreground flex items-center gap-2">
-                  <Wand2 className="w-4 h-4 text-primary" />
-                  AI Creativity Level
-                </label>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-4 gap-1 p-1 bg-muted/30 border border-border/40 rounded-lg">
                   {CREATIVITY_LEVELS.map(lvl => {
-                    const Icon = lvl.icon;
                     const isActive = creativityLevel === lvl.level;
                     return (
                       <button
@@ -214,70 +136,111 @@ const UrlInput = ({ onSubmit, isLoading }: UrlInputProps) => {
                         onClick={() => setCreativityLevel(lvl.level)}
                         disabled={isLoading}
                         className={cn(
-                          'relative flex flex-col items-start gap-1.5 p-3 rounded-lg border text-left transition-all duration-150',
-                          isActive ? lvl.activeColor : `${lvl.color} hover:opacity-80`,
+                          'flex flex-col items-center justify-center py-2 px-1 rounded-md text-xs transition-colors',
+                          isActive
+                            ? 'bg-background text-foreground font-semibold shadow-xs border border-border/50'
+                            : 'text-muted-foreground hover:text-foreground'
                         )}
                       >
-                        {/* Badge */}
-                        {lvl.badge && (
-                          <span className={cn(
-                            'absolute top-2 right-2 text-[10px] font-medium px-1.5 py-0.5 rounded-full',
-                            isActive ? 'bg-foreground/15 text-foreground' : 'bg-muted text-muted-foreground',
-                          )}>
-                            {lvl.badge}
-                          </span>
-                        )}
-                        <div className="flex items-center gap-2">
-                          <Icon className="w-4 h-4 shrink-0" />
-                          <span className="font-semibold text-sm text-foreground">{lvl.name}</span>
-                        </div>
-                        <p className="text-xs text-muted-foreground leading-snug pr-8">{lvl.description}</p>
+                        <span>{lvl.name}</span>
+                        <span className="text-[10px] text-muted-foreground/80 mt-0.5 font-normal">
+                          {lvl.badge}
+                        </span>
                       </button>
                     );
                   })}
                 </div>
+                <p className="text-[11px] text-muted-foreground pt-0.5">
+                  {selectedLevel.description}
+                </p>
+              </div>
+
+              {/* Generation Mode */}
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
+                  Organization Mode
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setGenerationMode('topical')}
+                    className={cn(
+                      'flex items-start gap-2.5 p-2.5 rounded-lg border text-left transition-colors',
+                      generationMode === 'topical'
+                        ? 'border-border bg-background shadow-xs text-foreground'
+                        : 'border-border/40 bg-muted/20 text-muted-foreground hover:text-foreground'
+                    )}
+                  >
+                    <Network className="w-4 h-4 shrink-0 mt-0.5 text-muted-foreground" />
+                    <div>
+                      <div className="font-medium text-xs text-foreground">Synthesis Mode</div>
+                      <div className="text-[11px] text-muted-foreground leading-snug">Thematic, concepts grouped by topic</div>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setGenerationMode('chronological')}
+                    className={cn(
+                      'flex items-start gap-2.5 p-2.5 rounded-lg border text-left transition-colors',
+                      generationMode === 'chronological'
+                        ? 'border-border bg-background shadow-xs text-foreground'
+                        : 'border-border/40 bg-muted/20 text-muted-foreground hover:text-foreground'
+                    )}
+                  >
+                    <Clock className="w-4 h-4 shrink-0 mt-0.5 text-muted-foreground" />
+                    <div>
+                      <div className="font-medium text-xs text-foreground">Lecture Mode</div>
+                      <div className="text-[11px] text-muted-foreground leading-snug">Timeline-aligned sequential chapters</div>
+                    </div>
+                  </button>
+                </div>
+              </div>
+
+              {/* User Notes */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
+                    Custom Instructions
+                  </label>
+                  <span className="text-[10px] text-muted-foreground">Optional</span>
+                </div>
+                <Textarea
+                  placeholder="e.g. Focus on code examples, explain architecture trade-offs, skip sponsor segments..."
+                  value={userNotes}
+                  onChange={e => setUserNotes(e.target.value)}
+                  className="resize-none h-20 text-xs bg-background border-border/50 placeholder:text-muted-foreground/60 rounded-md"
+                  disabled={isLoading}
+                />
               </div>
             </div>
           )}
         </div>
 
+        {/* Submit Action */}
         <Button
           type="submit"
-          size="xl"
-          variant="hero"
-          className="w-full"
+          className="w-full h-10 text-xs font-semibold rounded-lg gap-2 justify-center"
           disabled={!url.trim() || isLoading}
         >
           {isLoading ? (
             <>
-              <div className="w-5 h-5 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
-              Processing...
+              <div className="w-3.5 h-3.5 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
+              <span>Synthesizing...</span>
             </>
           ) : (
             <>
-              Generate Notes
-              <ArrowRight className="w-5 h-5" />
+              <span>Generate Study Notebook</span>
+              <kbd className="hidden sm:inline-flex items-center px-1.5 py-0.5 text-[10px] font-mono bg-primary-foreground/15 rounded text-primary-foreground/90">
+                ↵
+              </kbd>
             </>
           )}
         </Button>
       </form>
-
-      <div className="flex items-center justify-center gap-6 mt-8 text-sm text-muted-foreground">
-        <div className="flex items-center gap-2">
-          <div className="w-2 h-2 rounded-full bg-success" />
-          Supports long videos
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="w-2 h-2 rounded-full bg-success" />
-          Playlist support
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="w-2 h-2 rounded-full bg-success" />
-          100% free
-        </div>
-      </div>
     </div>
   );
 };
 
 export default UrlInput;
+

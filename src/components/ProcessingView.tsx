@@ -1,8 +1,6 @@
-import { Check, Loader2, AlertCircle, FileText, Video, Brain, BookOpen, Package } from 'lucide-react';
+import { Check, Loader2, AlertCircle, FileText, Brain, BookOpen, Package } from 'lucide-react';
 import { ProcessingStep, VideoInfo } from '@/types';
-import VideoPreview from './VideoPreview';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
-import { Badge } from './ui/badge';
+import { Card, CardHeader, CardTitle, CardDescription } from './ui/card';
 import { Progress } from './ui/progress';
 
 interface ProcessingViewProps {
@@ -14,19 +12,13 @@ interface ProcessingViewProps {
 }
 
 const ProcessingView = ({ steps, currentStep, videoInfo, videoCount, processedVideos }: ProcessingViewProps) => {
-  console.log('🎬 ProcessingView render:', {
-    totalSteps: steps.length,
-    currentStep,
-    steps: steps.map(s => ({ id: s.id, status: s.status, label: s.label }))
-  });
-
-  const getStepIcon = (step: ProcessingStep, index: number) => {
+  const getStepIcon = (step: ProcessingStep) => {
     const icons = {
       extract: FileText,
       analyze: Brain,
       index: BookOpen,
       notes: FileText,
-      assemble: Package
+      assemble: Package,
     };
 
     const IconComponent = icons[step.id as keyof typeof icons] || FileText;
@@ -34,26 +26,26 @@ const ProcessingView = ({ steps, currentStep, videoInfo, videoCount, processedVi
     switch (step.status) {
       case 'complete':
         return (
-          <div className="w-12 h-12 rounded-full bg-success/10 flex items-center justify-center border-2 border-success">
-            <Check className="w-6 h-6 text-success" />
+          <div className="w-7 h-7 rounded-md bg-emerald-500/10 text-emerald-500 flex items-center justify-center border border-emerald-500/20 shrink-0">
+            <Check className="w-3.5 h-3.5" />
           </div>
         );
       case 'active':
         return (
-          <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center border-2 border-primary pulse-glow">
-            <Loader2 className="w-6 h-6 text-primary animate-spin" />
+          <div className="w-7 h-7 rounded-md bg-primary/10 text-primary flex items-center justify-center border border-primary/30 shrink-0">
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
           </div>
         );
       case 'error':
         return (
-          <div className="w-12 h-12 rounded-full bg-red-100 dark:bg-red-900 flex items-center justify-center border-2 border-red-500">
-            <AlertCircle className="w-6 h-6 text-red-600 dark:text-red-400" />
+          <div className="w-7 h-7 rounded-md bg-destructive/10 text-destructive flex items-center justify-center border border-destructive/20 shrink-0">
+            <AlertCircle className="w-3.5 h-3.5" />
           </div>
         );
       default:
         return (
-          <div className="w-12 h-12 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center border-2 border-gray-300 dark:border-gray-700">
-            <IconComponent className="w-6 h-6 text-gray-400" />
+          <div className="w-7 h-7 rounded-md bg-muted text-muted-foreground/60 flex items-center justify-center border border-border/40 shrink-0">
+            <IconComponent className="w-3.5 h-3.5" />
           </div>
         );
     }
@@ -61,180 +53,93 @@ const ProcessingView = ({ steps, currentStep, videoInfo, videoCount, processedVi
 
   const completedSteps = steps.filter(s => s.status === 'complete').length;
   const overallProgress = Math.round((completedSteps / steps.length) * 100);
-  const activeStep = steps.find(s => s.status === 'active');
 
   return (
-    <div className="w-full max-w-5xl mx-auto fade-in space-y-6">
+    <div className="w-full space-y-4">
       {/* Header with Overall Progress */}
-      <Card className="border-2">
-        <CardHeader>
+      <Card className="border border-border/60 bg-card shadow-none">
+        <CardHeader className="p-4">
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle className="text-3xl">Processing Your Content</CardTitle>
-              <CardDescription className="text-base mt-2">
-                {videoCount ? `Processing ${videoCount} video${videoCount > 1 ? 's' : ''} from playlist` : 'Analyzing video content'}
+              <CardTitle className="text-base font-semibold tracking-tight text-foreground">
+                Synthesis Progress
+              </CardTitle>
+              <CardDescription className="text-xs text-muted-foreground mt-0.5">
+                {videoCount ? `Processing ${videoCount} video${videoCount > 1 ? 's' : ''} in playlist` : 'Extracting, analyzing, and synthesizing study guide'}
               </CardDescription>
             </div>
             <div className="text-right">
-              <div className="text-4xl font-bold text-primary">{overallProgress}%</div>
-              <div className="text-sm text-muted-foreground">Complete</div>
+              <span className="text-xl font-bold font-mono text-foreground tabular-nums">{overallProgress}%</span>
+              <span className="text-[11px] text-muted-foreground block">Complete</span>
             </div>
           </div>
-          <Progress value={overallProgress} className="h-3 mt-4" />
+          <Progress value={overallProgress} className="h-1.5 mt-3" />
         </CardHeader>
       </Card>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Steps Panel */}
-        <div className="lg:col-span-2 space-y-4">
-          {steps.map((step, index) => (
-            <Card
+      {/* Steps List */}
+      <div className="space-y-2">
+        {steps.map((step) => {
+          const isActive = step.status === 'active';
+          const isComplete = step.status === 'complete';
+          return (
+            <div
               key={step.id}
-              className={`transition-all ${step.status === 'active'
-                  ? 'border-2 border-blue-500 shadow-lg'
-                  : step.status === 'complete'
-                    ? 'border-green-500'
-                    : ''
-                }`}
+              className={`p-3 rounded-lg border transition-colors ${
+                isActive
+                  ? 'border-border bg-muted/40 shadow-xs'
+                  : isComplete
+                  ? 'border-border/50 bg-card'
+                  : 'border-border/30 bg-card/60 opacity-60'
+              }`}
             >
-              <CardContent className="p-6">
-                <div className="flex items-start gap-4">
-                  {getStepIcon(step, index)}
-                  <div className="flex-1 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <h4 className="text-lg font-semibold">{step.label}</h4>
-                      <Badge
-                        variant={step.status === 'complete' ? 'default' : step.status === 'active' ? 'secondary' : 'outline'}
-                      >
-                        {step.status === 'active' ? 'In Progress' : step.status === 'complete' ? 'Done' : 'Pending'}
-                      </Badge>
-                    </div>
-
-                    <p className="text-sm text-muted-foreground">
-                      {step.description}
-                    </p>
-
-                    {/* Metadata Display */}
-                    {step.metadata && step.status === 'active' && (
-                      <div className="bg-primary/5 rounded-lg p-3 space-y-2 border border-primary/10">
-                        {step.metadata.currentItem !== undefined && step.metadata.totalItems && (
-                          <div className="flex items-center justify-between text-sm">
-                            <span className="font-medium text-primary">
-                              {step.metadata.itemName || 'Item'} {step.metadata.currentItem}/{step.metadata.totalItems}
-                            </span>
-                            <span className="text-primary/70">
-                              {Math.round((step.metadata.currentItem / step.metadata.totalItems) * 100)}%
-                            </span>
-                          </div>
-                        )}
-                        {step.metadata.subProgress && (
-                          <div className="text-xs text-primary/60">
-                            {step.metadata.subProgress}
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Step Progress Bar */}
-                    {step.status === 'active' && step.progress !== undefined && (
-                      <div className="space-y-1">
-                        <div className="flex justify-between text-xs text-muted-foreground">
-                          <span>Progress</span>
-                          <span>{step.progress}%</span>
-                        </div>
-                        <Progress value={step.progress} className="h-2" />
-                      </div>
-                    )}
-
-                    {/* Completion Details */}
-                    {step.details && step.status === 'complete' && (
-                      <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
-                        <Check className="w-4 h-4" />
-                        <span>{step.details}</span>
-                      </div>
-                    )}
+              <div className="flex items-start gap-3">
+                {getStepIcon(step)}
+                <div className="flex-1 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-semibold text-foreground tracking-tight">{step.label}</h4>
+                    <span
+                      className={`text-[10px] font-mono px-2 py-0.5 rounded ${
+                        isActive
+                          ? 'bg-primary/10 text-primary border border-primary/20'
+                          : isComplete
+                          ? 'bg-emerald-500/10 text-emerald-500'
+                          : 'bg-muted text-muted-foreground'
+                      }`}
+                    >
+                      {isActive ? 'In Progress' : isComplete ? 'Done' : 'Pending'}
+                    </span>
                   </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
 
-        {/* Info Sidebar */}
-        <div className="space-y-4">
-          {/* Video Info */}
-          {videoInfo && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-sm flex items-center gap-2">
-                  <Video className="w-4 h-4" />
-                  Video Info
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {videoInfo.thumbnail && (
-                  <img
-                    src={videoInfo.thumbnail}
-                    alt={videoInfo.title}
-                    className="w-full rounded-lg"
-                  />
-                )}
-                <div>
-                  <h4 className="font-medium text-sm mb-1">{videoInfo.title}</h4>
-                  {videoInfo.duration && (
-                    <p className="text-xs text-muted-foreground">Duration: {videoInfo.duration}</p>
+                  <p className="text-xs text-muted-foreground leading-normal">
+                    {step.details || step.description}
+                  </p>
+
+                  {/* Metadata display if available */}
+                  {step.metadata && isActive && (
+                    <div className="bg-muted/40 rounded-md p-2 space-y-1 text-xs border border-border/40 mt-1.5">
+                      {step.metadata.currentItem !== undefined && step.metadata.totalItems && (
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="font-medium text-foreground">
+                            {step.metadata.itemName || 'Item'} {step.metadata.currentItem}/{step.metadata.totalItems}
+                          </span>
+                          <span className="font-mono text-muted-foreground tabular-nums">
+                            {Math.round((step.metadata.currentItem / step.metadata.totalItems) * 100)}%
+                          </span>
+                        </div>
+                      )}
+                      {step.metadata.subProgress && (
+                        <div className="text-[11px] text-muted-foreground font-mono">
+                          {step.metadata.subProgress}
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Statistics */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm">Processing Stats</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-muted-foreground">Steps Completed</span>
-                <Badge variant="secondary">{completedSteps}/{steps.length}</Badge>
               </div>
-              {videoCount && (
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-muted-foreground">Total Videos</span>
-                  <Badge variant="secondary">{videoCount}</Badge>
-                </div>
-              )}
-              {processedVideos !== undefined && videoCount && (
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-muted-foreground">Videos Processed</span>
-                  <Badge variant="secondary">{processedVideos}/{videoCount}</Badge>
-                </div>
-              )}
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-muted-foreground">Current Step</span>
-                <Badge>{activeStep?.label || 'Initializing'}</Badge>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Status Message */}
-          <Card className="bg-primary/5 border-primary/20">
-            <CardContent className="p-4">
-              <div className="flex items-start gap-3">
-                <Loader2 className="w-5 h-5 text-primary animate-spin mt-0.5" />
-                <div className="text-sm">
-                  <p className="font-medium text-foreground mb-1">
-                    {activeStep?.label || 'Processing...'}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {activeStep?.metadata?.subProgress || activeStep?.description || 'Please wait while we process your content'}
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

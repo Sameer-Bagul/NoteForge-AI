@@ -3,16 +3,11 @@ import Header from './Header';
 
 const Layout = () => {
   return (
-    <div className="min-h-screen bg-background flex flex-col">
+    <div className="h-screen w-screen overflow-hidden bg-background text-foreground flex flex-col">
       <Header />
-      <main className="flex-1 container mx-auto px-4 py-8">
+      <main className="flex-1 overflow-y-auto px-6 py-6">
         <Outlet />
       </main>
-      <footer className="border-t border-border py-6 bg-card/30">
-        <div className="container mx-auto px-4 text-center text-sm text-muted-foreground">
-          <p>© {new Date().getFullYear()} NoteForge. Built with AI.</p>
-        </div>
-      </footer>
     </div>
   );
 };
