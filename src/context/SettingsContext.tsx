@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import { AppSettings, DEFAULT_SETTINGS, ProviderConfig } from '@/types/settings';
+import { tauriApi, isTauri } from '@/services/tauri';
 
 const STORAGE_KEY = 'noteforge_ai_settings';
 
@@ -25,9 +26,6 @@ function loadFromStorage(): AppSettings {
         if (!raw) return DEFAULT_SETTINGS;
         const parsed = JSON.parse(raw) as AppSettings;
 
-        // Merge each provider: start from the current default then overlay saved values.
-        // This ensures new fields (model, baseUrl) are always pre-filled even for
-        // providers that were already saved before the defaults changed.
         const defaultMap = new Map(DEFAULT_SETTINGS.providers.map(p => [p.provider, p]));
         const savedMap = new Map(parsed.providers.map(p => [p.provider, p]));
 
@@ -36,10 +34,8 @@ function loadFromStorage(): AppSettings {
             const saved = savedMap.get(key as any);
             if (!saved) return def;
             return {
-                ...def,         // start with full defaults (model, baseUrl, etc.)
-                ...saved,       // overlay user's saved values (enabled, apiKeys, priority)
-                // Always keep default model/baseUrl if the saved value is empty/missing
-                // OR if it's the old 'mistral' default we want to migrate away from
+                ...def,
+                ...saved,
                 model: (saved.model && saved.model !== 'mistral') ? saved.model : def.model,
                 indexingModel: saved.indexingModel || def.indexingModel,
                 baseUrl: saved.baseUrl || def.baseUrl,
@@ -58,7 +54,20 @@ function loadFromStorage(): AppSettings {
 
 function saveToStorage(settings: AppSettings) {
     try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+        if (isTauri()) {
+            // In native desktop mode, strip plaintext API keys from localStorage
+            // Keys are kept securely in OS Keychain (Secret Service / DPAPI / Keychain)
+            const sanitized = {
+                ...settings,
+                providers: settings.providers.map(p => ({
+                    ...p,
+                    apiKey: '', // Never persist raw API keys to localStorage
+                })),
+            };
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(sanitized));
+        } else {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+        }
     } catch {
         // storage full or unavailable
     }
@@ -69,11 +78,34 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
 
-    // Sync to backend on initial mount
+    // Initial mount: load keychain keys in Tauri mode & sync to backend if available
     useEffect(() => {
-        syncToBackend(settings).catch(() => {
-            // backend may not be running yet, silently ignore
-        });
+        if (isTauri()) {
+            (async () => {
+                try {
+                    const updated = await Promise.all(
+                        settings.providers.map(async p => {
+                            try {
+                                const key = await tauriApi.getApiKey(p.provider);
+                                if (key) {
+                                    return { ...p, apiKey: key };
+                                }
+                            } catch (e) {
+                                console.warn(`Could not load keychain key for ${p.provider}:`, e);
+                            }
+                            return p;
+                        })
+                    );
+                    setSettings(prev => ({ ...prev, providers: updated }));
+                } catch (e) {
+                    console.error('Failed to load keys from native keychain:', e);
+                }
+            })();
+        } else {
+            syncToBackend(settings).catch(() => {
+                // backend may not be running yet, silently ignore
+            });
+        }
     }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
     const updateProviders = useCallback((providers: ProviderConfig[]) => {
@@ -82,6 +114,16 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
             saveToStorage(next);
             return next;
         });
+
+        if (isTauri()) {
+            for (const p of providers) {
+                if (p.apiKey) {
+                    tauriApi.saveApiKey(p.provider, p.apiKey).catch(console.error);
+                } else {
+                    tauriApi.deleteApiKey(p.provider).catch(console.error);
+                }
+            }
+        }
     }, []);
 
     const updateTaskMapping = useCallback((taskMapping: AppSettings['taskMapping']) => {
@@ -111,7 +153,18 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     const saveToBackend = useCallback(async () => {
         setIsSaving(true);
         try {
-            await syncToBackend(settings);
+            if (isTauri()) {
+                // Sync all keys to Keychain
+                for (const p of settings.providers) {
+                    if (p.apiKey) {
+                        await tauriApi.saveApiKey(p.provider, p.apiKey);
+                    } else {
+                        await tauriApi.deleteApiKey(p.provider).catch(() => {});
+                    }
+                }
+            } else {
+                await syncToBackend(settings);
+            }
         } finally {
             setIsSaving(false);
         }
