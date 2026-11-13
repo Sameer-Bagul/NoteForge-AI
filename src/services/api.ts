@@ -9,6 +9,7 @@ import {
   JobStatus
 } from '@/types';
 import { AppSettings } from '@/types/settings';
+import { tauriApi, isTauri } from './tauri';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
 const ENABLE_DEBUG = import.meta.env.VITE_ENABLE_DEBUG_LOGS === 'true';
@@ -21,6 +22,18 @@ const log = (...args: any[]) => {
 
 export const api = {
   async validateUrl(url: string): Promise<{ valid: boolean; type: string; videoId?: string }> {
+    if (isTauri()) {
+      try {
+        const res = await tauriApi.validateUrl(url);
+        return {
+          valid: res.valid,
+          type: res.playlist_id ? 'playlist' : 'video',
+          videoId: res.video_id || undefined,
+        };
+      } catch (err) {
+        log('Tauri validateUrl fallback:', err);
+      }
+    }
     const response = await fetch(`${API_BASE}/youtube/validate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -106,6 +119,32 @@ export const api = {
   },
 
   async getJobs(): Promise<JobStatus[]> {
+    if (isTauri()) {
+      try {
+        const notebooks = await tauriApi.listNotebooks();
+        if (notebooks.length > 0) {
+          return notebooks.map(nb => {
+            let parsed: any = {};
+            try { parsed = JSON.parse(nb.content_json); } catch {}
+            return {
+              id: nb.id,
+              jobId: nb.job_id || nb.id,
+              notebookId: nb.id,
+              url: parsed.url || '',
+              status: 'complete' as const,
+              currentStep: 5,
+              steps: [],
+              videos: parsed.metadata?.sourceVideos || [{ id: parsed.videoId || '', title: nb.title }],
+              notebook: parsed,
+              createdAt: nb.created_at,
+              updatedAt: nb.created_at,
+            };
+          });
+        }
+      } catch (err) {
+        log('Tauri getJobs fallback:', err);
+      }
+    }
     log('Getting all jobs');
     const response = await fetch(`${API_BASE}/process/jobs`);
     if (!response.ok) {
@@ -117,6 +156,16 @@ export const api = {
   },
 
   async getNotebook(notebookId: string): Promise<Notebook> {
+    if (isTauri()) {
+      try {
+        const record = await tauriApi.getNotebook(notebookId);
+        if (record && record.content_json) {
+          return JSON.parse(record.content_json);
+        }
+      } catch (err) {
+        log('Tauri getNotebook fallback:', err);
+      }
+    }
     log('Getting notebook:', notebookId);
     const response = await fetch(`${API_BASE}/process/notebook/${notebookId}`);
     if (!response.ok) {
