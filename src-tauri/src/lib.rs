@@ -36,6 +36,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::validate_url,
             commands::fetch_transcript,
+            commands::fetch_playlist,
             commands::save_api_key,
             commands::get_api_key,
             commands::delete_api_key,

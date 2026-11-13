@@ -25,6 +25,14 @@ pub struct ExtractedTranscript {
     pub full_text: String,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct PlaylistMetadata {
+    pub id: String,
+    pub title: String,
+    pub video_count: usize,
+    pub videos: Vec<VideoMetadata>,
+}
+
 pub struct YouTubeService;
 
 impl YouTubeService {
@@ -157,6 +165,60 @@ impl YouTubeService {
             video_info,
             segments,
             full_text,
+        })
+    }
+
+    pub async fn fetch_playlist(playlist_id: &str) -> Result<PlaylistMetadata, String> {
+        let client = reqwest::Client::builder()
+            .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+            .build()
+            .map_err(|e| e.to_string())?;
+
+        let url = format!("https://www.youtube.com/playlist?list={playlist_id}");
+        let html = client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| format!("Network error: {e}"))?
+            .text()
+            .await
+            .map_err(|e| format!("Failed to read playlist response: {e}"))?;
+
+        // Extract playlist title
+        let title_re = Regex::new(r#"<title>(.*?)(?: - YouTube)?</title>"#).unwrap();
+        let title = title_re
+            .captures(&html)
+            .and_then(|c| c.get(1))
+            .map(|m| m.as_str().to_string())
+            .unwrap_or_else(|| format!("Playlist {playlist_id}"));
+
+        // Extract video IDs from playlist page
+        let video_id_re = Regex::new(r#""videoId":\s*"([a-zA-Z0-9_-]{11})""#).unwrap();
+        let mut seen_ids = std::collections::HashSet::new();
+        let mut videos = Vec::new();
+
+        for cap in video_id_re.captures_iter(&html) {
+            if let Some(vid_match) = cap.get(1) {
+                let vid = vid_match.as_str().to_string();
+                if seen_ids.insert(vid.clone()) {
+                    videos.push(VideoMetadata {
+                        id: vid.clone(),
+                        title: format!("Video {vid}"),
+                        duration: None,
+                        channel: None,
+                        thumbnail: format!("https://img.youtube.com/vi/{vid}/hqdefault.jpg"),
+                    });
+                }
+            }
+        }
+
+        let video_count = videos.len();
+
+        Ok(PlaylistMetadata {
+            id: playlist_id.to_string(),
+            title,
+            video_count,
+            videos,
         })
     }
 }

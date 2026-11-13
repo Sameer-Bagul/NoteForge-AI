@@ -19,7 +19,7 @@ export const ServerPulse = ({ logs }: ServerPulseProps) => {
             <div className="bg-black/40 px-4 py-2 flex items-center justify-between border-b border-white/10">
                 <div className="flex items-center gap-2">
                     <Terminal className="w-4 h-4 text-accent" />
-                    <span className="text-xs font-mono font-bold tracking-wider text-muted-foreground uppercase">Server Pulse</span>
+                    <span className="text-xs font-mono font-bold tracking-wider text-muted-foreground uppercase">Engine Activity</span>
                 </div>
                 <div className="flex gap-1.5">
                     <div className="w-2.5 h-2.5 rounded-full bg-red-500/50" />
@@ -65,7 +65,7 @@ export const ServerPulse = ({ logs }: ServerPulseProps) => {
                             <div className="w-8 h-8 rounded-full border border-white/10 flex items-center justify-center animate-pulse">
                                 <Terminal className="w-4 h-4" />
                             </div>
-                            <p>Waiting for server pulse...</p>
+                            <p>Waiting for engine activity...</p>
                         </div>
                     )}
                 </div>

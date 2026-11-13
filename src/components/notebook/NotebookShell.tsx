@@ -4,6 +4,7 @@ import {
     ArrowLeft, Download, Clock, Hash, FileText, Loader2, Sparkles, Tv, Columns2
 } from 'lucide-react';
 import { useSettings } from '@/context/SettingsContext';
+import { isTauri } from '@/services/tauri';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { RunningNotesViewer } from './RunningNotesViewer';
@@ -125,6 +126,12 @@ export function NotebookShell({ notes, onReset }: NotebookShellProps) {
     const [isExportingPdf, setIsExportingPdf] = useState(false);
 
     const handleDownloadPdf = async () => {
+        if (isTauri()) {
+            window.print();
+            toast({ title: 'Print / Save as PDF', description: 'Select "Save as PDF" in the print dialog to export vector PDF.' });
+            return;
+        }
+
         try {
             setIsExportingPdf(true);
             toast({ title: 'Generating PDF...', description: 'This may take a few seconds.' });
@@ -143,8 +150,8 @@ export function NotebookShell({ notes, onReset }: NotebookShellProps) {
             
             toast({ title: 'PDF Exported!', description: 'Your beautifully styled notes are ready.' });
         } catch (error) {
-            console.error('PDF Export failed:', error);
-            toast({ title: 'Export Failed', description: 'Could not generate PDF.', variant: 'destructive' });
+            console.error('PDF Export failed, falling back to print:', error);
+            window.print();
         } finally {
             setIsExportingPdf(false);
         }

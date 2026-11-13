@@ -1,7 +1,7 @@
 use crate::db::{Database, JobRecord, NotebookRecord};
 use crate::keychain::KeychainVault;
 use crate::llm::{LLMConfig, LLMService};
-use crate::youtube::{ExtractedTranscript, YouTubeService};
+use crate::youtube::{ExtractedTranscript, PlaylistMetadata, YouTubeService};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, State};
@@ -29,6 +29,11 @@ pub fn validate_url(url: String) -> ValidateUrlResult {
 #[tauri::command]
 pub async fn fetch_transcript(video_id: String) -> Result<ExtractedTranscript, String> {
     YouTubeService::fetch_transcript(&video_id).await
+}
+
+#[tauri::command]
+pub async fn fetch_playlist(playlist_id: String) -> Result<PlaylistMetadata, String> {
+    YouTubeService::fetch_playlist(&playlist_id).await
 }
 
 #[tauri::command]

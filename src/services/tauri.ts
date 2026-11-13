@@ -10,6 +10,19 @@ export interface ValidateUrlResult {
   playlist_id: string | null;
 }
 
+export interface PlaylistMetadata {
+  id: string;
+  title: string;
+  video_count: number;
+  videos: Array<{
+    id: string;
+    title: string;
+    thumbnail: string;
+    duration?: string;
+    channel?: string;
+  }>;
+}
+
 export interface ExtractedTranscript {
   video_id: string;
   video_info: {
@@ -54,6 +67,10 @@ export const tauriApi = {
     return invoke<ExtractedTranscript>('fetch_transcript', { videoId });
   },
 
+  async fetchPlaylist(playlistId: string): Promise<PlaylistMetadata> {
+    return invoke<PlaylistMetadata>('fetch_playlist', { playlistId });
+  },
+
   async saveApiKey(provider: string, key: string): Promise<void> {
     return invoke<void>('save_api_key', { provider, key });
   },
@@ -68,6 +85,14 @@ export const tauriApi = {
 
   async listJobs(): Promise<JobRecord[]> {
     return invoke<JobRecord[]>('list_jobs');
+  },
+
+  async getJob(id: string): Promise<JobRecord | null> {
+    return invoke<JobRecord | null>('get_job', { id });
+  },
+
+  async saveJob(job: JobRecord): Promise<void> {
+    return invoke<void>('save_job', { job });
   },
 
   async listNotebooks(): Promise<NotebookRecord[]> {

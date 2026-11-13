@@ -1,6 +1,8 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { ProcessingState, ProcessingStep, VideoNotes, TopicIndex, JobStatus } from '@/types';
 import { api } from '@/services/api';
+import { isTauri } from '@/services/tauri';
+import { nativePipeline } from '@/services/nativePipeline';
 
 const initialSteps: ProcessingStep[] = [
   { id: 'extract', label: 'Extracting Transcripts', description: 'Fetching video transcripts from YouTube', status: 'pending' },
@@ -245,6 +247,71 @@ export const useProcessing = (initialJobId?: string | null) => {
         })),
       });
 
+      if (isTauri()) {
+        const jobId = `job-${Date.now()}`;
+        currentJobIdRef.current = jobId;
+
+        nativePipeline.start(
+          jobId,
+          url,
+          userNotes,
+          creativityLevel,
+          generationMode,
+          {
+            onStepChange: (stepIndex, status, details) => {
+              setState(prev => {
+                const nextSteps = prev.steps.map((s, i) =>
+                  i === stepIndex ? { ...s, status, details } : s
+                );
+                return { ...prev, currentStep: stepIndex, steps: nextSteps };
+              });
+            },
+            onStatusChange: (status) => {
+              setState(prev => ({ ...prev, status }));
+            },
+            onLog: (msg, type) => {
+              addLog(msg, type);
+            },
+            onAwaitingApproval: (index) => {
+              setState(prev => ({
+                ...prev,
+                status: 'awaiting-approval',
+                index: index as any,
+              }));
+            },
+            onComplete: (notebook) => {
+              const allNotes = notebook.chapters.flatMap(c => c.topics);
+              setState(prev => ({
+                ...prev,
+                status: 'complete',
+                currentStep: 4,
+                steps: prev.steps.map(s => ({ ...s, status: 'complete' })),
+                notes: {
+                  videoId: notebook.metadata?.sourceVideos?.[0]?.id || '',
+                  notebookId: notebook.id,
+                  title: notebook.title,
+                  index: notebook.index.topics.map(t => ({ id: t.id, title: t.title, subtopics: t.subtopics.map(s => s.title) })),
+                  notes: allNotes as any,
+                  fullContent: allNotes.map(n => `## ${n.topicTitle}\n\n${n.content}`).join('\n\n---\n\n'),
+                },
+              }));
+            },
+            onError: (err) => {
+              setState(prev => ({
+                ...prev,
+                status: 'error',
+                error: err,
+                steps: prev.steps.map(s => s.status === 'active' ? { ...s, status: 'error' } : s),
+              }));
+            }
+          }
+        ).catch(err => {
+          console.error('Pipeline error:', err);
+        });
+
+        return jobId;
+      }
+
       const response = await api.startProcessing(url, userNotes, creativityLevel, generationMode);
       const jobId = response.jobId;
       currentJobIdRef.current = jobId;
@@ -259,13 +326,34 @@ export const useProcessing = (initialJobId?: string | null) => {
         steps: initialSteps.map(s => ({ ...s, status: 'error' })),
       }));
     }
-  }, [connectToStream]);
+  }, [connectToStream, addLog]);
 
   const approveIndex = useCallback(async (updatedIndex: any) => {
     const jobId = currentJobIdRef.current;
     if (!jobId) return;
 
     try {
+      if (isTauri()) {
+        setState(prev => ({ ...prev, status: 'generating' }));
+        const notebook = await nativePipeline.approveAndContinue(jobId, updatedIndex);
+        const allNotes = notebook.chapters.flatMap(c => c.topics);
+        setState(prev => ({
+          ...prev,
+          status: 'complete',
+          currentStep: 4,
+          steps: prev.steps.map(s => ({ ...s, status: 'complete' })),
+          notes: {
+            videoId: notebook.metadata?.sourceVideos?.[0]?.id || '',
+            notebookId: notebook.id,
+            title: notebook.title,
+            index: notebook.index.topics.map(t => ({ id: t.id, title: t.title, subtopics: t.subtopics.map(s => s.title) })),
+            notes: allNotes as any,
+            fullContent: allNotes.map(n => `## ${n.topicTitle}\n\n${n.content}`).join('\n\n---\n\n'),
+          },
+        }));
+        return;
+      }
+
       await api.approveIndex(jobId, updatedIndex);
       setState(prev => ({
         ...prev,

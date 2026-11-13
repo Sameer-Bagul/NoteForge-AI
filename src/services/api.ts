@@ -20,6 +20,24 @@ const log = (...args: any[]) => {
   }
 };
 
+function getActiveAI(): { provider: string; model: string; baseUrl?: string } {
+  try {
+    const raw = localStorage.getItem('noteforge_ai_settings');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      const active = parsed.providers?.find((p: any) => p.enabled) || parsed.providers?.[0];
+      if (active) {
+        return {
+          provider: active.provider,
+          model: active.model || 'gemini-flash-latest',
+          baseUrl: active.baseUrl,
+        };
+      }
+    }
+  } catch {}
+  return { provider: 'gemini', model: 'gemini-flash-latest' };
+}
+
 export const api = {
   async validateUrl(url: string): Promise<{ valid: boolean; type: string; videoId?: string }> {
     if (isTauri()) {
@@ -178,6 +196,26 @@ export const api = {
   },
 
   async updateNotebook(notebookId: string, updates: Partial<Notebook>): Promise<Notebook> {
+    if (isTauri()) {
+      try {
+        const existing = await tauriApi.getNotebook(notebookId);
+        if (existing) {
+          const parsed = JSON.parse(existing.content_json);
+          const updated = { ...parsed, ...updates, updatedAt: new Date().toISOString() };
+          await tauriApi.saveNotebook({
+            id: notebookId,
+            job_id: existing.job_id,
+            title: updated.title || existing.title,
+            content_json: JSON.stringify(updated),
+            created_at: existing.created_at,
+          });
+          return updated;
+        }
+      } catch (err) {
+        log('Tauri updateNotebook fallback:', err);
+      }
+    }
+
     log('Updating notebook:', notebookId);
     const response = await fetch(`${API_BASE}/process/notebook/${notebookId}`, {
       method: 'PATCH',
@@ -194,6 +232,15 @@ export const api = {
   },
 
   async checkHealth(): Promise<{ status: string; services: { llm: string; activeProvider?: string } }> {
+    if (isTauri()) {
+      return {
+        status: 'ok',
+        services: {
+          llm: 'ready (Rust Native)',
+          activeProvider: 'Tauri Core (SQLite + Keychain)',
+        },
+      };
+    }
     const response = await fetch(`${API_BASE}/health`);
     if (!response.ok) throw new Error('Health check failed');
     return response.json();
@@ -202,6 +249,9 @@ export const api = {
   // ─── Settings API ──────────────────────────────────────────────────────────
 
   async updateSettings(settings: AppSettings): Promise<{ success: boolean }> {
+    if (isTauri()) {
+      return { success: true };
+    }
     log('Updating settings');
     const response = await fetch(`${API_BASE}/settings`, {
       method: 'POST',
@@ -223,6 +273,41 @@ export const api = {
   // ─── Generation API ────────────────────────────────────────────────────────
 
   async generateMindMap(topicTitle: string, subtopics: string[], notesContent: string): Promise<{ nodes: any[]; edges: any[] }> {
+    if (isTauri()) {
+      const ai = getActiveAI();
+      const systemPrompt = `You are a mind-map data generator. Produce a structured JSON mind map.
+The output MUST be valid JSON only — no markdown, no commentary.
+Schema:
+{
+  "nodes": [
+    { "id": "string", "label": "string", "type": "central|branch|leaf", "color": "string (hex)" }
+  ],
+  "edges": [
+    { "source": "string (node id)", "target": "string (node id)" }
+  ]
+}
+Rules:
+- id must be simple slug-like strings (no spaces)
+- Central node id = "root"
+- Branch nodes = main subtopics (max 8)
+- Leaf nodes = key points under each branch (max 4 per branch)
+- colors: central="#6366f1", branch="#8b5cf6","#06b6d4","#10b981","#f59e0b","#ef4444","#ec4899","#14b8a6"`;
+
+      const prompt = `Create a mind map for topic: "${topicTitle}"
+Subtopics: ${subtopics.join(', ')}
+Notes excerpt:
+"""
+${notesContent.slice(0, 3000)}
+"""`;
+
+      const raw = await tauriApi.streamLLM(prompt, systemPrompt, ai.provider, ai.model, ai.baseUrl, () => {});
+      let clean = raw.trim();
+      if (clean.startsWith('```json')) clean = clean.slice(7);
+      if (clean.startsWith('```')) clean = clean.slice(3);
+      if (clean.endsWith('```')) clean = clean.slice(0, -3);
+      return JSON.parse(clean.trim());
+    }
+
     const response = await fetch(`${API_BASE}/generate/mindmap`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -234,6 +319,37 @@ export const api = {
   },
 
   async generateQuiz(topicTitles: string[], fullContent: string): Promise<any[]> {
+    if (isTauri()) {
+      const ai = getActiveAI();
+      const systemPrompt = `You are an expert quiz generator. Return ONLY valid JSON array — no markdown fences.
+Schema:
+[
+  {
+    "id": "q1",
+    "type": "mcq",
+    "question": "string",
+    "options": ["Option A", "Option B", "Option C", "Option D"],
+    "answer": "Option A",
+    "explanation": "Why this answer is correct",
+    "topic": "string",
+    "difficulty": "easy" | "medium" | "hard"
+  }
+]`;
+
+      const prompt = `Create 10 quiz questions covering: ${topicTitles.join(', ')}
+Content:
+"""
+${fullContent.slice(0, 4000)}
+"""`;
+
+      const raw = await tauriApi.streamLLM(prompt, systemPrompt, ai.provider, ai.model, ai.baseUrl, () => {});
+      let clean = raw.trim();
+      if (clean.startsWith('```json')) clean = clean.slice(7);
+      if (clean.startsWith('```')) clean = clean.slice(3);
+      if (clean.endsWith('```')) clean = clean.slice(0, -3);
+      return JSON.parse(clean.trim());
+    }
+
     const response = await fetch(`${API_BASE}/generate/quiz`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -245,6 +361,36 @@ export const api = {
   },
 
   async generateInterview(topicTitles: string[], fullContent: string): Promise<any[]> {
+    if (isTauri()) {
+      const ai = getActiveAI();
+      const systemPrompt = `You are an expert technical interviewer. Return ONLY valid JSON array — no markdown fences.
+Schema:
+[
+  {
+    "id": "i1",
+    "category": "conceptual" | "technical" | "practical",
+    "question": "string",
+    "answer": "Detailed answer",
+    "followUp": "Follow-up probing question",
+    "difficulty": "junior" | "mid" | "senior",
+    "topic": "string"
+  }
+]`;
+
+      const prompt = `Generate 12 interview questions for a candidate who studied: ${topicTitles.join(', ')}
+Content reference:
+"""
+${fullContent.slice(0, 4000)}
+"""`;
+
+      const raw = await tauriApi.streamLLM(prompt, systemPrompt, ai.provider, ai.model, ai.baseUrl, () => {});
+      let clean = raw.trim();
+      if (clean.startsWith('```json')) clean = clean.slice(7);
+      if (clean.startsWith('```')) clean = clean.slice(3);
+      if (clean.endsWith('```')) clean = clean.slice(0, -3);
+      return JSON.parse(clean.trim());
+    }
+
     const response = await fetch(`${API_BASE}/generate/interview`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

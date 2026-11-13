@@ -271,3 +271,55 @@
 .markdown-content blockquote {
   @apply border-l-4 border-primary/30 pl-4 italic text-muted-foreground;
 }
+
+/* ─── Vector Print & PDF Stylesheet ───────────────────────────────────────── */
+@media print {
+  /* Hide non-printable app UI */
+  header,
+  nav,
+  button,
+  iframe,
+  [role="tablist"],
+  .no-print,
+  .TopicSidebar {
+    display: none !important;
+  }
+
+  /* Reset layout for paper / PDF page */
+  body, #root, main, .fade-in {
+    background: #ffffff !important;
+    color: #111827 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  article {
+    padding: 0 !important;
+  }
+
+  /* Page breaks and typography */
+  h1, h2, h3 {
+    page-break-after: avoid;
+    break-after: avoid;
+    color: #111827 !important;
+  }
+
+  pre, blockquote, table, figure {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  pre {
+    background: #f3f4f6 !important;
+    border: 1px solid #e5e7eb !important;
+    color: #1f2937 !important;
+  }
+
+  blockquote {
+    border-left: 3px solid #6366f1 !important;
+    background: #f9fafb !important;
+    color: #374151 !important;
+  }
+}
