@@ -13,7 +13,7 @@ export class PdfService {
   private cssCache: string | null = null;
 
   constructor() {
-    this.md = new MarkdownIt({ html: true, breaks: true });
+    this.md = new MarkdownIt({ html: false, breaks: true });
     
     // Override table rendering to use template's .tbl class
     this.md.renderer.rules.table_open = () => '<table class="tbl">\n';
@@ -90,7 +90,7 @@ export class PdfService {
 <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
 <script>
   document.addEventListener('DOMContentLoaded', () => {
-    mermaid.initialize({ startOnLoad: true, theme: '${theme === 'dark' ? 'dark' : 'default'}', securityLevel: 'loose' });
+    mermaid.initialize({ startOnLoad: true, theme: '${theme === 'dark' ? 'dark' : 'default'}', securityLevel: 'strict' });
   });
 </script>
 <style>
@@ -315,7 +315,6 @@ ${themeOverrides}
     // Launch Puppeteer and generate PDF
     const browser = await puppeteer.launch({
       headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
     });
 
     const page = await browser.newPage();

@@ -5,6 +5,7 @@ import { Copy, Check, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
+import { MermaidDiagram } from './MermaidDiagram';
 
 interface RunningNotesViewerProps {
     content: string;
@@ -218,14 +219,8 @@ function renderNotebook(md: string): React.ReactNode[] {
         }
         if (inMermaid) {
             if (line === '```') {
-                // Render as styled pre block (full mermaid rendering would need a library)
                 elements.push(
-                    <div key={key()} className="my-5 p-4 rounded-xl bg-indigo-500/10 border border-indigo-500/25 font-mono text-xs text-indigo-200/80 whitespace-pre">
-                        <div className="flex items-center gap-2 mb-2 text-indigo-400 text-[10px] uppercase tracking-widest font-sans font-semibold">
-                            <span>◈ Diagram</span>
-                        </div>
-                        {mermaidLines.join('\n')}
-                    </div>
+                    <MermaidDiagram key={key()} chart={mermaidLines.join('\n')} />
                 );
                 inMermaid = false;
             } else {

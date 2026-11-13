@@ -26,16 +26,6 @@ export class SettingsController {
     }
   }
 
-  // GET /api/settings/full — return current settings with full keys (for editing UI)
-  static getFullSettings(req: Request, res: Response) {
-    try {
-      const settings = getSettings();
-      res.json({ success: true, data: settings });
-    } catch (error) {
-      res.status(500).json({ success: false, error: 'Failed to get settings' });
-    }
-  }
-
   // POST /api/settings — update settings
   static updateSettings(req: Request, res: Response) {
     try {

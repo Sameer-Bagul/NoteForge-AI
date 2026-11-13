@@ -6,9 +6,6 @@ const router = Router();
 // GET /api/settings — return current settings (with redacted keys)
 router.get('/', SettingsController.getSettings);
 
-// GET /api/settings/full — return current settings with full keys (for editing UI)
-router.get('/full', SettingsController.getFullSettings);
-
 // POST /api/settings — update settings
 router.post('/', SettingsController.updateSettings);
 

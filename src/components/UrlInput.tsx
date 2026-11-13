@@ -92,22 +92,7 @@ const UrlInput = ({ onSubmit, isLoading }: UrlInputProps) => {
   const selectedLevel = CREATIVITY_LEVELS.find(l => l.level === creativityLevel)!;
 
   return (
-    <div className="w-full max-w-2xl mx-auto slide-up">
-      {/* Hero text */}
-      <div className="text-center mb-8">
-        <div className="inline-flex items-center gap-2 px-4 py-2 bg-accent rounded-full text-accent-foreground text-sm font-medium mb-6">
-          <Brain className="w-4 h-4" />
-          Transform videos into structured knowledge
-        </div>
-        <h2 className="text-4xl md:text-5xl font-bold text-foreground mb-4">
-          Turn YouTube into
-          <span className="gradient-text block">Beautiful Notes</span>
-        </h2>
-        <p className="text-lg text-muted-foreground max-w-lg mx-auto">
-          Paste any YouTube video or playlist URL and get organized, topic-wise notes ready to study.
-        </p>
-      </div>
-
+    <div className="w-full max-w-2xl mx-auto">
       <form onSubmit={handleSubmit} className="space-y-4">
         {/* URL Input */}
         <div className="relative">
