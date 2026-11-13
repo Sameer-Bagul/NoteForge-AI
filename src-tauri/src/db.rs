@@ -28,6 +28,7 @@ pub struct NotebookRecord {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[allow(dead_code)]
 pub struct TranscriptRecord {
     pub video_id: String,
     pub title: String,

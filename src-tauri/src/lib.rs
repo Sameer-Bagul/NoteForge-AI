@@ -41,6 +41,7 @@ pub fn run() {
             commands::delete_api_key,
             commands::list_jobs,
             commands::get_job,
+            commands::save_job,
             commands::list_notebooks,
             commands::get_notebook,
             commands::save_notebook,
