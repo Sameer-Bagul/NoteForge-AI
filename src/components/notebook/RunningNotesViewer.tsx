@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import { Copy, Check, Download } from 'lucide-react';
+import { Copy, Check, Download, Play } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
@@ -12,6 +12,7 @@ interface RunningNotesViewerProps {
     title?: string;
     className?: string;
     showToolbar?: boolean;
+    onSeek?: (seconds: number) => void;
 }
 
 // ─── Code Block Component ──────────────────────────────────────────────────────
@@ -76,7 +77,7 @@ function CodeBlock({ code, language }: { code: string; language: string }) {
 
 // ─── Callout Component ─────────────────────────────────────────────────────────
 
-function Callout({ text, raw }: { text: string; raw: string }) {
+function Callout({ text, raw, onSeek }: { text: string; raw: string; onSeek?: (seconds: number) => void }) {
     // Detect callout type from emoji/keyword
     const tipMatch = raw.match(/\*\*(💡|Tip)[:\s*]/i);
     const warnMatch = raw.match(/\*\*(⚠️|Warning)[:\s*]/i);
@@ -110,16 +111,27 @@ function Callout({ text, raw }: { text: string; raw: string }) {
     // Regular blockquote
     return (
         <blockquote className="my-4 border-l-4 border-primary/40 pl-4 py-1 italic text-muted-foreground bg-secondary/20 rounded-r-lg">
-            <InlineText text={text} />
+            <InlineText text={text} onSeek={onSeek} />
         </blockquote>
     );
 }
 
 // ─── Inline Text Renderer ──────────────────────────────────────────────────────
 
-function InlineText({ text }: { text: string }) {
-    // Process: inline code → bold → italic → plain
-    const parts = text.split(/(`[^`]+`|\*\*[^*]+\*\*|_[^_]+_|\*[^*]+\*)/g);
+function parseTimestampToSeconds(ts: string): number {
+    const clean = ts.replace(/[\[\]]/g, '');
+    const parts = clean.split(':').map(Number);
+    if (parts.length === 2) {
+        return parts[0] * 60 + parts[1];
+    } else if (parts.length === 3) {
+        return parts[0] * 3600 + parts[1] * 60 + parts[2];
+    }
+    return 0;
+}
+
+function InlineText({ text, onSeek }: { text: string; onSeek?: (seconds: number) => void }) {
+    // Process: inline code → bold → italic → timestamp → plain
+    const parts = text.split(/(`[^`]+`|\*\*[^*]+\*\*|_[^_]+_|\*[^*]+\*|\[\d{1,2}:\d{2}(?::\d{2})?\])/g);
 
     return (
         <>
@@ -137,6 +149,21 @@ function InlineText({ text }: { text: string }) {
                 if ((part.startsWith('_') && part.endsWith('_')) || (part.startsWith('*') && part.endsWith('*'))) {
                     return <em key={i} className="italic">{part.slice(1, -1)}</em>;
                 }
+                if (part.startsWith('[') && part.endsWith(']') && /^\[\d{1,2}:\d{2}(?::\d{2})?\]$/.test(part)) {
+                    const secs = parseTimestampToSeconds(part);
+                    return (
+                        <button
+                            key={i}
+                            type="button"
+                            onClick={() => onSeek?.(secs)}
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 mx-0.5 rounded bg-primary/10 hover:bg-primary/20 text-primary text-xs font-mono font-medium border border-primary/25 hover:border-primary/50 transition-all cursor-pointer align-baseline"
+                            title={`Jump video to ${part.slice(1, -1)}`}
+                        >
+                            <Play className="w-2.5 h-2.5 fill-current opacity-80" />
+                            <span>{part.slice(1, -1)}</span>
+                        </button>
+                    );
+                }
                 return <span key={i}>{part}</span>;
             })}
         </>
@@ -145,7 +172,7 @@ function InlineText({ text }: { text: string }) {
 
 // ─── Main Markdown Renderer ────────────────────────────────────────────────────
 
-function renderNotebook(md: string): React.ReactNode[] {
+function renderNotebook(md: string, onSeek?: (seconds: number) => void): React.ReactNode[] {
     const lines = md.split('\n');
     const elements: React.ReactNode[] = [];
     let inCode = false;
@@ -168,7 +195,7 @@ function renderNotebook(md: string): React.ReactNode[] {
             <El key={key()} className={cn(isOrdered ? 'list-decimal' : 'list-disc', 'pl-6 my-3 space-y-1.5')}>
                 {listItems.map((item, i) => (
                     <li key={i} className="text-foreground/90 leading-relaxed text-[0.95rem]">
-                        <InlineText text={item.text} />
+                        <InlineText text={item.text} onSeek={onSeek} />
                     </li>
                 ))}
             </El>
@@ -185,7 +212,7 @@ function renderNotebook(md: string): React.ReactNode[] {
                         <tr>
                             {tableRows[0]?.map((cell, i) => (
                                 <th key={i} className="px-4 py-2.5 text-left font-semibold text-foreground border-b border-border/50">
-                                    <InlineText text={cell} />
+                                    <InlineText text={cell} onSeek={onSeek} />
                                 </th>
                             ))}
                         </tr>
@@ -195,7 +222,7 @@ function renderNotebook(md: string): React.ReactNode[] {
                             <tr key={ri} className={ri % 2 === 0 ? 'bg-card' : 'bg-secondary/20'}>
                                 {row.map((cell, ci) => (
                                     <td key={ci} className="px-4 py-2.5 text-foreground/80 border-b border-border/30">
-                                        <InlineText text={cell} />
+                                        <InlineText text={cell} onSeek={onSeek} />
                                     </td>
                                 ))}
                             </tr>
@@ -257,7 +284,7 @@ function renderNotebook(md: string): React.ReactNode[] {
             flushList(); flushTable();
             elements.push(
                 <h1 key={key()} className="text-2xl font-bold mt-10 mb-4 text-foreground tracking-tight border-b-2 border-primary/30 pb-3">
-                    <InlineText text={line.slice(2)} />
+                    <InlineText text={line.slice(2)} onSeek={onSeek} />
                 </h1>
             );
             continue;
@@ -267,7 +294,7 @@ function renderNotebook(md: string): React.ReactNode[] {
             elements.push(
                 <h2 key={key()} className="text-xl font-semibold mt-8 mb-3 text-foreground flex items-center gap-2">
                     <span className="w-1 h-6 bg-primary rounded-full shrink-0 inline-block" />
-                    <InlineText text={line.slice(3)} />
+                    <InlineText text={line.slice(3)} onSeek={onSeek} />
                 </h2>
             );
             continue;
@@ -276,7 +303,7 @@ function renderNotebook(md: string): React.ReactNode[] {
             flushList(); flushTable();
             elements.push(
                 <h3 key={key()} className="text-base font-semibold mt-6 mb-2 text-foreground/90">
-                    <InlineText text={line.slice(4)} />
+                    <InlineText text={line.slice(4)} onSeek={onSeek} />
                 </h3>
             );
             continue;
@@ -285,7 +312,7 @@ function renderNotebook(md: string): React.ReactNode[] {
             flushList(); flushTable();
             elements.push(
                 <h4 key={key()} className="text-sm font-semibold mt-4 mb-1 text-muted-foreground uppercase tracking-wide">
-                    <InlineText text={line.slice(5)} />
+                    <InlineText text={line.slice(5)} onSeek={onSeek} />
                 </h4>
             );
             continue;
@@ -301,7 +328,7 @@ function renderNotebook(md: string): React.ReactNode[] {
         // Blockquotes / Callouts
         if (line.startsWith('> ')) {
             flushList(); flushTable();
-            elements.push(<Callout key={key()} text={line.slice(2)} raw={line} />);
+            elements.push(<Callout key={key()} text={line.slice(2)} raw={line} onSeek={onSeek} />);
             continue;
         }
 
@@ -333,7 +360,7 @@ function renderNotebook(md: string): React.ReactNode[] {
         flushList(); flushTable();
         elements.push(
             <p key={key()} className="my-2.5 text-foreground/85 leading-[1.85] text-[0.97rem]">
-                <InlineText text={line} />
+                <InlineText text={line} onSeek={onSeek} />
             </p>
         );
     }
@@ -345,7 +372,7 @@ function renderNotebook(md: string): React.ReactNode[] {
 
 // ─── Export Component ──────────────────────────────────────────────────────────
 
-export function RunningNotesViewer({ content, title, className, showToolbar = true }: RunningNotesViewerProps) {
+export function RunningNotesViewer({ content, title, className, showToolbar = true, onSeek }: RunningNotesViewerProps) {
     const [copied, setCopied] = useState(false);
 
     const handleCopy = useCallback(async () => {
@@ -392,7 +419,7 @@ export function RunningNotesViewer({ content, title, className, showToolbar = tr
                 <article className="relative px-8 py-8 max-w-none prose-sm">
                     {/* Margin gutter */}
                     <div className="pl-10">
-                        {renderNotebook(content)}
+                        {renderNotebook(content, onSeek)}
                     </div>
                 </article>
             </div>

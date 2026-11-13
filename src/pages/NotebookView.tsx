@@ -37,9 +37,17 @@ const NotebookView = () => {
     );
   }
 
+  // Extract real YouTube Video ID from notebook metadata/sources
+  const sourceVideoId =
+    notebook.metadata?.sourceVideos?.[0]?.id ||
+    notebook.index?.topics?.[0]?.videoSources?.[0] ||
+    (notebook.chapters?.[0]?.topics?.[0]?.videoSources?.[0] as any)?.videoId ||
+    '';
+
   // Map persisted Notebook to the VideoNotes format expected by NotebookShell
   const videoNotes: VideoNotes = {
-    videoId: notebook.id,
+    videoId: sourceVideoId,
+    notebookId: notebook.id,
     title: notebook.title,
     index: notebook.index.topics.map(t => ({
       id: t.id,

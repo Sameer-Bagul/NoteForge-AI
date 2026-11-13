@@ -163,8 +163,8 @@ export const api = {
   },
 
   async getSettings(): Promise<AppSettings> {
-    log('Getting settings (full)');
-    const response = await fetch(`${API_BASE}/settings/full`);
+    log('Getting settings');
+    const response = await fetch(`${API_BASE}/settings`);
     if (!response.ok) throw new Error('Failed to get settings');
     const result = await response.json();
     return result.data;

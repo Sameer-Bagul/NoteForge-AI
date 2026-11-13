@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
     BookOpen, List, GitBranch, HelpCircle, Briefcase,
-    ArrowLeft, Download, Clock, Hash, FileText, Loader2, Sparkles
+    ArrowLeft, Download, Clock, Hash, FileText, Loader2, Sparkles, Tv, Columns2
 } from 'lucide-react';
 import { useSettings } from '@/context/SettingsContext';
 import { Button } from '@/components/ui/button';
@@ -94,6 +94,15 @@ function IndexPanel({ topics }: { topics: VideoNotes['index'] }) {
 export function NotebookShell({ notes, onReset }: NotebookShellProps) {
     const [activeTopicId, setActiveTopicId] = useState(notes.index[0]?.id);
     const [activeTab, setActiveTab] = useState('notes');
+    const [isStudioMode, setIsStudioMode] = useState(true);
+    const [seekTime, setSeekTime] = useState<number | null>(null);
+
+    const rawId = notes.videoId || (notes as any).id || (notes.notes?.[0] as any)?.videoSources?.[0]?.videoId || '';
+    const videoId = rawId.includes('watch?v=') 
+        ? rawId.split('watch?v=')[1]?.split('&')[0] 
+        : rawId.includes('youtu.be/') 
+        ? rawId.split('youtu.be/')[1]?.split('?')[0] 
+        : rawId;
 
     const activeNote = notes.notes.find(n => n.topicId === activeTopicId);
     const wordCount = notes.fullContent.split(/\s+/).length;
@@ -209,6 +218,17 @@ export function NotebookShell({ notes, onReset }: NotebookShellProps) {
                     </div>
 
                     <div className="flex items-center gap-2 shrink-0">
+                        {videoId && (
+                            <Button
+                                variant={isStudioMode ? "default" : "outline"}
+                                size="sm"
+                                onClick={() => setIsStudioMode(!isStudioMode)}
+                                className="gap-2"
+                            >
+                                <Tv className="w-4 h-4" />
+                                <span className="hidden sm:inline">{isStudioMode ? "Studio Mode" : "Reader Mode"}</span>
+                            </Button>
+                        )}
                         <Button variant="outline" onClick={handleExportCmsJson} className="gap-2 border-primary/40 text-primary hover:bg-primary/10">
                             <Sparkles className="w-4 h-4 text-primary" />
                             Export CMS JSON
@@ -249,19 +269,39 @@ export function NotebookShell({ notes, onReset }: NotebookShellProps) {
                 {/* ── Running Notes Tab ──────────────────────────────────── */}
                 <TabsContent value="notes" className="mt-0">
                     <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 h-[calc(100vh-280px)] min-h-[600px]">
-                        {/* Sidebar */}
-                        <div className="lg:col-span-3 lg:overflow-hidden">
-                            <TopicSidebar
-                                topics={notes.index}
-                                activeId={activeTopicId}
-                                onSelect={(id) => {
-                                    setActiveTopicId(id);
-                                }}
-                            />
+                        {/* Sidebar / Left Column */}
+                        <div className={cn(
+                            "flex flex-col gap-4 overflow-hidden",
+                            isStudioMode && videoId ? "lg:col-span-5" : "lg:col-span-3"
+                        )}>
+                            {isStudioMode && videoId && (
+                                <div className="rounded-xl overflow-hidden border border-border/60 bg-black shadow-sm aspect-video shrink-0">
+                                    <iframe
+                                        key={seekTime !== null ? `yt-${seekTime}` : 'yt-initial'}
+                                        src={`https://www.youtube-nocookie.com/embed/${videoId}?enablejsapi=1${seekTime !== null ? `&start=${seekTime}&autoplay=1` : ''}`}
+                                        title="YouTube Video Player"
+                                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                        allowFullScreen
+                                        className="w-full h-full border-0"
+                                    />
+                                </div>
+                            )}
+                            <div className="flex-1 overflow-hidden">
+                                <TopicSidebar
+                                    topics={notes.index}
+                                    activeId={activeTopicId}
+                                    onSelect={(id) => {
+                                        setActiveTopicId(id);
+                                    }}
+                                />
+                            </div>
                         </div>
 
                         {/* Notes pane */}
-                        <div className="lg:col-span-9 overflow-hidden flex flex-col">
+                        <div className={cn(
+                            "overflow-hidden flex flex-col",
+                            isStudioMode && videoId ? "lg:col-span-7" : "lg:col-span-9"
+                        )}>
                             {activeNote ? (
                                 <>
                                     <div className="flex items-center gap-2 mb-3 shrink-0">
@@ -273,6 +313,10 @@ export function NotebookShell({ notes, onReset }: NotebookShellProps) {
                                             content={(activeNote as any).content || ''}
                                             title={(activeNote as any).topicTitle || (activeNote as any).title}
                                             className="h-full"
+                                            onSeek={(secs) => {
+                                                setSeekTime(secs);
+                                                if (!isStudioMode) setIsStudioMode(true);
+                                            }}
                                         />
                                     </div>
                                 </>
