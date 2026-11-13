@@ -20,17 +20,28 @@ const log = (...args: any[]) => {
   }
 };
 
-function getActiveAI(): { provider: string; model: string; baseUrl?: string } {
+function getAIForTask(task: 'notes' | 'indexing' | 'features'): { provider: string; model: string; baseUrl?: string } {
   try {
     const raw = localStorage.getItem('noteforge_ai_settings');
     if (raw) {
       const parsed = JSON.parse(raw);
-      const active = parsed.providers?.find((p: any) => p.enabled) || parsed.providers?.[0];
-      if (active) {
+      const assigned = parsed.taskMapping?.[task];
+      let providerConfig = (assigned && assigned !== 'auto')
+        ? parsed.providers?.find((p: any) => p.provider === assigned && p.enabled)
+        : null;
+
+      if (!providerConfig) {
+        providerConfig = parsed.providers?.find((p: any) => p.enabled) || parsed.providers?.[0];
+      }
+
+      if (providerConfig) {
+        const model = (task === 'indexing' && providerConfig.indexingModel)
+          ? providerConfig.indexingModel
+          : (providerConfig.model || 'gemini-flash-latest');
         return {
-          provider: active.provider,
-          model: active.model || 'gemini-flash-latest',
-          baseUrl: active.baseUrl,
+          provider: providerConfig.provider,
+          model,
+          baseUrl: providerConfig.baseUrl,
         };
       }
     }
@@ -49,7 +60,8 @@ export const api = {
           videoId: res.video_id || undefined,
         };
       } catch (err) {
-        log('Tauri validateUrl fallback:', err);
+        log('Tauri validateUrl error:', err);
+        return { valid: false, type: 'video' };
       }
     }
     const response = await fetch(`${API_BASE}/youtube/validate`, {
@@ -62,6 +74,9 @@ export const api = {
   },
 
   async startProcessing(url: string, userNotes?: string, creativityLevel?: number, generationMode?: 'topical' | 'chronological'): Promise<{ jobId: string; status: string }> {
+    if (isTauri()) {
+      return { jobId: `job-${Date.now()}`, status: 'extracting' };
+    }
     log('Starting processing for:', url);
     const response = await fetch(`${API_BASE}/process/start`, {
       method: 'POST',
@@ -75,11 +90,51 @@ export const api = {
     }
     const data = await response.json();
     log('Response:', data);
-    // Backend returns {success: true, data: {jobId, status}}
     return data.data || data;
   },
 
   async getJobStatus(jobId: string): Promise<JobStatus> {
+    if (isTauri()) {
+      const job = await tauriApi.getJob(jobId).catch(() => null);
+      if (job) {
+        let options: any = {};
+        try { options = JSON.parse(job.options_json || '{}'); } catch {}
+        return {
+          id: job.id,
+          jobId: job.id,
+          notebookId: job.id,
+          url: job.url,
+          status: job.status as any,
+          type: 'video',
+          currentStep: job.current_step,
+          steps: [],
+          videos: options.videoSources || [],
+          createdAt: job.created_at,
+          updatedAt: job.updated_at,
+          index: options.index,
+        };
+      }
+      const notebook = await tauriApi.getNotebook(jobId).catch(() => null);
+      if (notebook) {
+        let parsed: any = {};
+        try { parsed = JSON.parse(notebook.content_json); } catch {}
+        return {
+          id: notebook.id,
+          jobId: notebook.job_id || notebook.id,
+          notebookId: notebook.id,
+          url: parsed.url || '',
+          status: 'complete',
+          type: 'video',
+          currentStep: 5,
+          steps: [],
+          videos: parsed.metadata?.sourceVideos || [],
+          notebook: parsed,
+          createdAt: notebook.created_at,
+          updatedAt: notebook.created_at,
+        };
+      }
+      throw new Error(`Job not found: ${jobId}`);
+    }
     log('Getting job status for:', jobId);
     const response = await fetch(`${API_BASE}/process/status/${jobId}`);
     if (!response.ok) {
@@ -88,11 +143,14 @@ export const api = {
     }
     const result = await response.json();
     log('Job status response:', result);
-    // Backend returns {success: true, data: {...}}
     return result.data || result;
   },
 
   async exportPdf(indexId: string, theme: string = 'modern'): Promise<{ data: Blob }> {
+    if (isTauri()) {
+      window.print();
+      return { data: new Blob() };
+    }
     log('Exporting PDF for index:', indexId, 'with theme:', theme);
     const response = await fetch(`${API_BASE}/process/export/${indexId}?theme=${theme}`);
     if (!response.ok) {
@@ -104,6 +162,9 @@ export const api = {
   },
 
   async approveIndex(jobId: string, index: any): Promise<{ success: boolean; message: string }> {
+    if (isTauri()) {
+      return { success: true, message: 'Index approved' };
+    }
     log('Approving index for job:', jobId);
     const response = await fetch(`${API_BASE}/process/${jobId}/approve-index`, {
       method: 'PUT',
@@ -121,6 +182,9 @@ export const api = {
   },
 
   async resumeJob(jobId: string): Promise<{ success: boolean; message: string }> {
+    if (isTauri()) {
+      return { success: true, message: 'Job resumed' };
+    }
     log('Resuming job:', jobId);
     const response = await fetch(`${API_BASE}/process/${jobId}/resume`, {
       method: 'POST',
@@ -139,29 +203,52 @@ export const api = {
   async getJobs(): Promise<JobStatus[]> {
     if (isTauri()) {
       try {
-        const notebooks = await tauriApi.listNotebooks();
-        if (notebooks.length > 0) {
-          return notebooks.map(nb => {
-            let parsed: any = {};
-            try { parsed = JSON.parse(nb.content_json); } catch {}
+        const notebooks = await tauriApi.listNotebooks().catch(() => []);
+        const jobs = await tauriApi.listJobs().catch(() => []);
+
+        const mappedNotebooks: JobStatus[] = notebooks.map(nb => {
+          let parsed: any = {};
+          try { parsed = JSON.parse(nb.content_json); } catch {}
+          return {
+            id: nb.id,
+            jobId: nb.job_id || nb.id,
+            notebookId: nb.id,
+            url: parsed.url || '',
+            status: 'complete' as const,
+            type: ((parsed.metadata?.totalVideos || 0) > 1 ? 'playlist' : 'video') as 'video' | 'playlist',
+            currentStep: 5,
+            steps: [],
+            videos: parsed.metadata?.sourceVideos || [{ id: parsed.videoId || '', title: nb.title }],
+            notebook: parsed,
+            createdAt: nb.created_at,
+            updatedAt: nb.created_at,
+          };
+        });
+
+        const activeJobs: JobStatus[] = jobs
+          .filter(j => j.status !== 'complete' && !notebooks.some(nb => nb.id === j.id || nb.job_id === j.id))
+          .map(j => {
+            let options: any = {};
+            try { options = JSON.parse(j.options_json || '{}'); } catch {}
             return {
-              id: nb.id,
-              jobId: nb.job_id || nb.id,
-              notebookId: nb.id,
-              url: parsed.url || '',
-              status: 'complete' as const,
-              type: ((parsed.metadata?.totalVideos || 0) > 1 ? 'playlist' : 'video') as 'video' | 'playlist',
-              currentStep: 5,
+              id: j.id,
+              jobId: j.id,
+              notebookId: j.id,
+              url: j.url,
+              status: j.status as any,
+              type: 'video' as const,
+              currentStep: j.current_step,
               steps: [],
-              videos: parsed.metadata?.sourceVideos || [{ id: parsed.videoId || '', title: nb.title }],
-              notebook: parsed,
-              createdAt: nb.created_at,
-              updatedAt: nb.created_at,
+              videos: options.videoSources || [],
+              createdAt: j.created_at,
+              updatedAt: j.updated_at,
             };
           });
-        }
+
+        return [...activeJobs, ...mappedNotebooks];
       } catch (err) {
-        log('Tauri getJobs fallback:', err);
+        log('Tauri getJobs error:', err);
+        return [];
       }
     }
     log('Getting all jobs');
@@ -176,14 +263,11 @@ export const api = {
 
   async getNotebook(notebookId: string): Promise<Notebook> {
     if (isTauri()) {
-      try {
-        const record = await tauriApi.getNotebook(notebookId);
-        if (record && record.content_json) {
-          return JSON.parse(record.content_json);
-        }
-      } catch (err) {
-        log('Tauri getNotebook fallback:', err);
+      const record = await tauriApi.getNotebook(notebookId).catch(() => null);
+      if (record && record.content_json) {
+        return JSON.parse(record.content_json);
       }
+      throw new Error(`Notebook not found: ${notebookId}`);
     }
     log('Getting notebook:', notebookId);
     const response = await fetch(`${API_BASE}/process/notebook/${notebookId}`);
@@ -197,23 +281,20 @@ export const api = {
 
   async updateNotebook(notebookId: string, updates: Partial<Notebook>): Promise<Notebook> {
     if (isTauri()) {
-      try {
-        const existing = await tauriApi.getNotebook(notebookId);
-        if (existing) {
-          const parsed = JSON.parse(existing.content_json);
-          const updated = { ...parsed, ...updates, updatedAt: new Date().toISOString() };
-          await tauriApi.saveNotebook({
-            id: notebookId,
-            job_id: existing.job_id,
-            title: updated.title || existing.title,
-            content_json: JSON.stringify(updated),
-            created_at: existing.created_at,
-          });
-          return updated;
-        }
-      } catch (err) {
-        log('Tauri updateNotebook fallback:', err);
+      const existing = await tauriApi.getNotebook(notebookId).catch(() => null);
+      if (existing) {
+        const parsed = JSON.parse(existing.content_json);
+        const updated = { ...parsed, ...updates, updatedAt: new Date().toISOString() };
+        await tauriApi.saveNotebook({
+          id: notebookId,
+          job_id: existing.job_id,
+          title: updated.title || existing.title,
+          content_json: JSON.stringify(updated),
+          created_at: existing.created_at,
+        });
+        return updated;
       }
+      throw new Error(`Notebook not found: ${notebookId}`);
     }
 
     log('Updating notebook:', notebookId);
@@ -274,7 +355,7 @@ export const api = {
 
   async generateMindMap(topicTitle: string, subtopics: string[], notesContent: string): Promise<{ nodes: any[]; edges: any[] }> {
     if (isTauri()) {
-      const ai = getActiveAI();
+      const ai = getAIForTask('features');
       const systemPrompt = `You are a mind-map data generator. Produce a structured JSON mind map.
 The output MUST be valid JSON only — no markdown, no commentary.
 Schema:
@@ -320,7 +401,7 @@ ${notesContent.slice(0, 3000)}
 
   async generateQuiz(topicTitles: string[], fullContent: string): Promise<any[]> {
     if (isTauri()) {
-      const ai = getActiveAI();
+      const ai = getAIForTask('features');
       const systemPrompt = `You are an expert quiz generator. Return ONLY valid JSON array — no markdown fences.
 Schema:
 [
@@ -362,7 +443,7 @@ ${fullContent.slice(0, 4000)}
 
   async generateInterview(topicTitles: string[], fullContent: string): Promise<any[]> {
     if (isTauri()) {
-      const ai = getActiveAI();
+      const ai = getAIForTask('features');
       const systemPrompt = `You are an expert technical interviewer. Return ONLY valid JSON array — no markdown fences.
 Schema:
 [

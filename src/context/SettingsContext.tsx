@@ -9,6 +9,7 @@ interface SettingsContextValue {
     updateProviders: (providers: ProviderConfig[]) => void;
     updateTaskMapping: (mapping: AppSettings['taskMapping']) => void;
     updateSettings: (updates: Partial<AppSettings>) => void;
+    saveSettings: (newSettings: AppSettings) => Promise<void>;
     saveToBackend: () => Promise<void>;
     isSettingsOpen: boolean;
     openSettings: () => void;
@@ -150,25 +151,30 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         });
     };
 
-    const saveToBackend = useCallback(async () => {
+    const saveSettings = useCallback(async (newSettings: AppSettings) => {
         setIsSaving(true);
         try {
+            setSettings(newSettings);
+            saveToStorage(newSettings);
             if (isTauri()) {
-                // Sync all keys to Keychain
-                for (const p of settings.providers) {
-                    if (p.apiKey) {
-                        await tauriApi.saveApiKey(p.provider, p.apiKey);
+                for (const p of newSettings.providers) {
+                    if (p.apiKey && p.apiKey.trim()) {
+                        await tauriApi.saveApiKey(p.provider, p.apiKey.trim());
                     } else {
                         await tauriApi.deleteApiKey(p.provider).catch(() => {});
                     }
                 }
             } else {
-                await syncToBackend(settings);
+                await syncToBackend(newSettings).catch(() => {});
             }
         } finally {
             setIsSaving(false);
         }
-    }, [settings]);
+    }, []);
+
+    const saveToBackend = useCallback(async () => {
+        await saveSettings(settings);
+    }, [saveSettings, settings]);
 
     const openSettings = useCallback(() => setIsSettingsOpen(true), []);
     const closeSettings = useCallback(() => setIsSettingsOpen(false), []);
@@ -179,6 +185,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
             updateProviders,
             updateTaskMapping,
             updateSettings,
+            saveSettings,
             saveToBackend,
             isSettingsOpen,
             openSettings,

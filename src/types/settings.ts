@@ -21,8 +21,6 @@ export type PdfTheme = 'modern' | 'academic' | 'dark' | 'corporate';
 export interface AppSettings {
     providers: ProviderConfig[];
     taskMapping: TaskMapping;
-    pineconeApiKey?: string;
-    pineconeIndex?: string;
     pdfTheme?: PdfTheme;
 }
 

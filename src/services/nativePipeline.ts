@@ -30,17 +30,29 @@ FORMATTING RULES:
 - Where beneficial for understanding architecture or data flow, include an interactive Mermaid diagram.
 `;
 
-function getActiveAIConfig(): { provider: string; model: string; baseUrl?: string } {
+export function getAIConfigForTask(task: 'notes' | 'indexing' | 'features'): { provider: string; model: string; baseUrl?: string } {
   try {
     const raw = localStorage.getItem('noteforge_ai_settings');
     if (raw) {
       const parsed = JSON.parse(raw) as AppSettings;
-      const active = parsed.providers.find(p => p.enabled) || parsed.providers[0];
-      if (active) {
+      const assigned = parsed.taskMapping?.[task];
+      let providerConfig = (assigned && assigned !== 'auto')
+        ? parsed.providers.find(p => p.provider === assigned && p.enabled)
+        : null;
+
+      if (!providerConfig) {
+        providerConfig = parsed.providers.find(p => p.enabled) || parsed.providers[0];
+      }
+
+      if (providerConfig) {
+        const model = (task === 'indexing' && providerConfig.indexingModel)
+          ? providerConfig.indexingModel
+          : (providerConfig.model || 'gemini-flash-latest');
+
         return {
-          provider: active.provider,
-          model: active.model || 'gemini-flash-latest',
-          baseUrl: active.baseUrl,
+          provider: providerConfig.provider,
+          model,
+          baseUrl: providerConfig.baseUrl,
         };
       }
     }
@@ -153,7 +165,7 @@ export const nativePipeline = {
       onStepChange?.(1, 'active', 'Analyzing concepts and semantic structure...');
       onLog?.('Analyzing video structure with AI...', 'ai');
 
-      const aiConfig = getActiveAIConfig();
+      const aiConfig = getAIConfigForTask('indexing');
       const combinedText = transcripts.map(t => `Video: ${t.video_info.title}\n${t.full_text}`).join('\n\n---\n\n');
       const textSample = combinedText.slice(0, 16000); // 16k chars sample for indexing
 
@@ -285,7 +297,7 @@ Instructions:
       onStepChange?.(3, 'active', `Generating notes for ${approvedIndex.topics.length} topics...`);
       onLog?.(`Beginning deep notes synthesis for ${approvedIndex.topics.length} topics...`, 'ai');
 
-      const aiConfig = getActiveAIConfig();
+      const aiConfig = getAIConfigForTask('indexing');
       const allTopicNotes: TopicNotes[] = [];
 
       let topicIndex = 0;
