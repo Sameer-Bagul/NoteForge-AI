@@ -132,6 +132,7 @@ export const api = {
               notebookId: nb.id,
               url: parsed.url || '',
               status: 'complete' as const,
+              type: ((parsed.metadata?.totalVideos || 0) > 1 ? 'playlist' : 'video') as 'video' | 'playlist',
               currentStep: 5,
               steps: [],
               videos: parsed.metadata?.sourceVideos || [{ id: parsed.videoId || '', title: nb.title }],
