@@ -10,7 +10,7 @@ import {
 } from '@/types';
 import { AppSettings } from '@/types/settings';
 import { tauriApi, isTauri } from './tauri';
-import { PIPELINE_STEPS } from './nativePipeline';
+import { PIPELINE_STEPS, nativePipeline } from './nativePipeline';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
 const ENABLE_DEBUG = import.meta.env.VITE_ENABLE_DEBUG_LOGS === 'true';
@@ -249,10 +249,40 @@ export const api = {
         });
 
         const activeJobs: JobStatus[] = jobs
-          .filter(j => j.status !== 'complete' && !notebooks.some(nb => nb.id === j.id || nb.job_id === j.id))
+          .filter(j => {
+            if (j.status === 'complete') return false;
+            // Check if notebook with exact id or job_id already exists
+            if (notebooks.some(nb => nb.id === j.id || nb.job_id === j.id)) return false;
+
+            // Check if job is actively running in the in-memory pipeline session
+            const isLive = nativePipeline.isJobActive(j.id);
+            if (!isLive) {
+              // If not active in memory, check if a newer completed notebook exists for the exact same video URL
+              const hasCompletedNotebookForUrl = notebooks.some(nb => {
+                try {
+                  const p = JSON.parse(nb.content_json);
+                  return (
+                    (p.url && j.url && p.url === j.url) ||
+                    p.metadata?.sourceVideos?.some((v: any) => v.id && j.url && j.url.includes(v.id))
+                  );
+                } catch {
+                  return false;
+                }
+              });
+
+              if (hasCompletedNotebookForUrl) {
+                // Stale job that was already superseded by a completed notebook; prune it from SQLite
+                tauriApi.deleteJob(j.id).catch(() => {});
+                return false;
+              }
+            }
+            return true;
+          })
           .map(j => {
             let options: any = {};
             try { options = JSON.parse(j.options_json || '{}'); } catch {}
+            const isLive = nativePipeline.isJobActive(j.id);
+            const videoInfo = options.videoInfo || (options.videoSources && options.videoSources[0]) || undefined;
             return {
               id: j.id,
               jobId: j.id,
@@ -262,9 +292,12 @@ export const api = {
               type: 'video' as const,
               currentStep: j.current_step,
               steps: [],
-              videos: options.videoSources || [],
+              videos: options.videoSources || (videoInfo ? [videoInfo] : []),
+              videoInfo,
+              index: options.index,
               createdAt: j.created_at,
               updatedAt: j.updated_at,
+              isLive,
             };
           });
 

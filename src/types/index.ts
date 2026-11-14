@@ -208,6 +208,9 @@ export interface ProcessingState {
 
 export interface JobStatus {
   id: string;
+  jobId?: string;
+  notebookId?: string;
+  url?: string;
   status: string;
   type: 'video' | 'playlist';
   currentStep: number;
@@ -219,4 +222,5 @@ export interface JobStatus {
   notebook?: Notebook;
   createdAt: string;
   updatedAt: string;
+  isLive?: boolean;
 }

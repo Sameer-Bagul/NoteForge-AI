@@ -220,6 +220,14 @@ export const nativePipeline = {
     return activeSessions.get(jobId);
   },
 
+  isJobActive(jobId: string): boolean {
+    return activeSessions.has(jobId);
+  },
+
+  getActiveJobIds(): string[] {
+    return Array.from(activeSessions.keys());
+  },
+
   subscribe(jobId: string, callbacks: PipelineCallbacks): () => void {
     if (!listeners.has(jobId)) {
       listeners.set(jobId, new Set());
