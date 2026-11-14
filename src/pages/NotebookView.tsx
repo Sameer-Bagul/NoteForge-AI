@@ -3,34 +3,43 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '@/services/api';
 import { Notebook, VideoNotes, TopicIndex, TopicNotes } from '@/types';
 import { NotebookShell } from '@/components/notebook/NotebookShell';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { Loader2, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
-const NotebookView = () => {
+const NotebookViewContent = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
 
   const { data: notebook, isLoading, error } = useQuery({
     queryKey: ['notebook', id],
     queryFn: () => api.getNotebook(id!),
-    enabled: !!id
+    enabled: !!id,
+    retry: 1,
   });
 
   if (isLoading) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh]">
-        <Loader2 className="w-12 h-12 text-primary animate-spin mb-4" />
-        <p className="text-muted-foreground">Loading notebook...</p>
+      <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-3">
+        <Loader2 className="w-8 h-8 text-primary animate-spin" />
+        <p className="text-xs text-muted-foreground font-mono">Loading notebook from SQLite vault...</p>
       </div>
     );
   }
 
   if (error || !notebook) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] text-destructive">
-        <AlertCircle className="w-12 h-12 mb-4" />
-        <p>Failed to load notebook. It may not exist or has been deleted.</p>
-        <Button variant="outline" onClick={() => navigate('/library')} className="mt-4">
+      <div className="flex flex-col items-center justify-center min-h-[60vh] text-center p-6 max-w-sm mx-auto space-y-4">
+        <div className="w-12 h-12 rounded-2xl bg-destructive/10 text-destructive flex items-center justify-center">
+          <AlertCircle className="w-6 h-6" />
+        </div>
+        <div className="space-y-1">
+          <h2 className="text-base font-semibold text-foreground">Notebook Not Found</h2>
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            {error instanceof Error ? error.message : 'Unable to locate notebook in local database.'}
+          </p>
+        </div>
+        <Button variant="outline" size="sm" onClick={() => navigate('/library')} className="mt-2 text-xs h-8">
           Back to Library
         </Button>
       </div>
@@ -49,23 +58,22 @@ const NotebookView = () => {
     videoId: sourceVideoId,
     notebookId: notebook.id,
     title: notebook.title,
-    index: notebook.index.topics.map(t => ({
+    index: (notebook.index?.topics || []).map((t) => ({
       id: t.id,
       title: t.title,
-      subtopics: t.subtopics.map(st => st.title),
+      subtopics: (t.subtopics || []).map((st: any) => (typeof st === 'string' ? st : (st?.title || ''))),
       startTime: t.startTime,
       endTime: t.endTime,
       timeDisplay: t.timeDisplay,
     }) as TopicIndex),
-    notes: notebook.chapters.flatMap(c => c.topics).map(topic => ({
+    notes: (notebook.chapters || []).flatMap((c) => c.topics || []).map((topic) => ({
       ...topic,
-      // Ensure content is populated for RunningNotesViewer
-      content: topic.content || topicToMarkdown(topic)
+      content: topic.content || topicToMarkdown(topic),
     })),
-    fullContent: notebookToMarkdown(notebook),
+    fullContent: (notebook as any).fullContent || notebookToMarkdown(notebook),
     mindMaps: notebook.mindMaps,
     quiz: notebook.quiz,
-    interviewQA: notebook.interviewQA
+    interviewQA: notebook.interviewQA,
   };
 
   return (
@@ -78,11 +86,23 @@ const NotebookView = () => {
   );
 };
 
+const NotebookView = () => {
+  const navigate = useNavigate();
+  return (
+    <ErrorBoundary
+      fallbackTitle="Could not display notebook"
+      onReset={() => navigate('/library')}
+    >
+      <NotebookViewContent />
+    </ErrorBoundary>
+  );
+};
+
 // Helper to convert a single TopicNotes to markdown
 const topicToMarkdown = (topic: TopicNotes): string => {
   let md = '';
 
-  topic.sections.forEach(section => {
+  (topic.sections || []).forEach((section) => {
     if (section.type === 'heading') {
       md += `${'#'.repeat((section.level || 3) + 1)} ${section.content}\n\n`;
     } else if (section.type === 'code') {
@@ -90,10 +110,10 @@ const topicToMarkdown = (topic: TopicNotes): string => {
       md += section.codeSnippet?.code + '\n';
       md += '```\n\n';
     } else if (section.type === 'bullets') {
-      section.items?.forEach(item => md += `- ${item}\n`);
+      section.items?.forEach((item) => (md += `- ${item}\n`));
       md += '\n';
     } else if (section.type === 'numbered') {
-      section.items?.forEach((item, i) => md += `${i + 1}. ${item}\n`);
+      section.items?.forEach((item, i) => (md += `${i + 1}. ${item}\n`));
       md += '\n';
     } else if (section.type === 'quote') {
       md += `> ${section.content}\n\n`;
@@ -108,7 +128,7 @@ const topicToMarkdown = (topic: TopicNotes): string => {
 
   if (topic.keyTakeaways && topic.keyTakeaways.length > 0) {
     md += `#### Key Takeaways\n`;
-    topic.keyTakeaways.forEach(takeaway => {
+    topic.keyTakeaways.forEach((takeaway) => {
       md += `- ✅ ${takeaway}\n`;
     });
     md += `\n`;
@@ -124,31 +144,31 @@ const notebookToMarkdown = (notebook: Notebook): string => {
     md += `> ${notebook.description}\n\n`;
   }
 
-  md += `*Generated on ${new Date(notebook.createdAt).toLocaleDateString()} • ${notebook.metadata.totalTopics} Topics • ${notebook.metadata.estimatedReadTime} min read*\n\n`;
+  md += `*Generated on ${new Date(notebook.createdAt).toLocaleDateString()} • ${notebook.metadata?.totalTopics || 0} Topics • ${notebook.metadata?.estimatedReadTime || 5} min read*\n\n`;
   md += `---\n\n`;
 
   // Table of Contents
   md += `## Table of Contents\n\n`;
-  notebook.chapters.forEach((chapter, i) => {
+  (notebook.chapters || []).forEach((chapter, i) => {
     md += `${i + 1}. [${chapter.title}](#${slugify(chapter.title)})\n`;
-    chapter.topics.forEach(topic => {
+    (chapter.topics || []).forEach((topic) => {
       md += `   - [${topic.topicTitle}](#${slugify(topic.topicTitle)})\n`;
     });
   });
   md += `\n---\n\n`;
 
-  notebook.chapters.forEach(chapter => {
+  (notebook.chapters || []).forEach((chapter) => {
     md += `## ${chapter.title}\n\n`;
 
-    chapter.topics.forEach(topic => {
+    (chapter.topics || []).forEach((topic) => {
       md += `### ${topic.topicTitle}\n\n`;
 
       if (topic.summary) {
         md += `**Summary**: ${topic.summary}\n\n`;
       }
 
-      md += topicToMarkdown(topic);
-      md += `---\n\n`;
+      md += topic.content || topicToMarkdown(topic);
+      md += `\n\n---\n\n`;
     });
   });
 
@@ -158,6 +178,5 @@ const notebookToMarkdown = (notebook: Notebook): string => {
 const slugify = (text: string) => {
   return text.toLowerCase().replace(/[^\w ]+/g, '').replace(/ +/g, '-');
 };
-
 
 export default NotebookView;

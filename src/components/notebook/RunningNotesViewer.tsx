@@ -172,7 +172,7 @@ function InlineText({ text, onSeek }: { text: string; onSeek?: (seconds: number)
 
 // ─── Main Markdown Renderer ────────────────────────────────────────────────────
 
-function renderNotebook(md: string, onSeek?: (seconds: number) => void): React.ReactNode[] {
+function renderNotebook(md: string, topicTitle?: string, onSeek?: (seconds: number) => void): React.ReactNode[] {
     const lines = md.split('\n');
     const elements: React.ReactNode[] = [];
     let inCode = false;
@@ -247,7 +247,7 @@ function renderNotebook(md: string, onSeek?: (seconds: number) => void): React.R
         if (inMermaid) {
             if (line === '```') {
                 elements.push(
-                    <MermaidDiagram key={key()} chart={mermaidLines.join('\n')} title={title} />
+                    <MermaidDiagram key={key()} chart={mermaidLines.join('\n')} title={topicTitle} />
                 );
                 inMermaid = false;
             } else {
@@ -414,7 +414,7 @@ export function RunningNotesViewer({ content, title, className, showToolbar = tr
                 'relative',
             )}>
                 <article className="relative px-6 py-6 md:px-8 md:py-8 max-w-none">
-                    {renderNotebook(content, onSeek)}
+                    {renderNotebook(content, title, onSeek)}
                 </article>
             </div>
         </div>

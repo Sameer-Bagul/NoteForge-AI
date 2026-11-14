@@ -7,6 +7,7 @@ import { HelmetProvider } from "react-helmet-async";
 import { SettingsProvider } from "@/context/SettingsContext";
 import { ThemeProvider } from "@/context/ThemeContext";
 import { SettingsPanel } from "@/components/SettingsPanel";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import Layout from "./components/Layout";
 import Create from "./pages/Create";
 import Library from "./pages/Library";
@@ -25,15 +26,17 @@ const App = () => (
             <Toaster />
             <Sonner />
             <BrowserRouter>
-              <Routes>
-                <Route element={<Layout />}>
-                  <Route path="/" element={<Create />} />
-                  <Route path="/process/:jobId" element={<Process />} />
-                  <Route path="/library" element={<Library />} />
-                  <Route path="/notebook/:id" element={<NotebookView />} />
-                  <Route path="*" element={<NotFound />} />
-                </Route>
-              </Routes>
+              <ErrorBoundary>
+                <Routes>
+                  <Route element={<Layout />}>
+                    <Route path="/" element={<Create />} />
+                    <Route path="/process/:jobId" element={<Process />} />
+                    <Route path="/library" element={<Library />} />
+                    <Route path="/notebook/:id" element={<NotebookView />} />
+                    <Route path="*" element={<NotFound />} />
+                  </Route>
+                </Routes>
+              </ErrorBoundary>
             </BrowserRouter>
             {/* Global Settings Panel overlay */}
             <SettingsPanel />
