@@ -2,21 +2,13 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { ProcessingState, ProcessingStep, VideoNotes, TopicIndex, JobStatus } from '@/types';
 import { api } from '@/services/api';
 import { isTauri } from '@/services/tauri';
-import { nativePipeline } from '@/services/nativePipeline';
-
-const initialSteps: ProcessingStep[] = [
-  { id: 'extract', label: 'Extracting Transcripts', description: 'Fetching video transcripts from YouTube', status: 'pending' },
-  { id: 'analyze', label: 'Analyzing Content', description: 'Analyzing transcript content and structure', status: 'pending' },
-  { id: 'index', label: 'Generating Index', description: 'Creating unified topic index', status: 'pending' },
-  { id: 'notes', label: 'Generating Notes', description: 'Writing detailed notes for each topic', status: 'pending' },
-  { id: 'assemble', label: 'Assembling Notebook', description: 'Compiling final notebook', status: 'pending' },
-];
+import { nativePipeline, PIPELINE_STEPS } from '@/services/nativePipeline';
 
 export const useProcessing = (initialJobId?: string | null) => {
   const [state, setState] = useState<ProcessingState>({
     status: 'idle',
     currentStep: 0,
-    steps: initialSteps,
+    steps: PIPELINE_STEPS,
   });
 
   const [logs, setLogs] = useState<{ id: string; message: string; type: 'info' | 'success' | 'error' | 'ai'; timestamp: string }[]>([]);
@@ -47,7 +39,6 @@ export const useProcessing = (initialJobId?: string | null) => {
   };
 
   const handleJobUpdate = useCallback((jobStatus: JobStatus) => {
-    // Map backend status to frontend status
     const mapStatus = (backendStatus: string): string => {
       switch (backendStatus) {
         case 'extracting-transcripts': return 'extracting';
@@ -63,7 +54,7 @@ export const useProcessing = (initialJobId?: string | null) => {
       }
     };
 
-    const updatedSteps = jobStatus.steps || initialSteps;
+    const updatedSteps = jobStatus.steps || PIPELINE_STEPS;
     const mappedStatus = mapStatus(jobStatus.status);
 
     setState(prev => {
@@ -77,14 +68,7 @@ export const useProcessing = (initialJobId?: string | null) => {
         ...(jobStatus.index && { index: jobStatus.index }),
       };
 
-      // Add logs based on status changes
-      if (prev.status !== newState.status) {
-        addLog(`Transitioned to state: ${newState.status}`, 'info');
-      }
-
-      // If job is complete, transform notebook to notes format
       if (jobStatus.status === 'complete' && jobStatus.notebook) {
-        // ... (rest of transformation logic)
         const topicIndex: TopicIndex[] = jobStatus.notebook.index?.topics?.map((topic: any) => ({
           id: topic.id,
           title: topic.title,
@@ -108,22 +92,20 @@ export const useProcessing = (initialJobId?: string | null) => {
             ...note,
             content: buildContentFromSections(note),
             title: note.topicTitle,
-          })) as any,
+            topicId: note.topicId,
+            summary: note.summary,
+            sections: note.sections || [],
+            keyTakeaways: note.keyTakeaways || [],
+            videoSources: note.videoSources || [],
+            generatedAt: note.generatedAt || new Date().toISOString(),
+          })),
           fullContent: allTopicNotes.map((note: any) => `## ${note.topicTitle}\n\n${buildContentFromSections(note)}`).join('\n\n---\n\n'),
         };
-        addLog('Notebook generation complete!', 'success');
       }
 
       return newState;
     });
-
-    if (jobStatus.status === 'complete' || jobStatus.status === 'error') {
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close();
-        eventSourceRef.current = null;
-      }
-    }
-  }, [addLog]);
+  }, []);
 
   const connectToStream = useCallback((jobId: string) => {
     if (eventSourceRef.current) {
@@ -133,7 +115,6 @@ export const useProcessing = (initialJobId?: string | null) => {
     const apiBase = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
     const url = `${apiBase}/process/stream/${jobId}`;
 
-    console.log(`🔌 Connecting to SSE stream: ${url}`);
     const es = new EventSource(url);
     eventSourceRef.current = es;
 
@@ -141,170 +122,182 @@ export const useProcessing = (initialJobId?: string | null) => {
       try {
         const job = JSON.parse(e.data);
         handleJobUpdate(job);
-
-        // Log important updates
-        const activeStep = job.steps[job.currentStep];
-        if (activeStep) {
-          addLog(`${activeStep.label}: ${activeStep.details || 'Processing...'}`, 'ai');
-        }
       } catch (err) {
         console.error('Failed to parse job update:', err);
       }
     });
 
-    es.addEventListener('note:delta', (e) => {
-      try {
-        const { topicId, delta } = JSON.parse(e.data);
-        setState(prev => {
-          if (!prev.notes) {
-            // Initialize notes structure if missing
-            const dummyNotes: VideoNotes = {
-              videoId: prev.videoInfo?.id || 'pending',
-              title: prev.videoInfo?.title || 'Generating Notes...',
-              index: [],
-              notes: [],
-              fullContent: ''
-            };
-            prev = { ...prev, notes: dummyNotes };
-          }
-
-          const existingNoteIdx = prev.notes!.notes.findIndex(n => n.topicId === topicId);
-          const updatedNotesList = [...prev.notes!.notes];
-
-          if (existingNoteIdx >= 0) {
-            const note = updatedNotesList[existingNoteIdx];
-            updatedNotesList[existingNoteIdx] = {
-              ...note,
-              content: (note.content || '') + delta
-            };
-          } else {
-            updatedNotesList.push({
-              topicId,
-              topicTitle: 'Generating...',
-              content: delta,
-              summary: '',
-              sections: [],
-              keyTakeaways: [],
-              videoSources: [],
-              generatedAt: new Date().toISOString(),
-              title: 'Generating...'
-            } as any);
-          }
-
-          return {
-            ...prev,
-            notes: {
-              ...prev.notes!,
-              notes: updatedNotesList,
-              fullContent: updatedNotesList.map(n => `## ${n.title || n.topicTitle}\n\n${n.content}`).join('\n\n---\n\n')
-            }
-          };
-        });
-      } catch (err) {
-        console.error('Failed to parse note delta:', err);
-      }
-    });
-
-    es.onerror = (err) => {
-      console.error('SSE Error:', err);
+    es.onerror = () => {
       es.close();
       eventSourceRef.current = null;
     };
+  }, [handleJobUpdate]);
 
-    return () => {
-      es.close();
-    };
-  }, [handleJobUpdate, addLog]);
-
-  // Synchronize with an existing job
-  const syncJob = useCallback(async (jobId: string) => {
-    try {
-      addLog(`Synchronizing with job ${jobId.slice(0, 8)}...`, 'info');
-      const jobStatus = await api.getJobStatus(jobId);
-      currentJobIdRef.current = jobId;
-      handleJobUpdate(jobStatus);
-      connectToStream(jobId);
-    } catch (err) {
-      console.error('Failed to sync job:', err);
-      addLog('Failed to find existing job', 'error');
-    }
-  }, [handleJobUpdate, connectToStream, addLog]);
-
+  // Sync / Subscribe to job
   useEffect(() => {
-    if (initialJobId && !currentJobIdRef.current) {
-      syncJob(initialJobId);
+    if (!initialJobId) return;
+    currentJobIdRef.current = initialJobId;
+
+    if (isTauri()) {
+      // 1. Check if nativePipeline has an active in-memory session
+      const active = nativePipeline.getSession(initialJobId);
+      if (active) {
+        const allNotes = active.notebook?.chapters?.flatMap(c => c.topics) || [];
+        setState({
+          status: active.status,
+          currentStep: active.currentStep,
+          steps: active.steps,
+          videoCount: active.videoSources.length,
+          videoInfo: active.videoSources[0],
+          index: active.index as any,
+          notes: active.notebook ? {
+            videoId: active.notebook.metadata?.sourceVideos?.[0]?.id || '',
+            notebookId: active.notebook.id,
+            title: active.notebook.title,
+            index: active.notebook.index.topics.map(t => ({ id: t.id, title: t.title, subtopics: t.subtopics.map(s => s.title) })),
+            notes: allNotes as any,
+            fullContent: allNotes.map(n => `## ${n.topicTitle}\n\n${n.content}`).join('\n\n---\n\n'),
+          } : undefined,
+          error: active.error,
+        });
+        setLogs([...active.logs]);
+      } else {
+        // 2. Not in memory, try loading from SQLite
+        api.getJobStatus(initialJobId).then(job => {
+          handleJobUpdate(job);
+        }).catch(err => {
+          console.error('Failed to load job from SQLite:', err);
+          setState(prev => ({
+            ...prev,
+            status: 'error',
+            error: `Unable to locate job: ${initialJobId}`,
+          }));
+        });
+      }
+
+      // 3. Subscribe to live pipeline events
+      const unsubscribe = nativePipeline.subscribe(initialJobId, {
+        onStepChange: (stepIndex, status, details) => {
+          setState(prev => {
+            const nextSteps = prev.steps.map((s, i) =>
+              i === stepIndex ? { ...s, status, details } : s
+            );
+            return { ...prev, currentStep: stepIndex, steps: nextSteps };
+          });
+        },
+        onStatusChange: (status) => {
+          setState(prev => ({ ...prev, status }));
+        },
+        onLog: (msg, type) => {
+          addLog(msg, type);
+        },
+        onAwaitingApproval: (index) => {
+          setState(prev => ({
+            ...prev,
+            status: 'awaiting-approval',
+            index: index as any,
+          }));
+        },
+        onNoteDelta: (topicId, delta) => {
+          setState(prev => {
+            if (!prev.notes) {
+              const dummyNotes: VideoNotes = {
+                videoId: prev.videoInfo?.id || 'pending',
+                title: prev.videoInfo?.title || 'Generating Notes...',
+                index: prev.topicIndex || [],
+                notes: [],
+                fullContent: '',
+              };
+              prev = { ...prev, notes: dummyNotes };
+            }
+
+            const existingNoteIdx = prev.notes!.notes.findIndex(n => n.topicId === topicId);
+            const updatedNotesList = [...prev.notes!.notes];
+
+            if (existingNoteIdx >= 0) {
+              const note = updatedNotesList[existingNoteIdx];
+              updatedNotesList[existingNoteIdx] = {
+                ...note,
+                content: (note.content || '') + delta,
+              };
+            } else {
+              updatedNotesList.push({
+                topicId,
+                topicTitle: 'Generating...',
+                content: delta,
+                summary: '',
+                sections: [],
+                keyTakeaways: [],
+                videoSources: [],
+                generatedAt: new Date().toISOString(),
+                title: 'Generating...',
+              } as any);
+            }
+
+            return {
+              ...prev,
+              notes: {
+                ...prev.notes!,
+                notes: updatedNotesList,
+                fullContent: updatedNotesList.map(n => `## ${n.title || n.topicTitle}\n\n${n.content}`).join('\n\n---\n\n'),
+              },
+            };
+          });
+        },
+        onComplete: (notebook) => {
+          const allNotes = notebook.chapters.flatMap(c => c.topics);
+          setState(prev => ({
+            ...prev,
+            status: 'complete',
+            currentStep: 4,
+            steps: prev.steps.map(s => ({ ...s, status: 'complete' })),
+            notes: {
+              videoId: notebook.metadata?.sourceVideos?.[0]?.id || '',
+              notebookId: notebook.id,
+              title: notebook.title,
+              index: notebook.index.topics.map(t => ({ id: t.id, title: t.title, subtopics: t.subtopics.map(s => s.title) })),
+              notes: allNotes as any,
+              fullContent: allNotes.map(n => `## ${n.topicTitle}\n\n${n.content}`).join('\n\n---\n\n'),
+            },
+          }));
+        },
+        onError: (err) => {
+          setState(prev => ({
+            ...prev,
+            status: 'error',
+            error: err,
+            steps: prev.steps.map(s => s.status === 'active' ? { ...s, status: 'error' } : s),
+          }));
+        },
+      });
+
+      return () => {
+        unsubscribe();
+      };
+    } else {
+      // Legacy Web fallback with SSE
+      api.getJobStatus(initialJobId).then(job => {
+        handleJobUpdate(job);
+        connectToStream(initialJobId);
+      }).catch(err => {
+        console.error('Failed to sync job:', err);
+      });
     }
-  }, [initialJobId, syncJob]);
+  }, [initialJobId, handleJobUpdate, connectToStream, addLog]);
 
   const startProcessing = useCallback(async (url: string, userNotes?: string, creativityLevel?: number, generationMode?: 'topical' | 'chronological') => {
     try {
-      setState({
-        status: 'extracting',
-        currentStep: 0,
-        steps: initialSteps.map((s, i) => ({
-          ...s,
-          status: i === 0 ? 'active' : 'pending',
-        })),
-      });
+      const jobId = `job-${Date.now()}`;
+      currentJobIdRef.current = jobId;
 
       if (isTauri()) {
-        const jobId = `job-${Date.now()}`;
-        currentJobIdRef.current = jobId;
-
+        // Kick off pipeline in background
         nativePipeline.start(
           jobId,
           url,
           userNotes,
           creativityLevel,
-          generationMode,
-          {
-            onStepChange: (stepIndex, status, details) => {
-              setState(prev => {
-                const nextSteps = prev.steps.map((s, i) =>
-                  i === stepIndex ? { ...s, status, details } : s
-                );
-                return { ...prev, currentStep: stepIndex, steps: nextSteps };
-              });
-            },
-            onStatusChange: (status) => {
-              setState(prev => ({ ...prev, status }));
-            },
-            onLog: (msg, type) => {
-              addLog(msg, type);
-            },
-            onAwaitingApproval: (index) => {
-              setState(prev => ({
-                ...prev,
-                status: 'awaiting-approval',
-                index: index as any,
-              }));
-            },
-            onComplete: (notebook) => {
-              const allNotes = notebook.chapters.flatMap(c => c.topics);
-              setState(prev => ({
-                ...prev,
-                status: 'complete',
-                currentStep: 4,
-                steps: prev.steps.map(s => ({ ...s, status: 'complete' })),
-                notes: {
-                  videoId: notebook.metadata?.sourceVideos?.[0]?.id || '',
-                  notebookId: notebook.id,
-                  title: notebook.title,
-                  index: notebook.index.topics.map(t => ({ id: t.id, title: t.title, subtopics: t.subtopics.map(s => s.title) })),
-                  notes: allNotes as any,
-                  fullContent: allNotes.map(n => `## ${n.topicTitle}\n\n${n.content}`).join('\n\n---\n\n'),
-                },
-              }));
-            },
-            onError: (err) => {
-              setState(prev => ({
-                ...prev,
-                status: 'error',
-                error: err,
-                steps: prev.steps.map(s => s.status === 'active' ? { ...s, status: 'error' } : s),
-              }));
-            }
-          }
+          generationMode
         ).catch(err => {
           console.error('Pipeline error:', err);
         });
@@ -313,20 +306,19 @@ export const useProcessing = (initialJobId?: string | null) => {
       }
 
       const response = await api.startProcessing(url, userNotes, creativityLevel, generationMode);
-      const jobId = response.jobId;
-      currentJobIdRef.current = jobId;
-
-      connectToStream(jobId);
-      return jobId;
+      const serverJobId = response.jobId;
+      currentJobIdRef.current = serverJobId;
+      connectToStream(serverJobId);
+      return serverJobId;
     } catch (error) {
       console.error('Error starting processing:', error);
       setState(prev => ({
         ...prev,
         status: 'idle',
-        steps: initialSteps.map(s => ({ ...s, status: 'error' })),
+        steps: PIPELINE_STEPS.map(s => ({ ...s, status: 'error' })),
       }));
     }
-  }, [connectToStream, addLog]);
+  }, [connectToStream]);
 
   const approveIndex = useCallback(async (updatedIndex: any) => {
     const jobId = currentJobIdRef.current;
@@ -361,7 +353,6 @@ export const useProcessing = (initialJobId?: string | null) => {
         index: updatedIndex,
       }));
 
-      // Ensure we are connected
       if (!eventSourceRef.current) {
         connectToStream(jobId);
       }
@@ -400,7 +391,7 @@ export const useProcessing = (initialJobId?: string | null) => {
     setState({
       status: 'idle',
       currentStep: 0,
-      steps: initialSteps.map(s => ({ ...s, status: 'pending', progress: undefined })),
+      steps: PIPELINE_STEPS.map(s => ({ ...s, status: 'pending', progress: undefined })),
     });
   }, []);
 

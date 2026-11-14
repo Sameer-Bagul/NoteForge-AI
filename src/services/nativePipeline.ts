@@ -1,14 +1,13 @@
 import { tauriApi, ExtractedTranscript, PlaylistMetadata } from './tauri';
 import {
   UnifiedIndex,
-  TopicNode,
   Notebook,
-  Chapter,
   TopicNotes,
   ProcessingStatus,
+  ProcessingStep,
   VideoInfo,
 } from '@/types';
-import { AppSettings, DEFAULT_SETTINGS } from '@/types/settings';
+import { AppSettings } from '@/types/settings';
 
 const MERMAID_PROMPT = `
 MERMAID DIAGRAM GUIDELINES:
@@ -29,6 +28,14 @@ FORMATTING RULES:
 - Include tables for comparisons and syntax-highlighted code blocks where applicable.
 - Where beneficial for understanding architecture or data flow, include an interactive Mermaid diagram.
 `;
+
+export const PIPELINE_STEPS: ProcessingStep[] = [
+  { id: 'extract', label: 'Extracting Transcripts', description: 'Fetching video transcripts from YouTube', status: 'pending' },
+  { id: 'analyze', label: 'Analyzing Content', description: 'Analyzing transcript content and structure', status: 'pending' },
+  { id: 'index', label: 'Generating Index', description: 'Creating unified topic index', status: 'pending' },
+  { id: 'notes', label: 'Generating Notes', description: 'Writing detailed notes for each topic', status: 'pending' },
+  { id: 'assemble', label: 'Assembling Notebook', description: 'Compiling final notebook', status: 'pending' },
+];
 
 export function getAIConfigForTask(task: 'notes' | 'indexing' | 'features'): { provider: string; model: string; baseUrl?: string; apiKey?: string } {
   try {
@@ -75,11 +82,22 @@ export interface PipelineCallbacks {
   onError?: (err: string) => void;
 }
 
-// In-memory active session map to allow approval resumption
-interface ActivePipelineSession {
+export interface PipelineLogItem {
+  id: string;
+  message: string;
+  type: 'info' | 'success' | 'error' | 'ai';
+  timestamp: string;
+}
+
+// In-memory active session map to allow approval resumption and real-time subscription
+export interface ActivePipelineSession {
   jobId: string;
   url: string;
   title: string;
+  status: ProcessingStatus;
+  currentStep: number;
+  steps: ProcessingStep[];
+  logs: PipelineLogItem[];
   transcripts: ExtractedTranscript[];
   videoSources: VideoInfo[];
   options: {
@@ -87,13 +105,111 @@ interface ActivePipelineSession {
     creativityLevel?: number;
     generationMode?: 'topical' | 'chronological';
   };
-  callbacks: PipelineCallbacks;
   index?: UnifiedIndex;
+  notebook?: Notebook;
+  error?: string;
 }
 
 const activeSessions = new Map<string, ActivePipelineSession>();
+const listeners = new Map<string, Set<PipelineCallbacks>>();
+
+function notifyStatusChange(session: ActivePipelineSession, status: ProcessingStatus) {
+  session.status = status;
+  const set = listeners.get(session.jobId);
+  if (set) {
+    for (const cb of set) {
+      cb.onStatusChange?.(status);
+    }
+  }
+}
+
+function notifyStepChange(session: ActivePipelineSession, stepIndex: number, status: 'pending' | 'active' | 'complete' | 'error', details?: string) {
+  session.currentStep = stepIndex;
+  session.steps = session.steps.map((s, idx) => idx === stepIndex ? { ...s, status, details } : s);
+  const set = listeners.get(session.jobId);
+  if (set) {
+    for (const cb of set) {
+      cb.onStepChange?.(stepIndex, status, details);
+    }
+  }
+}
+
+function notifyLog(session: ActivePipelineSession, message: string, type: 'info' | 'success' | 'error' | 'ai' = 'info') {
+  const item: PipelineLogItem = {
+    id: Math.random().toString(36).substring(7),
+    message,
+    type,
+    timestamp: new Date().toLocaleTimeString(),
+  };
+  session.logs.unshift(item);
+  if (session.logs.length > 50) session.logs.pop();
+
+  const set = listeners.get(session.jobId);
+  if (set) {
+    for (const cb of set) {
+      cb.onLog?.(message, type);
+    }
+  }
+}
+
+function notifyAwaitingApproval(session: ActivePipelineSession, index: UnifiedIndex) {
+  session.index = index;
+  session.status = 'awaiting-approval';
+  const set = listeners.get(session.jobId);
+  if (set) {
+    for (const cb of set) {
+      cb.onAwaitingApproval?.(index);
+    }
+  }
+}
+
+function notifyNoteDelta(session: ActivePipelineSession, topicId: string, delta: string) {
+  const set = listeners.get(session.jobId);
+  if (set) {
+    for (const cb of set) {
+      cb.onNoteDelta?.(topicId, delta);
+    }
+  }
+}
+
+function notifyComplete(session: ActivePipelineSession, notebook: Notebook) {
+  session.notebook = notebook;
+  session.status = 'complete';
+  const set = listeners.get(session.jobId);
+  if (set) {
+    for (const cb of set) {
+      cb.onComplete?.(notebook);
+    }
+  }
+}
+
+function notifyError(session: ActivePipelineSession, err: string) {
+  session.error = err;
+  session.status = 'error';
+  const set = listeners.get(session.jobId);
+  if (set) {
+    for (const cb of set) {
+      cb.onError?.(err);
+    }
+  }
+}
 
 export const nativePipeline = {
+  getSession(jobId: string): ActivePipelineSession | undefined {
+    return activeSessions.get(jobId);
+  },
+
+  subscribe(jobId: string, callbacks: PipelineCallbacks): () => void {
+    if (!listeners.has(jobId)) {
+      listeners.set(jobId, new Set());
+    }
+    listeners.get(jobId)!.add(callbacks);
+
+    return () => {
+      listeners.get(jobId)?.delete(callbacks);
+    };
+  },
+
   async start(
     jobId: string,
     url: string,
@@ -102,12 +218,45 @@ export const nativePipeline = {
     generationMode: 'topical' | 'chronological' = 'topical',
     callbacks: PipelineCallbacks = {}
   ): Promise<void> {
-    const { onStepChange, onStatusChange, onLog, onAwaitingApproval, onError } = callbacks;
+    // 1. Initialize session in memory immediately
+    const session: ActivePipelineSession = {
+      jobId,
+      url,
+      title: 'Validating Video URL...',
+      status: 'extracting',
+      currentStep: 0,
+      steps: PIPELINE_STEPS.map((s, idx) => ({
+        ...s,
+        status: idx === 0 ? 'active' : 'pending',
+      })),
+      logs: [],
+      transcripts: [],
+      videoSources: [],
+      options: { userNotes, creativityLevel, generationMode },
+    };
+    activeSessions.set(jobId, session);
+
+    // Register caller callbacks
+    if (!listeners.has(jobId)) {
+      listeners.set(jobId, new Set());
+    }
+    listeners.get(jobId)!.add(callbacks);
+
+    // Persist initial job record to SQLite immediately so any route can find it
+    await tauriApi.saveJob({
+      id: jobId,
+      url,
+      status: 'extracting',
+      current_step: 0,
+      options_json: JSON.stringify({ videoSources: [] }),
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }).catch(console.warn);
 
     try {
-      onLog?.(`Initiating native pipeline for job ${jobId.slice(0, 8)}...`, 'info');
-      onStatusChange?.('extracting');
-      onStepChange?.(0, 'active', 'Validating URL & extracting captions...');
+      notifyLog(session, `Initiating native pipeline for job ${jobId.slice(0, 8)}...`, 'info');
+      notifyStatusChange(session, 'extracting');
+      notifyStepChange(session, 0, 'active', 'Validating URL & extracting captions...');
 
       const validation = await tauriApi.validateUrl(url);
       if (!validation.valid) {
@@ -120,7 +269,7 @@ export const nativePipeline = {
 
       // ── Step 1: Caption Extraction ──────────────────────────────────────────
       if (validation.playlist_id) {
-        onLog?.(`Extracting playlist metadata (ID: ${validation.playlist_id})...`, 'info');
+        notifyLog(session, `Extracting playlist metadata (ID: ${validation.playlist_id})...`, 'info');
         const playlist = await tauriApi.fetchPlaylist(validation.playlist_id);
         overallTitle = playlist.title;
         videoSources = playlist.videos.map(v => ({
@@ -129,21 +278,21 @@ export const nativePipeline = {
           thumbnail: v.thumbnail,
         }));
 
-        onLog?.(`Found ${playlist.videos.length} videos in playlist. Extracting captions...`, 'info');
+        notifyLog(session, `Found ${playlist.videos.length} videos in playlist. Extracting captions...`, 'info');
         let count = 0;
         for (const v of playlist.videos) {
           try {
             count++;
-            onStepChange?.(0, 'active', `Extracting captions ${count}/${playlist.videos.length}: ${v.title.slice(0, 30)}...`);
+            notifyStepChange(session, 0, 'active', `Extracting captions ${count}/${playlist.videos.length}: ${v.title.slice(0, 30)}...`);
             const t = await tauriApi.fetchTranscript(v.id);
             transcripts.push(t);
-            onLog?.(`Extracted captions for "${t.video_info.title}"`, 'success');
+            notifyLog(session, `Extracted captions for "${t.video_info.title}"`, 'success');
           } catch (e) {
-            onLog?.(`Skipped captions for ${v.id}: ${e}`, 'error');
+            notifyLog(session, `Skipped captions for ${v.id}: ${e}`, 'error');
           }
         }
       } else if (validation.video_id) {
-        onStepChange?.(0, 'active', `Fetching captions for video ${validation.video_id}...`);
+        notifyStepChange(session, 0, 'active', `Fetching captions for video ${validation.video_id}...`);
         const t = await tauriApi.fetchTranscript(validation.video_id);
         transcripts.push(t);
         overallTitle = t.video_info.title;
@@ -152,19 +301,23 @@ export const nativePipeline = {
           title: t.video_info.title,
           thumbnail: t.video_info.thumbnail,
         });
-        onLog?.(`Extracted ${t.segments.length} timestamped caption segments`, 'success');
+        notifyLog(session, `Extracted ${t.segments.length} timestamped caption segments`, 'success');
       }
+
+      session.title = overallTitle;
+      session.transcripts = transcripts;
+      session.videoSources = videoSources;
 
       if (transcripts.length === 0 || transcripts.every(t => !t.full_text)) {
-        throw new Error('No transcripts or closed captions could be retrieved for this video.');
+        throw new Error('No closed captions or transcripts could be retrieved for this YouTube video.');
       }
 
-      onStepChange?.(0, 'complete', `Extracted ${transcripts.length} transcript(s)`);
+      notifyStepChange(session, 0, 'complete', `Extracted ${transcripts.length} transcript(s)`);
 
       // ── Step 2: Content Analysis & Topic Indexing ──────────────────────────
-      onStatusChange?.('indexing');
-      onStepChange?.(1, 'active', 'Analyzing concepts and semantic structure...');
-      onLog?.('Analyzing video structure with AI...', 'ai');
+      notifyStatusChange(session, 'indexing');
+      notifyStepChange(session, 1, 'active', 'Analyzing concepts and semantic structure...');
+      notifyLog(session, 'Analyzing video structure with AI...', 'ai');
 
       const aiConfig = getAIConfigForTask('indexing');
       const combinedText = transcripts.map(t => `Video: ${t.video_info.title}\n${t.full_text}`).join('\n\n---\n\n');
@@ -192,7 +345,7 @@ Instructions:
 
       const systemPrompt = "You are an expert curriculum designer. Output ONLY valid JSON array with no conversational filler or markdown fences.";
 
-      onStepChange?.(2, 'active', 'Generating unified topic index...');
+      notifyStepChange(session, 2, 'active', 'Generating unified topic index...');
       const rawIndexResponse = await tauriApi.streamLLM(
         indexPrompt,
         systemPrompt,
@@ -213,8 +366,8 @@ Instructions:
       let parsedTopics: Array<{ title: string; description: string; subtopics: string[] }> = [];
       try {
         parsedTopics = JSON.parse(cleanedJson);
-      } catch (err) {
-        onLog?.('Fallback parsing for topic index', 'info');
+      } catch {
+        notifyLog(session, 'Using robust outline fallback structure', 'info');
         parsedTopics = [
           { title: 'Core Concepts & Fundamentals', description: 'Overview and fundamental concepts', subtopics: ['Architecture', 'Setup'] },
           { title: 'In-Depth Walkthrough', description: 'Detailed implementation steps', subtopics: ['Execution', 'Configuration'] },
@@ -243,27 +396,15 @@ Instructions:
         topicCount: parsedTopics.length,
       };
 
-      onStepChange?.(1, 'complete', 'Content analysis complete');
-      onStepChange?.(2, 'complete', `Generated index with ${generatedIndex.topicCount} topics`);
-      onLog?.(`Generated topic index with ${generatedIndex.topicCount} chapters`, 'success');
+      notifyStepChange(session, 1, 'complete', 'Content analysis complete');
+      notifyStepChange(session, 2, 'complete', `Generated index with ${generatedIndex.topicCount} topics`);
+      notifyLog(session, `Generated topic index with ${generatedIndex.topicCount} chapters`, 'success');
 
       // ── Step 3: Pause for User Review / Approval ───────────────────────────
-      onStatusChange?.('awaiting-approval');
-      onLog?.('Index ready for review. Click "Approve & Generate" to produce notes.', 'info');
+      notifyStatusChange(session, 'awaiting-approval');
+      notifyLog(session, 'Index ready for review. Click "Approve & Generate" to produce notes.', 'info');
 
-      // Save session in memory and save initial job in SQLite
-      const session: ActivePipelineSession = {
-        jobId,
-        url,
-        title: overallTitle,
-        transcripts,
-        videoSources,
-        options: { userNotes, creativityLevel, generationMode },
-        callbacks,
-        index: generatedIndex,
-      };
-      activeSessions.set(jobId, session);
-
+      // Update SQLite state
       await tauriApi.saveJob({
         id: jobId,
         url,
@@ -274,13 +415,24 @@ Instructions:
         updated_at: new Date().toISOString(),
       }).catch(console.warn);
 
-      onAwaitingApproval?.(generatedIndex);
+      notifyAwaitingApproval(session, generatedIndex);
     } catch (err: any) {
       console.error('Native pipeline error:', err);
-      onStepChange?.(0, 'error', err?.message || 'Pipeline failed');
-      onStatusChange?.('error');
-      onLog?.(err?.message || 'Pipeline execution failed', 'error');
-      onError?.(err?.message || 'Pipeline execution failed');
+      const errMsg = err?.message || 'Pipeline execution failed';
+      notifyStepChange(session, 0, 'error', errMsg);
+      notifyStatusChange(session, 'error');
+      notifyLog(session, errMsg, 'error');
+      notifyError(session, errMsg);
+
+      await tauriApi.saveJob({
+        id: jobId,
+        url,
+        status: 'error',
+        current_step: session.currentStep,
+        options_json: JSON.stringify({ error: errMsg }),
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }).catch(console.warn);
     }
   },
 
@@ -290,23 +442,22 @@ Instructions:
       throw new Error(`No active session found for job ${jobId}`);
     }
 
-    const { callbacks, transcripts, videoSources, title, options } = session;
-    const { onStepChange, onStatusChange, onLog, onNoteDelta, onComplete, onError } = callbacks;
+    const { transcripts, videoSources, title, options } = session;
 
     try {
       session.index = approvedIndex;
-      onStatusChange?.('generating');
-      onStepChange?.(3, 'active', `Generating notes for ${approvedIndex.topics.length} topics...`);
-      onLog?.(`Beginning deep notes synthesis for ${approvedIndex.topics.length} topics...`, 'ai');
+      notifyStatusChange(session, 'generating');
+      notifyStepChange(session, 3, 'active', `Generating notes for ${approvedIndex.topics.length} topics...`);
+      notifyLog(session, `Beginning deep notes synthesis for ${approvedIndex.topics.length} topics...`, 'ai');
 
-      const aiConfig = getAIConfigForTask('indexing');
+      const aiConfig = getAIConfigForTask('notes');
       const allTopicNotes: TopicNotes[] = [];
 
       let topicIndex = 0;
       for (const topic of approvedIndex.topics) {
         topicIndex++;
-        onStepChange?.(3, 'active', `Writing topic ${topicIndex}/${approvedIndex.topics.length}: ${topic.title}...`);
-        onLog?.(`Generating study notes for: "${topic.title}"`, 'ai');
+        notifyStepChange(session, 3, 'active', `Writing topic ${topicIndex}/${approvedIndex.topics.length}: ${topic.title}...`);
+        notifyLog(session, `Generating study notes for: "${topic.title}"`, 'ai');
 
         const creativity = options.creativityLevel || 2;
         const creativityMode =
@@ -350,7 +501,7 @@ Begin directly with the topic notes in structured Markdown.`;
           aiConfig.baseUrl,
           (delta) => {
             topicContent += delta;
-            onNoteDelta?.(topic.id, delta);
+            notifyNoteDelta(session, topic.id, delta);
           },
           aiConfig.apiKey
         );
@@ -370,15 +521,15 @@ Begin directly with the topic notes in structured Markdown.`;
           title: topic.title,
         });
 
-        onLog?.(`Completed notes for "${topic.title}"`, 'success');
+        notifyLog(session, `Completed notes for "${topic.title}"`, 'success');
       }
 
-      onStepChange?.(3, 'complete', `Generated notes for ${allTopicNotes.length} topics`);
+      notifyStepChange(session, 3, 'complete', `Generated notes for ${allTopicNotes.length} topics`);
 
       // ── Step 5: Assembling Notebook & Saving to SQLite ────────────────────
-      onStatusChange?.('assembling');
-      onStepChange?.(4, 'active', 'Compiling chapters and saving to SQLite...');
-      onLog?.('Assembling notebook in SQLite database...', 'info');
+      notifyStatusChange(session, 'assembling');
+      notifyStepChange(session, 4, 'active', 'Compiling chapters and saving to SQLite...');
+      notifyLog(session, 'Assembling notebook in SQLite database...', 'info');
 
       const notebookId = `nb-${Date.now()}`;
       const fullMarkdown = allTopicNotes
@@ -431,22 +582,22 @@ Begin directly with the topic notes in structured Markdown.`;
         updated_at: new Date().toISOString(),
       });
 
-      onStepChange?.(4, 'complete', 'Notebook assembled and stored');
-      onStatusChange?.('complete');
-      onLog?.('Notebook generated successfully and stored in SQLite!', 'success');
+      notifyStepChange(session, 4, 'complete', 'Notebook assembled and stored');
+      notifyStatusChange(session, 'complete');
+      notifyLog(session, 'Notebook generated successfully and stored in SQLite!', 'success');
 
+      notifyComplete(session, finalNotebook);
       activeSessions.delete(jobId);
-      onComplete?.(finalNotebook);
 
       return finalNotebook;
     } catch (err: any) {
       console.error('Error during notes generation:', err);
-      onStepChange?.(3, 'error', err?.message || 'Notes generation failed');
-      onStatusChange?.('error');
-      onLog?.(err?.message || 'Notes generation failed', 'error');
-      onError?.(err?.message || 'Notes generation failed');
+      const errMsg = err?.message || 'Notes generation failed';
+      notifyStepChange(session, 3, 'error', errMsg);
+      notifyStatusChange(session, 'error');
+      notifyLog(session, errMsg, 'error');
+      notifyError(session, errMsg);
       throw err;
     }
   },
 };
-
