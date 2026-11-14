@@ -39,7 +39,7 @@ export const PROVIDER_DESCRIPTIONS: Record<AIProvider, string> = {
 };
 
 export const DEFAULT_MODELS: Record<AIProvider, string> = {
-    gemini: 'gemini-flash-latest',
+    gemini: 'gemini-flash-lite-latest',
     grok: 'grok-beta',
     lmstudio: 'local-model',
     ollama: 'qwen2.5-coder:7b',
@@ -65,8 +65,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
             provider: 'gemini',
             enabled: true,
             apiKey: '',
-            model: 'gemini-flash-latest',
-            indexingModel: 'gemini-flash-latest',
+            model: 'gemini-flash-lite-latest',
+            indexingModel: 'gemini-flash-lite-latest',
             baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
             priority: 1,
         },

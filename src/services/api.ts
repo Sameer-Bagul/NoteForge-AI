@@ -36,9 +36,12 @@ function getAIForTask(task: 'notes' | 'indexing' | 'features'): { provider: stri
       }
 
       if (providerConfig) {
-        const model = (task === 'indexing' && providerConfig.indexingModel)
+        let model = (task === 'indexing' && providerConfig.indexingModel)
           ? providerConfig.indexingModel
-          : (providerConfig.model || 'gemini-flash-latest');
+          : (providerConfig.model || 'gemini-flash-lite-latest');
+        if (model === 'gemini-flash-latest' || model === 'gemini-2.5-flash' || model === 'gemini-1.5-flash') {
+          model = 'gemini-flash-lite-latest';
+        }
         return {
           provider: providerConfig.provider,
           model,
@@ -48,7 +51,7 @@ function getAIForTask(task: 'notes' | 'indexing' | 'features'): { provider: stri
       }
     }
   } catch {}
-  return { provider: 'gemini', model: 'gemini-flash-latest' };
+  return { provider: 'gemini', model: 'gemini-flash-lite-latest' };
 }
 
 export const api = {

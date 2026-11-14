@@ -51,9 +51,14 @@ export function getAIConfigForTask(task: 'notes' | 'indexing' | 'features'): { p
       }
 
       if (providerConfig) {
-        const model = (task === 'indexing' && providerConfig.indexingModel)
+        let model = (task === 'indexing' && providerConfig.indexingModel)
           ? providerConfig.indexingModel
-          : (providerConfig.model || 'gemini-flash-latest');
+          : (providerConfig.model || 'gemini-flash-lite-latest');
+
+        // Migrate away from models experiencing high-demand outages or deprecations
+        if (model === 'gemini-flash-latest' || model === 'gemini-2.5-flash' || model === 'gemini-1.5-flash') {
+          model = 'gemini-flash-lite-latest';
+        }
 
         return {
           provider: providerConfig.provider,
@@ -67,7 +72,7 @@ export function getAIConfigForTask(task: 'notes' | 'indexing' | 'features'): { p
 
   return {
     provider: 'gemini',
-    model: 'gemini-flash-latest',
+    model: 'gemini-flash-lite-latest',
   };
 }
 
@@ -336,6 +341,7 @@ export const nativePipeline = {
       notifyLog(session, 'Analyzing video structure with AI...', 'ai');
 
       const aiConfig = getAIConfigForTask('indexing');
+      notifyLog(session, `Connecting to ${aiConfig.provider} (${aiConfig.model})...`, 'info');
       const combinedText = transcripts.map(t => `Video: ${t.video_info.title}\n${t.full_text}`).join('\n\n---\n\n');
       const textSample = combinedText.slice(0, 16000); // 16k chars sample for indexing
 
@@ -361,13 +367,22 @@ Instructions:
 
       const systemPrompt = "You are an expert curriculum designer. Output ONLY valid JSON array with no conversational filler or markdown fences.";
 
+      let streamedChars = 0;
       const rawIndexResponse = await tauriApi.streamLLM(
         indexPrompt,
         systemPrompt,
         aiConfig.provider,
         aiConfig.model,
         aiConfig.baseUrl,
-        () => {},
+        (token) => {
+          streamedChars += token.length;
+          notifyStepChange(
+            session,
+            1,
+            'active',
+            `Streaming curriculum outline (${Math.round(streamedChars / 4)} tokens)...`
+          );
+        },
         aiConfig.apiKey
       );
 
@@ -433,16 +448,17 @@ Instructions:
     } catch (err: any) {
       console.error('Native pipeline error:', err);
       const errMsg = err?.message || 'Pipeline execution failed';
-      notifyStepChange(session, 0, 'error', errMsg);
+      const failedStep = session.currentStep ?? 1;
+      notifyStepChange(session, failedStep, 'error', errMsg);
       notifyStatusChange(session, 'error');
-      notifyLog(session, errMsg, 'error');
+      notifyLog(session, `Pipeline halted: ${errMsg}`, 'error');
       notifyError(session, errMsg);
 
       await tauriApi.saveJob({
         id: jobId,
         url,
         status: 'error',
-        current_step: session.currentStep,
+        current_step: failedStep,
         options_json: JSON.stringify({ error: errMsg }),
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),

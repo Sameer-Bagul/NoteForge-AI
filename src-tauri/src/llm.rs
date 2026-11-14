@@ -17,7 +17,10 @@ pub struct LLMService {
 impl LLMService {
     pub fn new() -> Self {
         Self {
-            client: Client::builder().build().unwrap(),
+            client: Client::builder()
+                .connect_timeout(std::time::Duration::from_secs(10))
+                .build()
+                .unwrap(),
         }
     }
 
@@ -56,14 +59,19 @@ impl LLMService {
             .ok_or_else(|| "Gemini API key is required".to_string())?;
 
         let primary_model = if config.model.is_empty() {
-            "gemini-flash-latest".to_string()
+            "gemini-flash-lite-latest".to_string()
         } else {
             config.model.clone()
         };
 
-        // Fallback candidate chain: primary model -> gemini-flash-lite-latest -> gemini-flash-latest
+        // Fallback candidate chain: primary model -> gemini-flash-lite-latest -> gemini-2.5-flash-lite -> gemini-flash-latest
         let mut candidates = vec![primary_model];
-        for fallback in ["gemini-flash-lite-latest", "gemini-flash-latest"] {
+        for fallback in [
+            "gemini-flash-lite-latest",
+            "gemini-2.5-flash-lite",
+            "gemini-flash-latest",
+            "gemini-2.5-flash",
+        ] {
             if !candidates.iter().any(|c| c == fallback) {
                 candidates.push(fallback.to_string());
             }
@@ -90,10 +98,16 @@ impl LLMService {
                 model, api_key
             );
 
-            let resp = match self.client.post(&url).json(&body).send().await {
-                Ok(r) => r,
-                Err(e) => {
-                    last_err = format!("Gemini connection error: {e}");
+            // Timeout after 15s if connection or initial response headers stall
+            let send_fut = self.client.post(&url).json(&body).send();
+            let resp = match tokio::time::timeout(std::time::Duration::from_secs(15), send_fut).await {
+                Ok(Ok(r)) => r,
+                Ok(Err(e)) => {
+                    last_err = format!("Gemini connection error on {model}: {e}");
+                    continue;
+                }
+                Err(_) => {
+                    last_err = format!("Gemini model {model} initial response timed out after 15s");
                     continue;
                 }
             };
@@ -101,34 +115,51 @@ impl LLMService {
             if !resp.status().is_success() {
                 let status = resp.status();
                 let err_text = resp.text().await.unwrap_or_default();
-                last_err = format!("Gemini API error ({status}): {err_text}");
-                // If model is not found (404) or high demand (503), try next model candidate
-                if status == reqwest::StatusCode::NOT_FOUND || status == reqwest::StatusCode::SERVICE_UNAVAILABLE {
-                    continue;
-                }
-                return Err(last_err);
+                last_err = format!("Gemini API error on {model} ({status}): {err_text}");
+                // On any HTTP failure (503 high demand, 404 deprecated, 429 quota, 500 error), continue to fallback
+                continue;
             }
 
             let mut stream = resp.bytes_stream();
             let mut full_output = String::new();
+            let mut stream_stalled = false;
 
-            while let Some(chunk_res) = stream.next().await {
-                let chunk = chunk_res.map_err(|e| format!("Stream read error: {e}"))?;
-                let text = String::from_utf8_lossy(&chunk);
+            loop {
+                // Timeout per token chunk: 20 seconds
+                let chunk_fut = stream.next();
+                match tokio::time::timeout(std::time::Duration::from_secs(20), chunk_fut).await {
+                    Ok(Some(chunk_res)) => {
+                        let chunk = match chunk_res {
+                            Ok(c) => c,
+                            Err(e) => {
+                                last_err = format!("Stream read error on {model}: {e}");
+                                stream_stalled = true;
+                                break;
+                            }
+                        };
+                        let text = String::from_utf8_lossy(&chunk);
 
-                for line in text.lines() {
-                    if let Some(data_str) = line.strip_prefix("data: ") {
-                        if let Ok(val) = serde_json::from_str::<serde_json::Value>(data_str) {
-                            if let Some(token) = val["candidates"][0]["content"]["parts"][0]["text"].as_str() {
-                                full_output.push_str(token);
-                                on_token(token);
+                        for line in text.lines() {
+                            if let Some(data_str) = line.strip_prefix("data: ") {
+                                if let Ok(val) = serde_json::from_str::<serde_json::Value>(data_str) {
+                                    if let Some(token) = val["candidates"][0]["content"]["parts"][0]["text"].as_str() {
+                                        full_output.push_str(token);
+                                        on_token(token);
+                                    }
+                                }
                             }
                         }
+                    }
+                    Ok(None) => break, // Stream completed normally
+                    Err(_) => {
+                        last_err = format!("Stream stalled on {model} (no response for 20s)");
+                        stream_stalled = true;
+                        break;
                     }
                 }
             }
 
-            if !full_output.is_empty() {
+            if !stream_stalled && !full_output.is_empty() {
                 return Ok(full_output);
             }
         }
@@ -173,13 +204,12 @@ impl LLMService {
             body["system"] = serde_json::json!(sys);
         }
 
-        let resp = self
-            .client
-            .post(&url)
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| format!("Ollama connection error (check if Ollama is running): {e}"))?;
+        let send_fut = self.client.post(&url).json(&body).send();
+        let resp = match tokio::time::timeout(std::time::Duration::from_secs(15), send_fut).await {
+            Ok(Ok(r)) => r,
+            Ok(Err(e)) => return Err(format!("Ollama connection error (check if Ollama is running): {e}")),
+            Err(_) => return Err("Ollama connection timed out after 15s".to_string()),
+        };
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -190,17 +220,24 @@ impl LLMService {
         let mut stream = resp.bytes_stream();
         let mut full_output = String::new();
 
-        while let Some(chunk_res) = stream.next().await {
-            let chunk = chunk_res.map_err(|e| format!("Stream read error: {e}"))?;
-            let text = String::from_utf8_lossy(&chunk);
+        loop {
+            let chunk_fut = stream.next();
+            match tokio::time::timeout(std::time::Duration::from_secs(20), chunk_fut).await {
+                Ok(Some(chunk_res)) => {
+                    let chunk = chunk_res.map_err(|e| format!("Stream read error: {e}"))?;
+                    let text = String::from_utf8_lossy(&chunk);
 
-            for line in text.lines() {
-                if let Ok(val) = serde_json::from_str::<serde_json::Value>(line) {
-                    if let Some(token) = val["response"].as_str() {
-                        full_output.push_str(token);
-                        on_token(token);
+                    for line in text.lines() {
+                        if let Ok(val) = serde_json::from_str::<serde_json::Value>(line) {
+                            if let Some(token) = val["response"].as_str() {
+                                full_output.push_str(token);
+                                on_token(token);
+                            }
+                        }
                     }
                 }
+                Ok(None) => break,
+                Err(_) => return Err("Ollama stream stalled for 20s".to_string()),
             }
         }
 
