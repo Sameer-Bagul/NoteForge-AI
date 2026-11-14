@@ -136,3 +136,4 @@ export const ActivityStream = ({ logs, status }: ActivityStreamProps) => {
     </div>
   );
 };
+

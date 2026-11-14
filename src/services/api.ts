@@ -10,6 +10,7 @@ import {
 } from '@/types';
 import { AppSettings } from '@/types/settings';
 import { tauriApi, isTauri } from './tauri';
+import { PIPELINE_STEPS } from './nativePipeline';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
 const ENABLE_DEBUG = import.meta.env.VITE_ENABLE_DEBUG_LOGS === 'true';
@@ -100,6 +101,18 @@ export const api = {
       if (job) {
         let options: any = {};
         try { options = JSON.parse(job.options_json || '{}'); } catch {}
+        const currentStep = job.current_step || 0;
+        const mappedSteps: ProcessingStep[] = PIPELINE_STEPS.map((s, idx) => ({
+          ...s,
+          status:
+            idx < currentStep
+              ? 'complete'
+              : idx === currentStep
+              ? (job.status === 'error' ? 'error' : 'active')
+              : 'pending',
+          details: idx < currentStep ? 'Completed' : idx === currentStep ? s.description : undefined,
+        }));
+
         return {
           id: job.id,
           jobId: job.id,
@@ -107,8 +120,8 @@ export const api = {
           url: job.url,
           status: job.status as any,
           type: 'video',
-          currentStep: job.current_step,
-          steps: [],
+          currentStep,
+          steps: mappedSteps,
           videos: options.videoSources || [],
           createdAt: job.created_at,
           updatedAt: job.updated_at,
@@ -119,6 +132,12 @@ export const api = {
       if (notebook) {
         let parsed: any = {};
         try { parsed = JSON.parse(notebook.content_json); } catch {}
+        const mappedSteps: ProcessingStep[] = PIPELINE_STEPS.map((s) => ({
+          ...s,
+          status: 'complete',
+          details: 'Completed',
+        }));
+
         return {
           id: notebook.id,
           jobId: notebook.job_id || notebook.id,
@@ -126,8 +145,8 @@ export const api = {
           url: parsed.url || '',
           status: 'complete',
           type: 'video',
-          currentStep: 5,
-          steps: [],
+          currentStep: PIPELINE_STEPS.length,
+          steps: mappedSteps,
           videos: parsed.metadata?.sourceVideos || [],
           notebook: parsed,
           createdAt: notebook.created_at,

@@ -54,7 +54,17 @@ export const useProcessing = (initialJobId?: string | null) => {
       }
     };
 
-    const updatedSteps = jobStatus.steps || PIPELINE_STEPS;
+    const updatedSteps = (jobStatus.steps && jobStatus.steps.length > 0)
+      ? jobStatus.steps
+      : PIPELINE_STEPS.map((s, idx) => ({
+          ...s,
+          status:
+            idx < jobStatus.currentStep
+              ? 'complete'
+              : idx === jobStatus.currentStep
+              ? (jobStatus.status === 'error' ? 'error' : 'active')
+              : 'pending',
+        }));
     const mappedStatus = mapStatus(jobStatus.status);
 
     setState(prev => {

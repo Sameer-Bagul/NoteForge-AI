@@ -1,6 +1,7 @@
 import { Check, Loader2, AlertCircle, Sparkles, ArrowRight } from 'lucide-react';
 import { ProcessingStep, VideoInfo } from '@/types';
 import { Progress } from './ui/progress';
+import { PIPELINE_STEPS } from '@/services/nativePipeline';
 
 interface ProcessingViewProps {
   steps: ProcessingStep[];
@@ -21,14 +22,17 @@ export const ProcessingView = ({
   streamingTopicTitle,
   streamingContent,
 }: ProcessingViewProps) => {
-  const completedCount = steps.filter((s) => s.status === 'complete').length;
-  const activeStep = steps.find((s) => s.status === 'active');
-  const activeStepIndex = steps.findIndex((s) => s.status === 'active');
+  const displaySteps = (steps && steps.length > 0) ? steps : PIPELINE_STEPS;
+  const totalCount = displaySteps.length || 1;
+  const completedCount = displaySteps.filter((s) => s.status === 'complete').length;
+  const activeStep = displaySteps.find((s) => s.status === 'active');
+  const activeStepIndex = displaySteps.findIndex((s) => s.status === 'active');
 
-  // Calculate smooth overall progress percentage
-  const baseProgress = (completedCount / steps.length) * 100;
-  const activeStepBonus = activeStep ? (1 / steps.length) * 50 : 0;
-  const overallProgress = Math.min(100, Math.round(baseProgress + activeStepBonus));
+  // Calculate smooth overall progress percentage (guarded against NaN)
+  const baseProgress = (completedCount / totalCount) * 100;
+  const activeStepBonus = activeStep ? (1 / totalCount) * 50 : 0;
+  const calculated = Math.min(100, Math.round(baseProgress + activeStepBonus));
+  const overallProgress = isNaN(calculated) ? 0 : calculated;
 
   return (
     <div className="w-full space-y-4">
@@ -42,7 +46,7 @@ export const ProcessingView = ({
               </h2>
               {activeStep && (
                 <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
-                  Step {activeStepIndex + 1} of {steps.length}
+                  Step {activeStepIndex + 1} of {displaySteps.length}
                 </span>
               )}
             </div>
@@ -67,7 +71,7 @@ export const ProcessingView = ({
       {/* Stepper Timeline */}
       <div className="rounded-xl border border-border/70 bg-card/60 p-4 space-y-1">
         <div className="relative pl-7 before:absolute before:left-3 before:top-3 before:bottom-3 before:w-[2px] before:bg-border/60 space-y-4">
-          {steps.map((step, idx) => {
+          {displaySteps.map((step, idx) => {
             const isActive = step.status === 'active';
             const isComplete = step.status === 'complete';
             const isError = step.status === 'error';
