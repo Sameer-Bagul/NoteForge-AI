@@ -29,6 +29,9 @@ interface TopicNode {
   subtopics: SubTopic[];
   videoSources: string[];
   order: number;
+  startTime?: number;
+  endTime?: number;
+  timeDisplay?: string;
 }
 
 interface UnifiedIndex {
@@ -199,9 +202,14 @@ export function IndexReview({ index, onApprove, onCancel }: IndexReviewProps) {
                     </div>
                   ) : (
                     <>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <Badge variant="secondary">{idx + 1}</Badge>
                         <CardTitle className="text-lg">{topic.title}</CardTitle>
+                        {topic.timeDisplay && (
+                          <Badge variant="outline" className="font-mono text-xs text-primary border-primary/40 bg-primary/5">
+                            ▶ {topic.timeDisplay}
+                          </Badge>
+                        )}
                       </div>
                       {topic.description && (
                         <CardDescription className="mt-2">

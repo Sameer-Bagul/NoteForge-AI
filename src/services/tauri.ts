@@ -23,6 +23,13 @@ export interface PlaylistMetadata {
   }>;
 }
 
+export interface VideoChapter {
+  title: string;
+  start_seconds: number;
+  end_seconds?: number;
+  time_display: string;
+}
+
 export interface ExtractedTranscript {
   video_id: string;
   video_info: {
@@ -31,6 +38,7 @@ export interface ExtractedTranscript {
     thumbnail: string;
     duration?: string;
     channel?: string;
+    chapters?: VideoChapter[];
   };
   segments: Array<{
     start: number;
@@ -38,6 +46,7 @@ export interface ExtractedTranscript {
     text: string;
   }>;
   full_text: string;
+  chapters?: VideoChapter[];
 }
 
 export interface JobRecord {

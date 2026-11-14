@@ -52,7 +52,10 @@ const NotebookView = () => {
     index: notebook.index.topics.map(t => ({
       id: t.id,
       title: t.title,
-      subtopics: t.subtopics.map(st => st.title)
+      subtopics: t.subtopics.map(st => st.title),
+      startTime: t.startTime,
+      endTime: t.endTime,
+      timeDisplay: t.timeDisplay,
     }) as TopicIndex),
     notes: notebook.chapters.flatMap(c => c.topics).map(topic => ({
       ...topic,

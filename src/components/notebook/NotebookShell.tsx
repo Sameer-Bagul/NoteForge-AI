@@ -27,10 +27,12 @@ function TopicSidebar({
     topics,
     activeId,
     onSelect,
+    onSeek,
 }: {
-    topics: { id: string; title: string; subtopics?: string[] }[];
+    topics: { id: string; title: string; subtopics?: string[]; startTime?: number; timeDisplay?: string }[];
     activeId?: string;
     onSelect: (id: string) => void;
+    onSeek?: (seconds: number) => void;
 }) {
     return (
         <nav className="rounded-xl border border-border/60 bg-card/60 overflow-hidden h-full flex flex-col shadow-xs">
@@ -44,7 +46,12 @@ function TopicSidebar({
                 {topics.map((t, i) => (
                     <button
                         key={t.id}
-                        onClick={() => onSelect(t.id)}
+                        onClick={() => {
+                            onSelect(t.id);
+                            if (t.startTime !== undefined && onSeek) {
+                                onSeek(t.startTime);
+                            }
+                        }}
                         className={cn(
                             'w-full text-left px-4 py-3 text-sm transition-all group relative',
                             activeId === t.id
@@ -55,14 +62,28 @@ function TopicSidebar({
                         {activeId === t.id && (
                             <span className="absolute left-0 top-0 bottom-0 w-1 bg-primary rounded-r" />
                         )}
-                        <div className="flex items-start gap-2.5">
-                            <span className={cn(
-                                'text-xs mt-0.5 shrink-0 font-mono font-medium',
-                                activeId === t.id ? 'text-primary' : 'text-muted-foreground/60'
-                            )}>
-                                {String(i + 1).padStart(2, '0')}
-                            </span>
-                            <span className="leading-snug text-xs sm:text-sm line-clamp-2">{t.title}</span>
+                        <div className="flex items-start justify-between gap-2">
+                            <div className="flex items-start gap-2.5 min-w-0">
+                                <span className={cn(
+                                    'text-xs mt-0.5 shrink-0 font-mono font-medium',
+                                    activeId === t.id ? 'text-primary' : 'text-muted-foreground/60'
+                                )}>
+                                    {String(i + 1).padStart(2, '0')}
+                                </span>
+                                <span className="leading-snug text-xs sm:text-sm line-clamp-2">{t.title}</span>
+                            </div>
+                            {t.timeDisplay && (
+                                <span
+                                    className={cn(
+                                        "text-[10px] font-mono px-1.5 py-0.5 rounded shrink-0 transition-colors",
+                                        activeId === t.id
+                                            ? "bg-primary/20 text-primary font-semibold"
+                                            : "bg-muted/70 text-muted-foreground group-hover:bg-primary/20 group-hover:text-primary"
+                                    )}
+                                >
+                                    {t.timeDisplay}
+                                </span>
+                            )}
                         </div>
                     </button>
                 ))}
@@ -76,16 +97,18 @@ function TopicSidebar({
 function IndexPanel({
     topics,
     onSelectTopic,
+    onSeek,
 }: {
     topics: VideoNotes['index'];
     onSelectTopic?: (id: string) => void;
+    onSeek?: (seconds: number) => void;
 }) {
     return (
         <div className="w-full space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-border/40">
                 <div>
                     <h2 className="text-sm font-semibold text-foreground tracking-tight">Curriculum Outline & Chapters</h2>
-                    <p className="text-xs text-muted-foreground">Comprehensive topic breakdown extracted from timestamps and transcript semantics</p>
+                    <p className="text-xs text-muted-foreground">Comprehensive topic breakdown extracted from YouTube timeline markers and transcript semantics</p>
                 </div>
                 <span className="text-xs font-mono text-muted-foreground bg-muted/60 px-2.5 py-1 rounded-md border border-border/40">
                     {topics.length} Chapters
@@ -99,13 +122,32 @@ function IndexPanel({
                         className="group flex flex-col justify-between rounded-xl border border-border/60 bg-card/60 hover:bg-card hover:border-primary/40 transition-all p-4 cursor-pointer shadow-xs hover:shadow-sm"
                     >
                         <div className="space-y-2.5">
-                            <div className="flex items-center gap-2.5">
-                                <span className="w-7 h-7 rounded-lg bg-primary/10 group-hover:bg-primary text-primary group-hover:text-primary-foreground font-mono font-semibold text-xs flex items-center justify-center shrink-0 transition-colors">
-                                    {String(i + 1).padStart(2, '0')}
-                                </span>
-                                <h3 className="font-semibold text-sm text-foreground leading-snug group-hover:text-primary transition-colors line-clamp-2">
-                                    {t.title}
-                                </h3>
+                            <div className="flex items-center justify-between gap-2.5">
+                                <div className="flex items-center gap-2.5 min-w-0">
+                                    <span className="w-7 h-7 rounded-lg bg-primary/10 group-hover:bg-primary text-primary group-hover:text-primary-foreground font-mono font-semibold text-xs flex items-center justify-center shrink-0 transition-colors">
+                                        {String(i + 1).padStart(2, '0')}
+                                    </span>
+                                    <h3 className="font-semibold text-sm text-foreground leading-snug group-hover:text-primary transition-colors line-clamp-2">
+                                        {t.title}
+                                    </h3>
+                                </div>
+                                {t.timeDisplay && (
+                                    <button
+                                        type="button"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            if (t.startTime !== undefined && onSeek) {
+                                                onSeek(t.startTime);
+                                            }
+                                            onSelectTopic?.(t.id);
+                                        }}
+                                        className="shrink-0 flex items-center gap-1 text-[11px] font-mono font-medium text-primary bg-primary/10 hover:bg-primary hover:text-primary-foreground px-2 py-0.5 rounded transition-colors"
+                                        title={`Play from ${t.timeDisplay}`}
+                                    >
+                                        <Play className="w-2.5 h-2.5 fill-current" />
+                                        {t.timeDisplay}
+                                    </button>
+                                )}
                             </div>
                             {t.subtopics && t.subtopics.length > 0 && (
                                 <div className="flex flex-wrap gap-1.5 pt-1">
@@ -384,6 +426,10 @@ export function NotebookShell({ notes, onReset }: NotebookShellProps) {
                                     onSelect={(id) => {
                                         setActiveTopicId(id);
                                     }}
+                                    onSeek={(secs) => {
+                                        setSeekTime(secs);
+                                        if (!isStudioMode) setIsStudioMode(true);
+                                    }}
                                 />
                             </div>
                         </div>
@@ -426,6 +472,11 @@ export function NotebookShell({ notes, onReset }: NotebookShellProps) {
                         topics={notes.index}
                         onSelectTopic={(id) => {
                             setActiveTopicId(id);
+                            setActiveTab('notes');
+                        }}
+                        onSeek={(secs) => {
+                            setSeekTime(secs);
+                            if (!isStudioMode) setIsStudioMode(true);
                             setActiveTab('notes');
                         }}
                     />

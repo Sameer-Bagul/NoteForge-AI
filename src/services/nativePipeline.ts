@@ -299,6 +299,10 @@ export const nativePipeline = {
             notifyStepChange(session, 0, 'active', `Extracting captions ${count}/${playlist.videos.length}: ${v.title.slice(0, 30)}...`);
             const t = await tauriApi.fetchTranscript(v.id);
             transcripts.push(t);
+            const chapters = t.chapters || t.video_info.chapters || [];
+            if (chapters.length > 0) {
+              notifyLog(session, `Discovered ${chapters.length} creator chapters for "${t.video_info.title}"`, 'info');
+            }
             notifyLog(session, `Extracted captions for "${t.video_info.title}"`, 'success');
           } catch (e) {
             notifyLog(session, `Skipped captions for ${v.id}: ${e}`, 'error');
@@ -309,11 +313,16 @@ export const nativePipeline = {
         const t = await tauriApi.fetchTranscript(validation.video_id);
         transcripts.push(t);
         overallTitle = t.video_info.title;
+        const chapters = t.chapters || t.video_info.chapters || [];
         videoSources.push({
           id: t.video_info.id,
           title: t.video_info.title,
           thumbnail: t.video_info.thumbnail,
+          chapters,
         });
+        if (chapters.length > 0) {
+          notifyLog(session, `Discovered ${chapters.length} YouTube creator timeline chapters`, 'success');
+        }
         notifyLog(session, `Extracted ${t.segments.length} timestamped caption segments`, 'success');
       }
 
@@ -345,8 +354,17 @@ export const nativePipeline = {
       const combinedText = transcripts.map(t => `Video: ${t.video_info.title}\n${t.full_text}`).join('\n\n---\n\n');
       const textSample = combinedText.slice(0, 16000); // 16k chars sample for indexing
 
+      const allDiscoveredChapters = transcripts.flatMap(t => t.chapters || t.video_info.chapters || []);
+
+      const chaptersContext = allDiscoveredChapters.length > 0
+        ? `\nYouTube Creator Timeline Chapters (${allDiscoveredChapters.length} markers found on video timeline):\n` +
+          allDiscoveredChapters.map(c => `- [${c.time_display}] ${c.title}`).join('\n') +
+          `\n\nCRITICAL INSTRUCTION: The video creator marked these exact chapters on the YouTube timeline. You MUST base your curriculum outline directly on these timeline markers! Keep each topic faithful to the creator's timeline label, provide a clear 1-2 sentence description, 2-4 subtopics, and include "startTime" (${allDiscoveredChapters[0].start_seconds}) and "timeDisplay" ("${allDiscoveredChapters[0].time_display}").`
+        : '';
+
       const indexPrompt = `Analyze this video transcript and generate a structured topic outline for study notes.
 Title: "${overallTitle}"
+${chaptersContext}
 
 Source Transcript:
 """
@@ -354,14 +372,16 @@ ${textSample}
 """
 
 Instructions:
-1. Extract 4 to 8 clear, progressive study topics.
-2. For each topic, supply a title, short description, and 2-4 subtopics.
+1. ${allDiscoveredChapters.length > 0 ? `Create a topic for each creator timeline chapter (or group tightly-spaced ones if >16 chapters).` : `Extract 4 to 8 clear, progressive study topics.`}
+2. For each topic, supply a title, short description, 2-4 subtopics, and matching "startTime" and "timeDisplay".
 3. Return ONLY a valid JSON array of topics matching this schema:
 [
   {
     "title": "Topic Name",
     "description": "Short overview of what is taught",
-    "subtopics": ["Subtopic 1", "Subtopic 2"]
+    "subtopics": ["Subtopic 1", "Subtopic 2"],
+    "startTime": 0,
+    "timeDisplay": "0:00"
   }
 ]`;
 
@@ -393,33 +413,66 @@ Instructions:
       if (cleanedJson.endsWith('```')) cleanedJson = cleanedJson.slice(0, -3);
       cleanedJson = cleanedJson.trim();
 
-      let parsedTopics: Array<{ title: string; description: string; subtopics: string[] }> = [];
+      let parsedTopics: Array<{
+        title: string;
+        description: string;
+        subtopics: string[];
+        startTime?: number;
+        endTime?: number;
+        timeDisplay?: string;
+      }> = [];
+
       try {
         parsedTopics = JSON.parse(cleanedJson);
       } catch {
         notifyLog(session, 'Using robust outline fallback structure', 'info');
-        parsedTopics = [
-          { title: 'Core Concepts & Fundamentals', description: 'Overview and fundamental concepts', subtopics: ['Architecture', 'Setup'] },
-          { title: 'In-Depth Walkthrough', description: 'Detailed implementation steps', subtopics: ['Execution', 'Configuration'] },
-          { title: 'Summary & Key Takeaways', description: 'Conclusion and practical guidelines', subtopics: ['Best Practices', 'Next Steps'] }
-        ];
+        if (allDiscoveredChapters.length > 0) {
+          parsedTopics = allDiscoveredChapters.map(c => ({
+            title: c.title,
+            description: `Core analysis and takeaways for ${c.title} [${c.time_display}]`,
+            subtopics: ['Key Concepts', 'Detailed Breakdown', 'Practical Implications'],
+            startTime: c.start_seconds,
+            endTime: c.end_seconds,
+            timeDisplay: c.time_display,
+          }));
+        } else {
+          parsedTopics = [
+            { title: 'Core Concepts & Fundamentals', description: 'Overview and fundamental concepts', subtopics: ['Architecture', 'Setup'] },
+            { title: 'In-Depth Walkthrough', description: 'Detailed implementation steps', subtopics: ['Execution', 'Configuration'] },
+            { title: 'Summary & Key Takeaways', description: 'Conclusion and practical guidelines', subtopics: ['Best Practices', 'Next Steps'] }
+          ];
+        }
       }
 
       const generatedIndex: UnifiedIndex = {
         id: `idx-${Date.now()}`,
         title: overallTitle,
-        topics: parsedTopics.map((t, idx) => ({
-          id: `topic-${idx + 1}-${Math.random().toString(36).substring(2, 6)}`,
-          title: t.title,
-          description: t.description,
-          subtopics: (t.subtopics || []).map((st, sidx) => ({
-            id: `sub-${idx}-${sidx}`,
-            title: st,
+        topics: parsedTopics.map((t, idx) => {
+          const matched = allDiscoveredChapters.find(c =>
+            c.title.toLowerCase().includes(t.title.toLowerCase()) ||
+            t.title.toLowerCase().includes(c.title.toLowerCase())
+          ) || allDiscoveredChapters[idx];
+
+          const startTime = t.startTime ?? matched?.start_seconds;
+          const endTime = t.endTime ?? matched?.end_seconds;
+          const timeDisplay = t.timeDisplay ?? matched?.time_display;
+
+          return {
+            id: `topic-${idx + 1}-${Math.random().toString(36).substring(2, 6)}`,
+            title: t.title,
+            description: t.description,
+            subtopics: (t.subtopics || []).map((st, sidx) => ({
+              id: `sub-${idx}-${sidx}`,
+              title: st,
+              videoSources: [videoSources[0]?.id || ''],
+            })),
             videoSources: [videoSources[0]?.id || ''],
-          })),
-          videoSources: [videoSources[0]?.id || ''],
-          order: idx + 1,
-        })),
+            order: idx + 1,
+            startTime,
+            endTime,
+            timeDisplay,
+          };
+        }),
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         videoCount: videoSources.length,
@@ -497,12 +550,39 @@ Instructions:
           'Creative, comprehensive publication-grade mastery notes';
 
         const transcriptExcerpt = transcripts
-          .map(t => t.segments.slice(0, 150).map(s => `[${Math.floor(s.start / 60)}:${Math.floor(s.start % 60).toString().padStart(2, '0')}] ${s.text}`).join(' '))
+          .map(t => {
+            let segs = t.segments;
+            if (topic.startTime !== undefined) {
+              const start = topic.startTime;
+              const end = topic.endTime ?? (start + 600);
+              const filtered = segs.filter(s => s.start >= Math.max(0, start - 15) && s.start <= end + 15);
+              if (filtered.length >= 5) {
+                segs = filtered;
+              }
+            }
+            if (segs === t.segments && approvedIndex.topics.length > 1) {
+              const segsPerTopic = Math.max(30, Math.floor(t.segments.length / approvedIndex.topics.length));
+              const startIdx = Math.min((topicIndex - 1) * segsPerTopic, Math.max(0, t.segments.length - segsPerTopic));
+              segs = t.segments.slice(startIdx, startIdx + segsPerTopic * 2);
+            }
+            return segs
+              .slice(0, 200)
+              .map(s => {
+                const h = Math.floor(s.start / 3600);
+                const m = Math.floor((s.start % 3600) / 60);
+                const sec = Math.floor(s.start % 60);
+                const ts = h > 0
+                  ? `${h}:${m.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`
+                  : `${m}:${sec.toString().padStart(2, '0')}`;
+                return `[${ts}] ${s.text}`;
+              })
+              .join(' ');
+          })
           .join('\n\n')
-          .slice(0, 12000);
+          .slice(0, 14000);
 
         const prompt = `Write comprehensive, book-quality study notes for the following topic.
-Topic: "${topic.title}"
+Topic: "${topic.title}"${topic.timeDisplay ? ` [Timeline Chapter: ${topic.timeDisplay}]` : ''}
 Description: ${topic.description || ''}
 Subtopics to cover:
 ${topic.subtopics.map(s => `- ${s.title}`).join('\n')}
@@ -545,10 +625,14 @@ Begin directly with the topic notes in structured Markdown.`;
           videoSources: [{
             videoId: videoSources[0]?.id || '',
             videoTitle: videoSources[0]?.title || '',
+            timestamps: topic.startTime !== undefined ? [topic.startTime] : undefined,
           }],
           generatedAt: new Date().toISOString(),
           content: topicContent,
           title: topic.title,
+          startTime: topic.startTime,
+          endTime: topic.endTime,
+          timeDisplay: topic.timeDisplay,
         });
 
         notifyLog(session, `Completed notes for "${topic.title}"`, 'success');

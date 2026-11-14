@@ -1,12 +1,20 @@
 export type ProcessingStatus = 'idle' | 'extracting' | 'indexing' | 'awaiting-approval' | 'generating' | 'assembling' | 'complete' | 'error'
   | 'extracting-transcripts' | 'analyzing-content' | 'generating-index' | 'generating-notes' | 'assembling-notebook' | 'paused-rate-limit';
 
+export interface VideoChapter {
+  title: string;
+  start_seconds: number;
+  end_seconds?: number;
+  time_display: string;
+}
+
 export interface VideoInfo {
   id: string;
   title: string;
   duration?: string;
   thumbnail?: string;
   channel?: string;
+  chapters?: VideoChapter[];
 }
 
 export interface TranscriptSegment {
@@ -18,6 +26,9 @@ export interface TopicIndex {
   id: string;
   title: string;
   subtopics?: string[];
+  startTime?: number;
+  endTime?: number;
+  timeDisplay?: string;
 }
 
 export interface SubTopic {
@@ -34,6 +45,9 @@ export interface TopicNode {
   subtopics: SubTopic[];
   videoSources: string[];
   order: number;
+  startTime?: number;
+  endTime?: number;
+  timeDisplay?: string;
 }
 
 export interface UnifiedIndex {
@@ -56,6 +70,9 @@ export interface TopicNotes {
   generatedAt: string;
   content?: string;
   title?: string;
+  startTime?: number;
+  endTime?: number;
+  timeDisplay?: string;
 }
 
 export interface VideoSourceReference {
