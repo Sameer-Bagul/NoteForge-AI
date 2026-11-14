@@ -20,7 +20,7 @@ const log = (...args: any[]) => {
   }
 };
 
-function getAIForTask(task: 'notes' | 'indexing' | 'features'): { provider: string; model: string; baseUrl?: string } {
+function getAIForTask(task: 'notes' | 'indexing' | 'features'): { provider: string; model: string; baseUrl?: string; apiKey?: string } {
   try {
     const raw = localStorage.getItem('noteforge_ai_settings');
     if (raw) {
@@ -42,6 +42,7 @@ function getAIForTask(task: 'notes' | 'indexing' | 'features'): { provider: stri
           provider: providerConfig.provider,
           model,
           baseUrl: providerConfig.baseUrl,
+          apiKey: providerConfig.apiKey,
         };
       }
     }
@@ -381,7 +382,7 @@ Notes excerpt:
 ${notesContent.slice(0, 3000)}
 """`;
 
-      const raw = await tauriApi.streamLLM(prompt, systemPrompt, ai.provider, ai.model, ai.baseUrl, () => {});
+      const raw = await tauriApi.streamLLM(prompt, systemPrompt, ai.provider, ai.model, ai.baseUrl, () => {}, ai.apiKey);
       let clean = raw.trim();
       if (clean.startsWith('```json')) clean = clean.slice(7);
       if (clean.startsWith('```')) clean = clean.slice(3);
@@ -423,7 +424,7 @@ Content:
 ${fullContent.slice(0, 4000)}
 """`;
 
-      const raw = await tauriApi.streamLLM(prompt, systemPrompt, ai.provider, ai.model, ai.baseUrl, () => {});
+      const raw = await tauriApi.streamLLM(prompt, systemPrompt, ai.provider, ai.model, ai.baseUrl, () => {}, ai.apiKey);
       let clean = raw.trim();
       if (clean.startsWith('```json')) clean = clean.slice(7);
       if (clean.startsWith('```')) clean = clean.slice(3);
@@ -464,7 +465,7 @@ Content reference:
 ${fullContent.slice(0, 4000)}
 """`;
 
-      const raw = await tauriApi.streamLLM(prompt, systemPrompt, ai.provider, ai.model, ai.baseUrl, () => {});
+      const raw = await tauriApi.streamLLM(prompt, systemPrompt, ai.provider, ai.model, ai.baseUrl, () => {}, ai.apiKey);
       let clean = raw.trim();
       if (clean.startsWith('```json')) clean = clean.slice(7);
       if (clean.startsWith('```')) clean = clean.slice(3);

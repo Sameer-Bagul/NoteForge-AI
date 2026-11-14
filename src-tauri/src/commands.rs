@@ -88,6 +88,7 @@ pub struct GeneratePromptRequest {
     pub provider: String,
     pub model: String,
     pub base_url: Option<String>,
+    pub api_key: Option<String>,
 }
 
 #[tauri::command]
@@ -96,8 +97,9 @@ pub async fn stream_llm(
     request: GeneratePromptRequest,
     event_channel: String,
 ) -> Result<String, String> {
-    // Attempt to load API key from keychain if provider is gemini and not provided
-    let api_key = KeychainVault::get_key(&request.provider).ok().flatten();
+    // Attempt to use API key from request, fallback to OS keychain
+    let api_key = request.api_key.filter(|k| !k.is_empty())
+        .or_else(|| KeychainVault::get_key(&request.provider).ok().flatten());
 
     let config = LLMConfig {
         provider: request.provider,

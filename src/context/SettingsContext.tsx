@@ -37,6 +37,7 @@ function loadFromStorage(): AppSettings {
             return {
                 ...def,
                 ...saved,
+                apiKey: saved.apiKey || def.apiKey || '',
                 model: (saved.model && saved.model !== 'mistral') ? saved.model : def.model,
                 indexingModel: saved.indexingModel || def.indexingModel,
                 baseUrl: saved.baseUrl || def.baseUrl,
@@ -55,20 +56,7 @@ function loadFromStorage(): AppSettings {
 
 function saveToStorage(settings: AppSettings) {
     try {
-        if (isTauri()) {
-            // In native desktop mode, strip plaintext API keys from localStorage
-            // Keys are kept securely in OS Keychain (Secret Service / DPAPI / Keychain)
-            const sanitized = {
-                ...settings,
-                providers: settings.providers.map(p => ({
-                    ...p,
-                    apiKey: '', // Never persist raw API keys to localStorage
-                })),
-            };
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(sanitized));
-        } else {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
-        }
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
     } catch {
         // storage full or unavailable
     }

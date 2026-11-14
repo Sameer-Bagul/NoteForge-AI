@@ -113,7 +113,8 @@ export const tauriApi = {
     provider: string,
     model: string,
     baseUrl: string | undefined,
-    onToken: (token: string) => void
+    onToken: (token: string) => void,
+    apiKey?: string
   ): Promise<string> {
     const channel = `llm-stream-${Math.random().toString(36).substring(2, 9)}`;
     const unlisten = await listen<string>(channel, (event) => {
@@ -128,6 +129,7 @@ export const tauriApi = {
           provider,
           model,
           base_url: baseUrl,
+          api_key: apiKey || null,
         },
         eventChannel: channel,
       });

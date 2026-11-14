@@ -30,7 +30,7 @@ FORMATTING RULES:
 - Where beneficial for understanding architecture or data flow, include an interactive Mermaid diagram.
 `;
 
-export function getAIConfigForTask(task: 'notes' | 'indexing' | 'features'): { provider: string; model: string; baseUrl?: string } {
+export function getAIConfigForTask(task: 'notes' | 'indexing' | 'features'): { provider: string; model: string; baseUrl?: string; apiKey?: string } {
   try {
     const raw = localStorage.getItem('noteforge_ai_settings');
     if (raw) {
@@ -53,6 +53,7 @@ export function getAIConfigForTask(task: 'notes' | 'indexing' | 'features'): { p
           provider: providerConfig.provider,
           model,
           baseUrl: providerConfig.baseUrl,
+          apiKey: providerConfig.apiKey,
         };
       }
     }
@@ -198,7 +199,8 @@ Instructions:
         aiConfig.provider,
         aiConfig.model,
         aiConfig.baseUrl,
-        () => {}
+        () => {},
+        aiConfig.apiKey
       );
 
       // Clean JSON
@@ -349,7 +351,8 @@ Begin directly with the topic notes in structured Markdown.`;
           (delta) => {
             topicContent += delta;
             onNoteDelta?.(topic.id, delta);
-          }
+          },
+          aiConfig.apiKey
         );
 
         allTopicNotes.push({

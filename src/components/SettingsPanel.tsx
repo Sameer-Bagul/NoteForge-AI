@@ -233,23 +233,54 @@ function ProviderCard({
                                     <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
                                     API Key (Keychain Protected)
                                 </Label>
-                                <span className="text-[10px] text-muted-foreground font-mono">Encrypted in OS Keychain</span>
+                                {config.apiKey && config.apiKey.length > 0 ? (
+                                    <span className="text-[10px] text-emerald-500 font-mono flex items-center gap-1">
+                                        <CheckCircle2 className="w-3 h-3" /> Key configured
+                                    </span>
+                                ) : (
+                                    <span className="text-[10px] text-muted-foreground font-mono">
+                                        Encrypted in OS Keychain
+                                    </span>
+                                )}
                             </div>
                             <div className="relative">
                                 <Input
                                     type={keyVisible ? 'text' : 'password'}
                                     value={config.apiKey || ''}
                                     onChange={e => update({ apiKey: e.target.value })}
-                                    placeholder={`Enter ${PROVIDER_LABELS[config.provider]} API Key`}
-                                    className="pr-9 h-8.5 text-xs font-mono bg-background border-border/60"
+                                    onPaste={e => {
+                                        const text = e.clipboardData.getData('text');
+                                        if (text) {
+                                            e.preventDefault();
+                                            update({ apiKey: text.trim() });
+                                        }
+                                    }}
+                                    placeholder={`Paste ${PROVIDER_LABELS[config.provider]} API Key`}
+                                    className="pr-16 h-8.5 text-xs font-mono bg-background border-border/60"
+                                    autoComplete="off"
+                                    autoCorrect="off"
+                                    spellCheck={false}
                                 />
-                                <button
-                                    type="button"
-                                    onClick={() => setKeyVisible(v => !v)}
-                                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                                >
-                                    {keyVisible ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                                </button>
+                                <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                                    {config.apiKey ? (
+                                        <button
+                                            type="button"
+                                            onClick={() => update({ apiKey: '' })}
+                                            className="text-muted-foreground/60 hover:text-foreground p-1 transition-colors text-[10px]"
+                                            title="Clear API key"
+                                        >
+                                            ✕
+                                        </button>
+                                    ) : null}
+                                    <button
+                                        type="button"
+                                        onClick={() => setKeyVisible(v => !v)}
+                                        className="text-muted-foreground hover:text-foreground transition-colors p-1"
+                                        title={keyVisible ? "Hide key" : "Show key"}
+                                    >
+                                        {keyVisible ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     )}
@@ -274,7 +305,7 @@ export function SettingsPanel() {
             providers: localProviders.map(p => ({
                 provider: p.provider,
                 enabled: p.enabled,
-                apiKey: p.apiKey || '',
+                apiKey: (p.apiKey || '').trim(),
                 model: p.model,
                 indexingModel: p.indexingModel || '',
                 baseUrl: p.baseUrl || '',
@@ -287,7 +318,7 @@ export function SettingsPanel() {
             providers: settings.providers.map(p => ({
                 provider: p.provider,
                 enabled: p.enabled,
-                apiKey: p.apiKey || '',
+                apiKey: (p.apiKey || '').trim(),
                 model: p.model,
                 indexingModel: p.indexingModel || '',
                 baseUrl: p.baseUrl || '',
@@ -325,7 +356,11 @@ export function SettingsPanel() {
     }, []);
 
     const handleSave = async () => {
-        const withPriority = localProviders.map((p, i) => ({ ...p, priority: i + 1 }));
+        const withPriority = localProviders.map((p, i) => ({
+            ...p,
+            apiKey: p.apiKey ? p.apiKey.trim() : '',
+            priority: i + 1,
+        }));
         const updatedSettings: AppSettings = {
             ...settings,
             providers: withPriority,
@@ -340,15 +375,14 @@ export function SettingsPanel() {
         });
     };
 
-    // Auto-detect models from local Ollama if running
-    const fetchOllamaModels = useCallback(async () => {
+    // Auto-detect models from local Ollama if running (standalone, no state dependencies)
+    const fetchOllamaModels = useCallback(async (baseUrl?: string) => {
         try {
-            const ollamaProvider = localProviders.find(p => p.provider === 'ollama');
-            const baseUrl = ollamaProvider?.baseUrl || 'http://localhost:11434';
+            const targetUrl = baseUrl || 'http://localhost:11434';
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 2000);
 
-            const res = await fetch(`${baseUrl}/api/tags`, { signal: controller.signal });
+            const res = await fetch(`${targetUrl}/api/tags`, { signal: controller.signal });
             clearTimeout(timeoutId);
             if (res.ok) {
                 const data = await res.json();
@@ -359,16 +393,18 @@ export function SettingsPanel() {
         } catch {
             // Ollama may not be active; fail silently
         }
-    }, [localProviders]);
+    }, []);
 
+    // Sync only when dialog is opened (isSettingsOpen becomes true)
     useEffect(() => {
         if (isSettingsOpen) {
             setLocalProviders(settings.providers);
             setLocalTaskMapping(settings.taskMapping);
             setSaved(false);
-            fetchOllamaModels();
+            const ollama = settings.providers.find(p => p.provider === 'ollama');
+            fetchOllamaModels(ollama?.baseUrl);
         }
-    }, [isSettingsOpen, settings.providers, settings.taskMapping, fetchOllamaModels]);
+    }, [isSettingsOpen]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const enabledCount = localProviders.filter(p => p.enabled).length;
 
