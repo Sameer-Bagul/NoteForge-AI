@@ -107,6 +107,18 @@ export const tauriApi = {
     return invoke<void>('save_notebook', { notebook });
   },
 
+  async deleteNotebook(id: string): Promise<void> {
+    return invoke<void>('delete_notebook', { id });
+  },
+
+  async deleteJob(id: string): Promise<void> {
+    return invoke<void>('delete_job', { id });
+  },
+
+  async clearAllData(): Promise<void> {
+    return invoke<void>('clear_all_data');
+  },
+
   async streamLLM(
     prompt: string,
     systemPrompt: string | undefined,

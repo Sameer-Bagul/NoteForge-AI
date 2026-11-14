@@ -207,5 +207,42 @@ impl Database {
         }
         Ok(list)
     }
+
+    pub fn delete_notebook(&self, id: &str) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        // Look up corresponding job_id if present
+        let mut stmt = conn.prepare("SELECT job_id FROM notebooks WHERE id = ?1")?;
+        let job_id: Option<String> = stmt
+            .query_row(params![id], |row| row.get(0))
+            .ok()
+            .flatten();
+
+        conn.execute("DELETE FROM notebooks WHERE id = ?1", params![id])?;
+        if let Some(jid) = job_id {
+            conn.execute("DELETE FROM jobs WHERE id = ?1", params![jid])?;
+        }
+        conn.execute("DELETE FROM jobs WHERE id = ?1", params![id])?;
+        Ok(())
+    }
+
+    pub fn delete_job(&self, id: &str) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute("DELETE FROM jobs WHERE id = ?1", params![id])?;
+        conn.execute("DELETE FROM notebooks WHERE job_id = ?1 OR id = ?1", params![id])?;
+        Ok(())
+    }
+
+    pub fn clear_all_data(&self) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute_batch(
+            "
+            DELETE FROM notebooks;
+            DELETE FROM jobs;
+            DELETE FROM transcripts;
+            VACUUM;
+            ",
+        )?;
+        Ok(())
+    }
 }
 

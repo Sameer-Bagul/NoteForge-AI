@@ -1,17 +1,94 @@
-import { useQuery } from '@tanstack/react-query';
+import { useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/services/api';
 import { JobStatus } from '@/types';
 import { Button } from '@/components/ui/button';
-import { Loader2, BookOpen, Clock, Calendar, AlertCircle, Plus, RefreshCw, FileText } from 'lucide-react';
+import {
+  Loader2,
+  BookOpen,
+  Clock,
+  Calendar,
+  AlertCircle,
+  Plus,
+  RefreshCw,
+  FileText,
+  Trash2,
+} from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { formatDistanceToNow } from 'date-fns';
+import { toast } from '@/hooks/use-toast';
 
 const Library = () => {
+  const queryClient = useQueryClient();
+  const [isClearing, setIsClearing] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
   const { data: jobs, isLoading, error, refetch } = useQuery({
     queryKey: ['jobs'],
     queryFn: api.getJobs,
     refetchInterval: 5000,
   });
+
+  const handleDeleteJob = async (job: JobStatus) => {
+    const title = job.notebook?.title || job.videos?.[0]?.title || `Job ${job.id.slice(0, 8)}`;
+    if (!window.confirm(`Are you sure you want to delete "${title}"?`)) {
+      return;
+    }
+
+    try {
+      setDeletingId(job.id);
+      if (job.status === 'complete' || job.notebook?.id || job.notebookId) {
+        const nbId = job.notebook?.id || job.notebookId || job.id;
+        await api.deleteNotebook(nbId);
+      }
+      // Also ensure job record is removed
+      await api.deleteJob(job.id).catch(() => {});
+
+      await queryClient.invalidateQueries({ queryKey: ['jobs'] });
+      toast({
+        title: 'Deleted',
+        description: `"${title}" has been deleted.`,
+      });
+    } catch (err: any) {
+      console.error('Failed to delete item:', err);
+      toast({
+        title: 'Error',
+        description: err?.message || 'Failed to delete item.',
+        variant: 'destructive',
+      });
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const handleClearAll = async () => {
+    if (
+      !window.confirm(
+        'Delete all notebooks and pipeline history from your local database? This cannot be undone.'
+      )
+    ) {
+      return;
+    }
+
+    try {
+      setIsClearing(true);
+      await api.clearAllData();
+      await queryClient.invalidateQueries({ queryKey: ['jobs'] });
+      toast({
+        title: 'Library Cleared',
+        description: 'All notebooks and jobs have been removed.',
+      });
+    } catch (err: any) {
+      console.error('Failed to clear library:', err);
+      toast({
+        title: 'Error',
+        description: err?.message || 'Failed to clear library.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsClearing(false);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -42,9 +119,9 @@ const Library = () => {
     );
   }
 
-  const completedJobs = jobs?.filter(job => job.status === 'complete') || [];
-  const activeJobs = jobs?.filter(job => job.status !== 'complete' && job.status !== 'error') || [];
-  const failedJobs = jobs?.filter(job => job.status === 'error') || [];
+  const completedJobs = jobs?.filter((job) => job.status === 'complete') || [];
+  const activeJobs = jobs?.filter((job) => job.status !== 'complete' && job.status !== 'error') || [];
+  const failedJobs = jobs?.filter((job) => job.status === 'error') || [];
   const isEmpty = (jobs?.length || 0) === 0;
 
   return (
@@ -58,6 +135,19 @@ const Library = () => {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {!isEmpty && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleClearAll}
+              disabled={isClearing}
+              className="h-8 px-2.5 text-xs text-destructive hover:text-destructive hover:bg-destructive/10 border-destructive/20 gap-1.5"
+              title="Clear all notebooks from local SQLite database"
+            >
+              {isClearing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+              <span className="hidden sm:inline">Clear All</span>
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="sm"
@@ -105,8 +195,13 @@ const Library = () => {
                 <span>In Progress ({activeJobs.length})</span>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {activeJobs.map(job => (
-                  <JobCard key={job.id} job={job} />
+                {activeJobs.map((job) => (
+                  <JobCard
+                    key={job.id}
+                    job={job}
+                    onDelete={handleDeleteJob}
+                    isDeleting={deletingId === job.id}
+                  />
                 ))}
               </div>
             </div>
@@ -121,8 +216,13 @@ const Library = () => {
                 </span>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {completedJobs.map(job => (
-                  <JobCard key={job.id} job={job} />
+                {completedJobs.map((job) => (
+                  <JobCard
+                    key={job.id}
+                    job={job}
+                    onDelete={handleDeleteJob}
+                    isDeleting={deletingId === job.id}
+                  />
                 ))}
               </div>
             </div>
@@ -135,8 +235,13 @@ const Library = () => {
                 Failed Ingestions ({failedJobs.length})
               </span>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {failedJobs.map(job => (
-                  <JobCard key={job.id} job={job} />
+                {failedJobs.map((job) => (
+                  <JobCard
+                    key={job.id}
+                    job={job}
+                    onDelete={handleDeleteJob}
+                    isDeleting={deletingId === job.id}
+                  />
                 ))}
               </div>
             </div>
@@ -147,7 +252,15 @@ const Library = () => {
   );
 };
 
-const JobCard = ({ job }: { job: JobStatus }) => {
+const JobCard = ({
+  job,
+  onDelete,
+  isDeleting = false,
+}: {
+  job: JobStatus;
+  onDelete: (job: JobStatus) => void;
+  isDeleting?: boolean;
+}) => {
   const isComplete = job.status === 'complete';
   const isError = job.status === 'error';
   const isActive = !isComplete && !isError;
@@ -156,10 +269,43 @@ const JobCard = ({ job }: { job: JobStatus }) => {
   const thumbnail = job.videos?.[0]?.thumbnail || (job as any).videoInfo?.thumbnail;
   const targetLink = isComplete ? `/notebook/${job.notebook?.id || job.notebookId}` : `/process/${job.id}`;
 
+  const renderBadgeAndActions = () => (
+    <div className="absolute top-2 right-2 flex items-center gap-1.5 z-10">
+      <span
+        className={`text-[10px] font-mono font-medium px-2 py-0.5 rounded-md backdrop-blur-md ${
+          isComplete
+            ? 'bg-emerald-500/85 text-white'
+            : isError
+            ? 'bg-destructive/85 text-white'
+            : 'bg-background/85 text-foreground border border-border/50'
+        }`}
+      >
+        {job.status}
+      </span>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onDelete(job);
+        }}
+        disabled={isDeleting}
+        className="h-6 w-6 rounded-md bg-background/85 hover:bg-destructive text-muted-foreground hover:text-white backdrop-blur-md flex items-center justify-center border border-border/50 transition-colors shadow-xs"
+        title="Delete"
+      >
+        {isDeleting ? (
+          <Loader2 className="w-3 h-3 animate-spin" />
+        ) : (
+          <Trash2 className="w-3 h-3" />
+        )}
+      </button>
+    </div>
+  );
+
   return (
     <Link
       to={targetLink}
-      className={`group flex flex-col h-full rounded-xl border border-border/60 bg-card/60 hover:bg-card hover:border-border transition-all duration-150 overflow-hidden shadow-xs hover:shadow-sm ${
+      className={`group flex flex-col h-full rounded-xl border border-border/60 bg-card/60 hover:bg-card hover:border-border transition-all duration-150 overflow-hidden shadow-xs hover:shadow-sm relative ${
         isActive ? 'ring-1 ring-primary/30 border-primary/40' : ''
       }`}
     >
@@ -171,23 +317,12 @@ const JobCard = ({ job }: { job: JobStatus }) => {
             className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-102"
             loading="lazy"
           />
-          <div className="absolute top-2 right-2">
-            <span
-              className={`text-[10px] font-mono font-medium px-2 py-0.5 rounded-md backdrop-blur-md ${
-                isComplete
-                  ? 'bg-emerald-500/85 text-white'
-                  : isError
-                  ? 'bg-destructive/85 text-white'
-                  : 'bg-background/85 text-foreground border border-border/50'
-              }`}
-            >
-              {job.status}
-            </span>
-          </div>
+          {renderBadgeAndActions()}
         </div>
       ) : (
-        <div className="aspect-video w-full bg-muted/40 flex items-center justify-center text-muted-foreground/50 border-b border-border/30">
+        <div className="aspect-video w-full bg-muted/40 relative flex items-center justify-center text-muted-foreground/50 border-b border-border/30 shrink-0">
           <FileText className="w-8 h-8 stroke-[1.2]" />
+          {renderBadgeAndActions()}
         </div>
       )}
 

@@ -81,6 +81,21 @@ pub fn save_notebook(notebook: NotebookRecord, db: State<Arc<Database>>) -> Resu
     db.save_notebook(&notebook).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+pub fn delete_notebook(id: String, db: State<Arc<Database>>) -> Result<(), String> {
+    db.delete_notebook(&id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn delete_job(id: String, db: State<Arc<Database>>) -> Result<(), String> {
+    db.delete_job(&id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn clear_all_data(db: State<Arc<Database>>) -> Result<(), String> {
+    db.clear_all_data().map_err(|e| e.to_string())
+}
+
 #[derive(Debug, Deserialize)]
 pub struct GeneratePromptRequest {
     pub prompt: String,

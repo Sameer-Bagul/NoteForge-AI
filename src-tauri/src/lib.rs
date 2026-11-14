@@ -46,6 +46,9 @@ pub fn run() {
             commands::list_notebooks,
             commands::get_notebook,
             commands::save_notebook,
+            commands::delete_notebook,
+            commands::delete_job,
+            commands::clear_all_data,
             commands::stream_llm,
         ])
         .run(tauri::generate_context!())

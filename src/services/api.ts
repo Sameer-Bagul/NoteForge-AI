@@ -332,6 +332,48 @@ export const api = {
     return result.data;
   },
 
+  async deleteNotebook(notebookId: string): Promise<void> {
+    if (isTauri()) {
+      await tauriApi.deleteNotebook(notebookId);
+      return;
+    }
+    log('Deleting notebook:', notebookId);
+    const response = await fetch(`${API_BASE}/process/notebook/${notebookId}`, {
+      method: 'DELETE',
+    });
+    if (!response.ok) {
+      throw new Error('Failed to delete notebook');
+    }
+  },
+
+  async deleteJob(jobId: string): Promise<void> {
+    if (isTauri()) {
+      await tauriApi.deleteJob(jobId);
+      return;
+    }
+    log('Deleting job:', jobId);
+    const response = await fetch(`${API_BASE}/process/job/${jobId}`, {
+      method: 'DELETE',
+    });
+    if (!response.ok) {
+      throw new Error('Failed to delete job');
+    }
+  },
+
+  async clearAllData(): Promise<void> {
+    if (isTauri()) {
+      await tauriApi.clearAllData();
+      return;
+    }
+    log('Clearing all data');
+    const response = await fetch(`${API_BASE}/process/clear-all`, {
+      method: 'DELETE',
+    });
+    if (!response.ok) {
+      throw new Error('Failed to clear library data');
+    }
+  },
+
   async checkHealth(): Promise<{ status: string; services: { llm: string; activeProvider?: string } }> {
     if (isTauri()) {
       return {

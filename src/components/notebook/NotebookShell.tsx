@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
     BookOpen, List, GitBranch, HelpCircle, Briefcase,
-    ArrowLeft, Download, Clock, Hash, FileText, Loader2, Sparkles, Tv, Columns2
+    ArrowLeft, Download, Clock, Hash, FileText, Loader2, Sparkles, Tv, Columns2, Trash2
 } from 'lucide-react';
 import { useSettings } from '@/context/SettingsContext';
 import { isTauri } from '@/services/tauri';
@@ -124,6 +124,35 @@ export function NotebookShell({ notes, onReset }: NotebookShellProps) {
 
     const { settings } = useSettings();
     const [isExportingPdf, setIsExportingPdf] = useState(false);
+    const [isDeleting, setIsDeleting] = useState(false);
+
+    const handleDeleteNotebook = async () => {
+        if (!window.confirm(`Delete notebook "${notes.title}"? This cannot be undone.`)) {
+            return;
+        }
+
+        try {
+            setIsDeleting(true);
+            const targetId = notes.notebookId || notes.videoId;
+            if (targetId) {
+                await api.deleteNotebook(targetId);
+            }
+            toast({
+                title: 'Notebook Deleted',
+                description: `"${notes.title}" has been deleted.`,
+            });
+            onReset();
+        } catch (err: any) {
+            console.error('Failed to delete notebook:', err);
+            toast({
+                title: 'Delete Failed',
+                description: err?.message || 'Failed to delete notebook.',
+                variant: 'destructive',
+            });
+        } finally {
+            setIsDeleting(false);
+        }
+    };
 
     const handleDownloadPdf = async () => {
         if (isTauri()) {
@@ -236,6 +265,17 @@ export function NotebookShell({ notes, onReset }: NotebookShellProps) {
                         <Button size="sm" onClick={handleDownloadPdf} disabled={isExportingPdf} className="gap-1.5 h-8 text-xs">
                             {isExportingPdf ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
                             <span>Print / PDF</span>
+                        </Button>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={handleDeleteNotebook}
+                            disabled={isDeleting}
+                            className="gap-1.5 h-8 text-xs text-destructive hover:text-destructive hover:bg-destructive/10 border-destructive/20"
+                            title="Delete this notebook"
+                        >
+                            {isDeleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                            <span>Delete</span>
                         </Button>
                     </div>
                 </div>
