@@ -6,6 +6,7 @@ export interface VideoInfo {
   title: string;
   duration?: string;
   thumbnail?: string;
+  channel?: string;
 }
 
 export interface TranscriptSegment {

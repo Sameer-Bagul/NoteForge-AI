@@ -30,11 +30,10 @@ FORMATTING RULES:
 `;
 
 export const PIPELINE_STEPS: ProcessingStep[] = [
-  { id: 'extract', label: 'Extracting Transcripts', description: 'Fetching video transcripts from YouTube', status: 'pending' },
-  { id: 'analyze', label: 'Analyzing Content', description: 'Analyzing transcript content and structure', status: 'pending' },
-  { id: 'index', label: 'Generating Index', description: 'Creating unified topic index', status: 'pending' },
-  { id: 'notes', label: 'Generating Notes', description: 'Writing detailed notes for each topic', status: 'pending' },
-  { id: 'assemble', label: 'Assembling Notebook', description: 'Compiling final notebook', status: 'pending' },
+  { id: 'extract', label: 'Transcript Ingestion', description: 'Fetching timestamped subtitles and video chapters', status: 'pending' },
+  { id: 'index', label: 'Topic Discovery & Indexing', description: 'Analyzing semantic concepts and generating study outline', status: 'pending' },
+  { id: 'notes', label: 'Comprehensive Notes & Diagrams', description: 'Synthesizing in-depth study notes with code and Mermaid diagrams', status: 'pending' },
+  { id: 'assemble', label: 'Study Assets & Vault Archival', description: 'Generating flashcards, mind maps, quizzes, and saving to SQLite vault', status: 'pending' },
 ];
 
 export function getAIConfigForTask(task: 'notes' | 'indexing' | 'features'): { provider: string; model: string; baseUrl?: string; apiKey?: string } {
@@ -125,7 +124,16 @@ function notifyStatusChange(session: ActivePipelineSession, status: ProcessingSt
 
 function notifyStepChange(session: ActivePipelineSession, stepIndex: number, status: 'pending' | 'active' | 'complete' | 'error', details?: string) {
   session.currentStep = stepIndex;
-  session.steps = session.steps.map((s, idx) => idx === stepIndex ? { ...s, status, details } : s);
+  session.steps = session.steps.map((s, idx) => {
+    if (idx === stepIndex) {
+      return { ...s, status, details: details !== undefined ? details : s.details };
+    }
+    // Safety guard: when advancing to an active step, mark all prior steps complete
+    if (status === 'active' && idx < stepIndex && s.status !== 'complete') {
+      return { ...s, status: 'complete' };
+    }
+    return s;
+  });
   const set = listeners.get(session.jobId);
   if (set) {
     for (const cb of set) {
@@ -312,11 +320,19 @@ export const nativePipeline = {
         throw new Error('No closed captions or transcripts could be retrieved for this YouTube video.');
       }
 
-      notifyStepChange(session, 0, 'complete', `Extracted ${transcripts.length} transcript(s)`);
+      const totalSegments = transcripts.reduce((acc, t) => acc + t.segments.length, 0);
+      notifyStepChange(
+        session,
+        0,
+        'complete',
+        totalSegments > 0
+          ? `Extracted ${totalSegments.toLocaleString()} caption segments`
+          : `Extracted ${transcripts.length} transcript(s)`
+      );
 
-      // ── Step 2: Content Analysis & Topic Indexing ──────────────────────────
+      // ── Step 1: Topic Discovery & Indexing ──────────────────────────
       notifyStatusChange(session, 'indexing');
-      notifyStepChange(session, 1, 'active', 'Analyzing concepts and semantic structure...');
+      notifyStepChange(session, 1, 'active', 'Analyzing video structure and generating curriculum outline...');
       notifyLog(session, 'Analyzing video structure with AI...', 'ai');
 
       const aiConfig = getAIConfigForTask('indexing');
@@ -345,7 +361,6 @@ Instructions:
 
       const systemPrompt = "You are an expert curriculum designer. Output ONLY valid JSON array with no conversational filler or markdown fences.";
 
-      notifyStepChange(session, 2, 'active', 'Generating unified topic index...');
       const rawIndexResponse = await tauriApi.streamLLM(
         indexPrompt,
         systemPrompt,
@@ -396,11 +411,10 @@ Instructions:
         topicCount: parsedTopics.length,
       };
 
-      notifyStepChange(session, 1, 'complete', 'Content analysis complete');
-      notifyStepChange(session, 2, 'complete', `Generated index with ${generatedIndex.topicCount} topics`);
+      notifyStepChange(session, 1, 'complete', `Generated curriculum outline with ${generatedIndex.topicCount} topics`);
       notifyLog(session, `Generated topic index with ${generatedIndex.topicCount} chapters`, 'success');
 
-      // ── Step 3: Pause for User Review / Approval ───────────────────────────
+      // ── Step 1 Complete: Pause for User Review / Approval ───────────
       notifyStatusChange(session, 'awaiting-approval');
       notifyLog(session, 'Index ready for review. Click "Approve & Generate" to produce notes.', 'info');
 
@@ -409,7 +423,7 @@ Instructions:
         id: jobId,
         url,
         status: 'awaiting-approval',
-        current_step: 3,
+        current_step: 1,
         options_json: JSON.stringify({ index: generatedIndex, videoSources }),
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
@@ -447,7 +461,7 @@ Instructions:
     try {
       session.index = approvedIndex;
       notifyStatusChange(session, 'generating');
-      notifyStepChange(session, 3, 'active', `Generating notes for ${approvedIndex.topics.length} topics...`);
+      notifyStepChange(session, 2, 'active', `Writing detailed study notes (1/${approvedIndex.topics.length})...`);
       notifyLog(session, `Beginning deep notes synthesis for ${approvedIndex.topics.length} topics...`, 'ai');
 
       const aiConfig = getAIConfigForTask('notes');
@@ -456,7 +470,7 @@ Instructions:
       let topicIndex = 0;
       for (const topic of approvedIndex.topics) {
         topicIndex++;
-        notifyStepChange(session, 3, 'active', `Writing topic ${topicIndex}/${approvedIndex.topics.length}: ${topic.title}...`);
+        notifyStepChange(session, 2, 'active', `Writing topic ${topicIndex}/${approvedIndex.topics.length}: ${topic.title}...`);
         notifyLog(session, `Generating study notes for: "${topic.title}"`, 'ai');
 
         const creativity = options.creativityLevel || 2;
@@ -524,12 +538,12 @@ Begin directly with the topic notes in structured Markdown.`;
         notifyLog(session, `Completed notes for "${topic.title}"`, 'success');
       }
 
-      notifyStepChange(session, 3, 'complete', `Generated notes for ${allTopicNotes.length} topics`);
+      notifyStepChange(session, 2, 'complete', `Synthesized detailed notes for ${allTopicNotes.length} topics`);
 
-      // ── Step 5: Assembling Notebook & Saving to SQLite ────────────────────
+      // ── Step 3: Assembling Notebook & Saving to SQLite Vault ──────────────
       notifyStatusChange(session, 'assembling');
-      notifyStepChange(session, 4, 'active', 'Compiling chapters and saving to SQLite...');
-      notifyLog(session, 'Assembling notebook in SQLite database...', 'info');
+      notifyStepChange(session, 3, 'active', 'Compiling study guide and archiving to SQLite vault...');
+      notifyLog(session, 'Archiving notebook in SQLite database...', 'info');
 
       const notebookId = `nb-${Date.now()}`;
       const fullMarkdown = allTopicNotes
@@ -576,13 +590,13 @@ Begin directly with the topic notes in structured Markdown.`;
         id: jobId,
         url: session.url,
         status: 'complete',
-        current_step: 5,
+        current_step: 3,
         options_json: JSON.stringify({ notebookId, notebook: finalNotebook }),
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       });
 
-      notifyStepChange(session, 4, 'complete', 'Notebook assembled and stored');
+      notifyStepChange(session, 3, 'complete', 'Notebook archived to local SQLite vault');
       notifyStatusChange(session, 'complete');
       notifyLog(session, 'Notebook generated successfully and stored in SQLite!', 'success');
 
@@ -593,7 +607,7 @@ Begin directly with the topic notes in structured Markdown.`;
     } catch (err: any) {
       console.error('Error during notes generation:', err);
       const errMsg = err?.message || 'Notes generation failed';
-      notifyStepChange(session, 3, 'error', errMsg);
+      notifyStepChange(session, session.currentStep, 'error', errMsg);
       notifyStatusChange(session, 'error');
       notifyLog(session, errMsg, 'error');
       notifyError(session, errMsg);

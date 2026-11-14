@@ -4,9 +4,11 @@ import { useProcessing } from '@/hooks/useProcessing';
 import ProcessingView from '@/components/ProcessingView';
 import { IndexReview } from '@/components/IndexReview';
 import ResultsView from '@/components/ResultsView';
-import { ServerPulse } from '@/components/ServerPulse';
+import { ActivityStream } from '@/components/ActivityStream';
+import { SourceVideoCard } from '@/components/SourceVideoCard';
+import { EngineSpecsCard } from '@/components/EngineSpecsCard';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Loader2, Brain, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Loader2, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 const Process = () => {
@@ -25,13 +27,19 @@ const Process = () => {
         navigate('/');
     };
 
+    const latestNote = state.notes?.notes?.length
+        ? state.notes.notes[state.notes.notes.length - 1]
+        : undefined;
+
     const renderCurrentView = () => {
         switch (state.status) {
             case 'idle':
                 return (
-                    <div className="flex flex-col items-center justify-center h-[60vh] gap-4">
-                        <Loader2 className="w-12 h-12 text-primary animate-spin" />
-                        <p className="text-muted-foreground font-mono">Initializing connection to job {jobId?.slice(0, 8)}...</p>
+                    <div className="flex flex-col items-center justify-center h-[60vh] gap-3 text-center">
+                        <Loader2 className="w-7 h-7 text-primary animate-spin" />
+                        <p className="text-xs text-muted-foreground font-mono">
+                            Connecting to pipeline session {jobId?.slice(0, 8)}...
+                        </p>
                     </div>
                 );
 
@@ -45,39 +53,25 @@ const Process = () => {
             case 'generating-notes':
             case 'assembling-notebook':
                 return (
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                        <div className="lg:col-span-2">
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
+                        <div className="lg:col-span-2 space-y-4">
+                            <SourceVideoCard
+                                videoInfo={state.videoInfo}
+                                videoCount={state.videoCount}
+                            />
                             <ProcessingView
                                 steps={state.steps}
                                 currentStep={state.currentStep}
                                 videoInfo={state.videoInfo}
                                 videoCount={state.videoCount}
                                 processedVideos={state.processedVideos}
+                                streamingTopicTitle={latestNote?.topicTitle}
+                                streamingContent={latestNote?.content}
                             />
                         </div>
                         <div className="space-y-4">
-                            <ServerPulse logs={logs} />
-
-                            <div className="rounded-lg border border-border/60 bg-card p-4 space-y-3 text-xs">
-                                <div className="flex items-center justify-between pb-2 border-b border-border/40">
-                                    <span className="font-medium text-foreground">Pipeline Inspector</span>
-                                    <span className="font-mono text-[11px] text-muted-foreground uppercase">{state.status}</span>
-                                </div>
-                                <div className="space-y-1.5 text-muted-foreground">
-                                    <div className="flex justify-between">
-                                        <span>Execution Engine</span>
-                                        <span className="font-mono text-foreground">Tauri v2 (Rust Core)</span>
-                                    </div>
-                                    <div className="flex justify-between">
-                                        <span>Notebook Store</span>
-                                        <span className="font-mono text-foreground">SQLite (Local)</span>
-                                    </div>
-                                    <div className="flex justify-between">
-                                        <span>Key Storage</span>
-                                        <span className="font-mono text-foreground">OS Keychain</span>
-                                    </div>
-                                </div>
-                            </div>
+                            <ActivityStream logs={logs} status={state.status} />
+                            <EngineSpecsCard />
                         </div>
                     </div>
                 );
@@ -85,9 +79,9 @@ const Process = () => {
             case 'awaiting-approval':
                 return (
                     <motion.div
-                        initial={{ opacity: 0, scale: 0.95 }}
+                        initial={{ opacity: 0, scale: 0.98 }}
                         animate={{ opacity: 1, scale: 1 }}
-                        className="w-full"
+                        className="w-full max-w-5xl mx-auto"
                     >
                         {state.index && (
                             <IndexReview
@@ -101,8 +95,9 @@ const Process = () => {
             case 'complete':
                 return (
                     <motion.div
-                        initial={{ opacity: 0, y: 20 }}
+                        initial={{ opacity: 0, y: 15 }}
                         animate={{ opacity: 1, y: 0 }}
+                        className="w-full max-w-6xl mx-auto"
                     >
                         {state.notes && (
                             <ResultsView
@@ -115,17 +110,18 @@ const Process = () => {
 
             case 'error':
                 return (
-                    <div className="flex flex-col items-center justify-center h-[60vh] gap-6 text-center">
-                        <div className="w-20 h-20 rounded-full bg-red-500/10 flex items-center justify-center border border-red-500/20">
-                            <ArrowLeft className="w-10 h-10 text-red-500" />
+                    <div className="flex flex-col items-center justify-center h-[60vh] gap-5 text-center max-w-md mx-auto">
+                        <div className="w-16 h-16 rounded-full bg-rose-500/10 flex items-center justify-center border border-rose-500/20">
+                            <AlertCircle className="w-8 h-8 text-rose-500" />
                         </div>
-                        <div className="space-y-2">
-                            <h2 className="text-2xl font-bold">Processing Failed</h2>
-                            <p className="text-muted-foreground max-w-md">
+                        <div className="space-y-1.5">
+                            <h2 className="text-xl font-semibold tracking-tight text-foreground">Processing Failed</h2>
+                            <p className="text-xs text-muted-foreground leading-relaxed">
                                 {state.error || 'An unexpected error occurred while processing your video.'}
                             </p>
                         </div>
-                        <Button onClick={handleReset} variant="outline" size="lg">
+                        <Button onClick={handleReset} variant="outline" size="sm" className="gap-2 mt-2">
+                            <ArrowLeft className="w-3.5 h-3.5" />
                             Return to Home
                         </Button>
                     </div>
@@ -133,25 +129,21 @@ const Process = () => {
 
             case 'paused-rate-limit':
                 return (
-                    <div className="flex flex-col items-center justify-center h-[60vh] gap-6 text-center fade-in">
-                        <div className="w-20 h-20 rounded-full bg-orange-500/10 flex items-center justify-center border border-orange-500/20">
-                            <AlertCircle className="w-10 h-10 text-orange-500" />
+                    <div className="flex flex-col items-center justify-center h-[60vh] gap-5 text-center max-w-md mx-auto">
+                        <div className="w-16 h-16 rounded-full bg-amber-500/10 flex items-center justify-center border border-amber-500/20">
+                            <AlertCircle className="w-8 h-8 text-amber-500" />
                         </div>
-                        <div className="space-y-2">
-                            <h2 className="text-2xl font-bold">API Quota Exhausted</h2>
-                            <p className="text-muted-foreground max-w-md">
-                                The AI provider has severely rate-limited the generation engine (likely due to free tier limits). The job has been safely paused and all progress is saved.
+                        <div className="space-y-1.5">
+                            <h2 className="text-xl font-semibold tracking-tight text-foreground">API Quota Exhausted</h2>
+                            <p className="text-xs text-muted-foreground leading-relaxed">
+                                The AI provider has rate-limited requests. The job state has been saved in SQLite.
                             </p>
                         </div>
-                        <div className="flex gap-4 mt-4">
-                            <Button onClick={handleReset} variant="outline" size="lg">
+                        <div className="flex gap-3 mt-2">
+                            <Button onClick={handleReset} variant="outline" size="sm">
                                 Return to Home
                             </Button>
-                            <Button 
-                                onClick={resumeJob} 
-                                size="lg"
-                                className="bg-orange-500 hover:bg-orange-600 text-white"
-                            >
+                            <Button onClick={resumeJob} size="sm">
                                 Resume Generation
                             </Button>
                         </div>
@@ -164,14 +156,14 @@ const Process = () => {
     };
 
     return (
-        <div className="container mx-auto px-4 py-8 min-h-screen">
+        <div className="container mx-auto px-4 py-6 min-h-[calc(100vh-4rem)]">
             <AnimatePresence mode="wait">
                 <motion.div
                     key={state.status}
-                    initial={{ opacity: 0, y: 10 }}
+                    initial={{ opacity: 0, y: 8 }}
                     animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -10 }}
-                    transition={{ duration: 0.3 }}
+                    exit={{ opacity: 0, y: -8 }}
+                    transition={{ duration: 0.2 }}
                 >
                     {renderCurrentView()}
                 </motion.div>
