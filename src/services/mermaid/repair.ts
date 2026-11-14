@@ -65,6 +65,12 @@ export function repairMermaidDeterministic(code: string): string {
 
   // 4. Fix flowchart syntax issues if flowchart
   if (sanitized.toLowerCase().includes('flowchart') || sanitized.toLowerCase().includes('graph')) {
+    // Detect pseudo-subgraphs missing the 'subgraph' keyword (e.g. `subg["Title"]\n direction LR`)
+    sanitized = sanitized.replace(
+      /^(\s*)([a-zA-Z0-9_]+)\[(["']?[^\]\n]+["']?)\](?=\s*\n\s*direction\s+[A-Za-z]{2})/gm,
+      '$1subgraph $2 [$3]'
+    );
+
     const lines = sanitized.split('\n');
     const repairedLines: string[] = [];
 
@@ -79,6 +85,15 @@ export function repairMermaidDeterministic(code: string): string {
         /([a-zA-Z0-9_]+)\s+--\s+["']?([^"'>\n]+)["']?\s+-->\s+([a-zA-Z0-9_]+)/g,
         '$1 -->|"$2"| $3'
       );
+
+      // Fix unquoted pipe labels containing parentheses or punctuation (e.g. -->|Label (with parens)|)
+      l = l.replace(/(-->|---|-.->|==>)\|([^"|\n]+)\|/g, (match, arrow, label) => {
+        const trimmed = label.trim();
+        if (trimmed.startsWith('"') && trimmed.endsWith('"')) {
+          return match;
+        }
+        return `${arrow}|"${trimmed.replace(/"/g, "'")}"|`;
+      });
 
       // Fix unquoted parentheses or brackets in node shapes:
       // Pattern: id[text (with parens)] -> id["text (with parens)"]
@@ -105,8 +120,15 @@ export function repairMermaidDeterministic(code: string): string {
         '$1{"$2"}'
       );
 
-      // Fix double quotes inside already quoted labels: e.g. ["Hello "World""] -> ["Hello 'World'"]
-      l = l.replace(/\["([^"]*)"([^"]*)"\]/g, '["$1\'$2\'"]');
+      // Fix internal double quotes inside quoted node labels: e.g. id["Text ("Inner")"] -> id["Text ('Inner')"]
+      l = l.replace(/\b([a-zA-Z0-9_]+)\["([^\]\r\n]*?)"\](?=[ \t]*(?:-->|---|-.->|==>|<-->|&|\r?\n|$|;))/g, (_m, id, inner) => {
+        const cleanInner = inner.replace(/"/g, "'");
+        return `${id}["${cleanInner}"]`;
+      });
+      l = l.replace(/\b([a-zA-Z0-9_]+)\(\["([^\]\r\n]*?)"\]\)(?=[ \t]*(?:-->|---|-.->|==>|<-->|&|\r?\n|$|;))/g, (_m, id, inner) => {
+        const cleanInner = inner.replace(/"/g, "'");
+        return `${id}(["${cleanInner}"])`;
+      });
 
       // Strip trailing semicolons in flowcharts
       l = l.replace(/;(?=\s*$)/, '');
@@ -128,8 +150,19 @@ export function repairMermaidDeterministic(code: string): string {
 
   // 6. Fix sequence diagram issues
   if (sanitized.toLowerCase().includes('sequencediagram')) {
-    // Replace invalid arrow syntax if needed
-    sanitized = sanitized.replace(/-->/g, '-->>');
+    // Replace invalid arrow syntax if needed (do not alter if already -->>)
+    sanitized = sanitized.replace(/-->(?!>)/g, '-->>');
+
+    // Semicolons in sequence diagrams break statement tokens (especially in Note lines)
+    sanitized = sanitized
+      .split('\n')
+      .map(line => {
+        if (/^\s*Note\s+/i.test(line)) {
+          return line.replace(/;/g, ',');
+        }
+        return line;
+      })
+      .join('\n');
   }
 
   return sanitized.trim();

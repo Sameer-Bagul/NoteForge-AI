@@ -432,3 +432,4 @@ export function compileDiagramIR(ir: DiagramIR): string {
       throw new Error(`Unsupported diagram type: ${(ir as any)?.diagramType}`);
   }
 }
+
