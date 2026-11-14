@@ -38,3 +38,14 @@ impl KeychainVault {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_check_keychain() {
+        let key = KeychainVault::get_key("gemini");
+        println!("Gemini key in keychain: {:?}", key.map(|k| k.map(|s| format!("{}...{}", &s[..4.min(s.len())], &s[s.len().saturating_sub(4)..]))));
+    }
+}
+

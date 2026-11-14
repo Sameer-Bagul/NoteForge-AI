@@ -55,16 +55,19 @@ impl LLMService {
             .as_deref()
             .ok_or_else(|| "Gemini API key is required".to_string())?;
 
-        let model = if config.model.is_empty() {
-            "gemini-2.5-flash"
+        let primary_model = if config.model.is_empty() {
+            "gemini-flash-latest".to_string()
         } else {
-            &config.model
+            config.model.clone()
         };
 
-        let url = format!(
-            "https://generativelanguage.googleapis.com/v1beta/models/{}:streamGenerateContent?key={}&alt=sse",
-            model, api_key
-        );
+        // Fallback candidate chain: primary model -> gemini-flash-lite-latest -> gemini-flash-latest
+        let mut candidates = vec![primary_model];
+        for fallback in ["gemini-flash-lite-latest", "gemini-flash-latest"] {
+            if !candidates.iter().any(|c| c == fallback) {
+                candidates.push(fallback.to_string());
+            }
+        }
 
         let mut body = serde_json::json!({
             "contents": [{
@@ -79,40 +82,62 @@ impl LLMService {
             });
         }
 
-        let resp = self
-            .client
-            .post(&url)
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| format!("Gemini connection error: {e}"))?;
+        let mut last_err = String::new();
 
-        if !resp.status().is_success() {
-            let status = resp.status();
-            let err_text = resp.text().await.unwrap_or_default();
-            return Err(format!("Gemini API error ({}): {}", status, err_text));
-        }
+        for model in candidates {
+            let url = format!(
+                "https://generativelanguage.googleapis.com/v1beta/models/{}:streamGenerateContent?key={}&alt=sse",
+                model, api_key
+            );
 
-        let mut stream = resp.bytes_stream();
-        let mut full_output = String::new();
+            let resp = match self.client.post(&url).json(&body).send().await {
+                Ok(r) => r,
+                Err(e) => {
+                    last_err = format!("Gemini connection error: {e}");
+                    continue;
+                }
+            };
 
-        while let Some(chunk_res) = stream.next().await {
-            let chunk = chunk_res.map_err(|e| format!("Stream read error: {e}"))?;
-            let text = String::from_utf8_lossy(&chunk);
+            if !resp.status().is_success() {
+                let status = resp.status();
+                let err_text = resp.text().await.unwrap_or_default();
+                last_err = format!("Gemini API error ({status}): {err_text}");
+                // If model is not found (404) or high demand (503), try next model candidate
+                if status == reqwest::StatusCode::NOT_FOUND || status == reqwest::StatusCode::SERVICE_UNAVAILABLE {
+                    continue;
+                }
+                return Err(last_err);
+            }
 
-            for line in text.lines() {
-                if let Some(data_str) = line.strip_prefix("data: ") {
-                    if let Ok(val) = serde_json::from_str::<serde_json::Value>(data_str) {
-                        if let Some(token) = val["candidates"][0]["content"]["parts"][0]["text"].as_str() {
-                            full_output.push_str(token);
-                            on_token(token);
+            let mut stream = resp.bytes_stream();
+            let mut full_output = String::new();
+
+            while let Some(chunk_res) = stream.next().await {
+                let chunk = chunk_res.map_err(|e| format!("Stream read error: {e}"))?;
+                let text = String::from_utf8_lossy(&chunk);
+
+                for line in text.lines() {
+                    if let Some(data_str) = line.strip_prefix("data: ") {
+                        if let Ok(val) = serde_json::from_str::<serde_json::Value>(data_str) {
+                            if let Some(token) = val["candidates"][0]["content"]["parts"][0]["text"].as_str() {
+                                full_output.push_str(token);
+                                on_token(token);
+                            }
                         }
                     }
                 }
             }
+
+            if !full_output.is_empty() {
+                return Ok(full_output);
+            }
         }
 
-        Ok(full_output)
+        Err(if last_err.is_empty() {
+            "All Gemini model candidate attempts failed to return content".to_string()
+        } else {
+            last_err
+        })
     }
 
     async fn stream_ollama<F>(
