@@ -6,7 +6,8 @@ import { IndexReview } from '@/components/IndexReview';
 import ResultsView from '@/components/ResultsView';
 import { ActivityStream } from '@/components/ActivityStream';
 import { SourceVideoCard } from '@/components/SourceVideoCard';
-import { EngineSpecsCard } from '@/components/EngineSpecsCard';
+import { StudyBlueprintCard } from '@/components/StudyBlueprintCard';
+import { SessionTelemetryCard } from '@/components/SessionTelemetryCard';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, Loader2, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -53,11 +54,13 @@ const Process = () => {
             case 'generating-notes':
             case 'assembling-notebook':
                 return (
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
-                        <div className="lg:col-span-2 space-y-4">
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 max-w-7xl mx-auto w-full">
+                        {/* Left Main Column: Video & Pipeline Stepper */}
+                        <div className="lg:col-span-7 space-y-4">
                             <SourceVideoCard
                                 videoInfo={state.videoInfo}
                                 videoCount={state.videoCount}
+                                sourceUrl={jobId}
                             />
                             <ProcessingView
                                 steps={state.steps}
@@ -69,9 +72,16 @@ const Process = () => {
                                 streamingContent={latestNote?.content}
                             />
                         </div>
-                        <div className="space-y-4">
+
+                        {/* Right Column: Telemetry, Study Blueprint & Live Events */}
+                        <div className="lg:col-span-5 space-y-4">
+                            <SessionTelemetryCard status={state.status} />
+                            <StudyBlueprintCard
+                                status={state.status}
+                                currentStep={state.currentStep}
+                                topicCount={state.index?.topics?.length}
+                            />
                             <ActivityStream logs={logs} status={state.status} />
-                            <EngineSpecsCard />
                         </div>
                     </div>
                 );
