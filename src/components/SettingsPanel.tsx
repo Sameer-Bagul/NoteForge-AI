@@ -219,7 +219,7 @@ function ProviderCard({
                             <Input
                                 value={config.indexingModel || ''}
                                 onChange={e => update({ indexingModel: e.target.value || undefined })}
-                                placeholder={config.provider === 'ollama' ? 'e.g. qwen2.5-coder:1.5b' : 'Optional faster model for outline'}
+                                placeholder={config.provider === 'ollama' ? 'e.g. llama3.2:1b' : 'Optional faster model for outline'}
                                 className="h-8 text-xs font-mono bg-background border-border/50"
                             />
                         )}

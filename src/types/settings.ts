@@ -42,7 +42,7 @@ export const DEFAULT_MODELS: Record<AIProvider, string> = {
     gemini: 'gemini-flash-lite-latest',
     grok: 'grok-beta',
     lmstudio: 'local-model',
-    ollama: 'qwen2.5-coder:7b',
+    ollama: 'llama3.2:1b',
 };
 
 export const DEFAULT_BASE_URLS: Record<AIProvider, string | undefined> = {
@@ -74,8 +74,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
             provider: 'ollama',
             enabled: false,
             apiKey: '',
-            model: 'qwen2.5-coder:7b',
-            indexingModel: 'qwen2.5-coder:1.5b',
+            model: 'llama3.2:1b',
+            indexingModel: 'llama3.2:1b',
             baseUrl: 'http://localhost:11434',
             priority: 2,
         },

@@ -187,7 +187,7 @@ impl LLMService {
             .unwrap_or("http://localhost:11434");
 
         let model = if config.model.is_empty() {
-            "llama3.2"
+            "llama3.2:1b"
         } else {
             &config.model
         };
@@ -205,10 +205,10 @@ impl LLMService {
         }
 
         let send_fut = self.client.post(&url).json(&body).send();
-        let resp = match tokio::time::timeout(std::time::Duration::from_secs(15), send_fut).await {
+        let resp = match tokio::time::timeout(std::time::Duration::from_secs(120), send_fut).await {
             Ok(Ok(r)) => r,
             Ok(Err(e)) => return Err(format!("Ollama connection error (check if Ollama is running): {e}")),
-            Err(_) => return Err("Ollama connection timed out after 15s".to_string()),
+            Err(_) => return Err("Ollama connection timed out after 120s".to_string()),
         };
 
         if !resp.status().is_success() {
@@ -222,7 +222,7 @@ impl LLMService {
 
         loop {
             let chunk_fut = stream.next();
-            match tokio::time::timeout(std::time::Duration::from_secs(20), chunk_fut).await {
+            match tokio::time::timeout(std::time::Duration::from_secs(60), chunk_fut).await {
                 Ok(Some(chunk_res)) => {
                     let chunk = chunk_res.map_err(|e| format!("Stream read error: {e}"))?;
                     let text = String::from_utf8_lossy(&chunk);
@@ -233,14 +233,175 @@ impl LLMService {
                                 full_output.push_str(token);
                                 on_token(token);
                             }
+                            if val["done"].as_bool() == Some(true) {
+                                return Ok(full_output);
+                            }
                         }
                     }
                 }
                 Ok(None) => break,
-                Err(_) => return Err("Ollama stream stalled for 20s".to_string()),
+                Err(_) => return Err("Ollama stream stalled for 60s".to_string()),
             }
         }
 
         Ok(full_output)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    #[ignore] // Run with `cargo test -- --ignored test_ollama_streaming`
+    async fn test_ollama_streaming() {
+        let config = LLMConfig {
+            provider: "ollama".to_string(),
+            model: "llama3.2:1b".to_string(),
+            api_key: None,
+            base_url: Some("http://localhost:11434".to_string()),
+        };
+
+        let llm = LLMService::new();
+        let result = llm
+            .stream_generate(
+                &config,
+                "What is 2 + 2? Answer in one word.",
+                None,
+                |token| {
+                    print!("{token}");
+                },
+            )
+            .await;
+
+        match result {
+            Ok(output) => {
+                println!("\nOllama output: {}", output);
+                assert!(!output.is_empty());
+            }
+            Err(e) => {
+                panic!("Ollama streaming failed: {}", e);
+            }
+        }
+    }
+
+    #[tokio::test]
+    #[ignore] // Run with `cargo test -- --ignored test_simple_lecture_synthesis_ollama --nocapture`
+    async fn test_simple_lecture_synthesis_ollama() {
+        use crate::youtube::YouTubeService;
+        use crate::db::{Database, JobRecord, NotebookRecord};
+        use std::path::PathBuf;
+
+        println!("=== Starting Simple Lecture Synthesis with Local Ollama ===");
+
+        // 1. Fetch transcript for educational lecture ("What is an API? in 3 minutes")
+        let video_id = "s7wmiS2mSXY";
+        let transcript = YouTubeService::fetch_transcript(video_id).await
+            .expect("Failed to fetch transcript for s7wmiS2mSXY");
+
+        println!("Lecture Title: {}", transcript.video_info.title);
+        println!("Transcript segments: {}", transcript.segments.len());
+        println!("Full text length: {} chars", transcript.full_text.len());
+
+        // 2. Ollama configuration
+        let config = LLMConfig {
+            provider: "ollama".to_string(),
+            model: "llama3.2:1b".to_string(),
+            api_key: None,
+            base_url: Some("http://localhost:11434".to_string()),
+        };
+        let llm = LLMService::new();
+
+        // 3. Step 1: Curriculum Outline Indexing Prompt
+        let index_prompt = format!(
+            "Analyze this video transcript and generate a structured JSON array of 3 topics for study notes.\nTitle: \"{}\"\nTranscript:\n\"\"\"\n{}\n\"\"\"\nOutput ONLY a valid JSON array like [ {{\"title\": \"...\", \"description\": \"...\", \"startTime\": 0, \"timeDisplay\": \"0:00\"}} ]",
+            transcript.video_info.title,
+            &transcript.full_text[..transcript.full_text.len().min(4000)]
+        );
+
+        println!("\n[1/3] Streaming curriculum outline from Ollama (llama3.2:1b)...");
+        let outline = llm.stream_generate(
+            &config,
+            &index_prompt,
+            Some("You are an expert curriculum designer. Output ONLY valid JSON array with no conversational filler or markdown fences."),
+            |tok| {
+                use std::io::Write;
+                print!("{tok}");
+                std::io::stdout().flush().ok();
+            },
+        ).await.expect("Failed to generate outline with Ollama");
+
+        println!("\n\nOutline generated successfully ({} chars).", outline.len());
+
+        // 4. Step 2: Comprehensive Study Notes with Mermaid diagram
+        let notes_prompt = format!(
+            "Write comprehensive, clear study notes for the topic 'Understanding APIs: Concepts, Requests, and Responses' based on this lecture.\nInclude a valid mermaid flowchart diagram illustrating the client-API-server interaction.\nTranscript excerpt:\n\"\"\"\n{}\n\"\"\"\nFormat in clean Markdown with ## headings and ```mermaid diagram.",
+            &transcript.full_text[..transcript.full_text.len().min(3000)]
+        );
+
+        println!("\n[2/3] Streaming comprehensive study notes & Mermaid diagram from Ollama...");
+        let notes = llm.stream_generate(
+            &config,
+            &notes_prompt,
+            Some("You are an expert technical tutor. Format notes with clean markdown and valid Mermaid flowchart diagrams."),
+            |tok| {
+                use std::io::Write;
+                print!("{tok}");
+                std::io::stdout().flush().ok();
+            },
+        ).await.expect("Failed to generate notes with Ollama");
+
+        println!("\n\nNotes generated successfully ({} chars).", notes.len());
+
+        // 5. Step 3: Vault persistence in SQLite
+        let db_dir = PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| ".".to_string()))
+            .join(".local/share/com.tauri.dev");
+        std::fs::create_dir_all(&db_dir).ok();
+        let db = Database::new(db_dir).expect("Failed to open SQLite database");
+
+        let timestamp = chrono::Utc::now().to_rfc3339();
+        let job_id = format!("job-ollama-{}", chrono::Utc::now().timestamp_millis());
+        let nb_id = format!("nb-ollama-{}", chrono::Utc::now().timestamp_millis());
+
+        let job = JobRecord {
+            id: job_id.clone(),
+            url: format!("https://www.youtube.com/watch?v={}", video_id),
+            status: "complete".to_string(),
+            current_step: 4,
+            options_json: Some("{\"provider\": \"ollama\", \"model\": \"llama3.2:1b\"}".to_string()),
+            created_at: timestamp.clone(),
+            updated_at: timestamp.clone(),
+        };
+        db.insert_job(&job).expect("Failed to insert job");
+
+        let notebook = NotebookRecord {
+            id: nb_id.clone(),
+            job_id: Some(job_id),
+            title: transcript.video_info.title.clone(),
+            content_json: serde_json::json!({
+                "id": nb_id,
+                "title": transcript.video_info.title,
+                "videoSources": [{
+                    "id": video_id,
+                    "title": transcript.video_info.title,
+                    "url": format!("https://www.youtube.com/watch?v={}", video_id),
+                }],
+                "topics": [{
+                    "id": "topic-1",
+                    "title": "Understanding APIs: Concepts, Requests, and Responses",
+                    "content": notes,
+                }],
+                "rawOutline": outline,
+                "provider": "ollama",
+                "model": "llama3.2:1b"
+            }).to_string(),
+            created_at: timestamp,
+        };
+        db.save_notebook(&notebook).expect("Failed to save notebook");
+
+        let retrieved = db.get_notebook(&nb_id).expect("Failed to read back notebook");
+        assert!(retrieved.is_some());
+        println!("\n[3/3] Verified saved notebook in NoteForge SQLite vault: ID {}", nb_id);
+        println!("=== Ollama End-to-End Synthesis Test PASSED! ===");
     }
 }
