@@ -92,7 +92,7 @@ const Library = () => {
 
   if (isLoading) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[50vh] space-y-3">
+      <div className="flex-1 flex flex-col items-center justify-center min-h-[60vh] space-y-3">
         <Loader2 className="w-6 h-6 text-primary animate-spin" />
         <p className="text-xs text-muted-foreground font-mono">Loading local notebooks...</p>
       </div>
@@ -101,7 +101,7 @@ const Library = () => {
 
   if (error) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[50vh] text-center p-8 max-w-sm mx-auto space-y-4">
+      <div className="flex-1 flex flex-col items-center justify-center min-h-[60vh] text-center p-8 max-w-sm mx-auto space-y-4">
         <div className="w-10 h-10 rounded-full bg-destructive/10 text-destructive flex items-center justify-center">
           <AlertCircle className="w-5 h-5" />
         </div>
@@ -125,9 +125,9 @@ const Library = () => {
   const isEmpty = (jobs?.length || 0) === 0;
 
   return (
-    <div className="space-y-6 max-w-6xl mx-auto py-2">
+    <div className="flex-1 flex flex-col max-w-6xl w-full mx-auto py-2">
       {/* Top Header */}
-      <div className="flex items-center justify-between pb-3 border-b border-border/50">
+      <div className="flex items-center justify-between pb-3 border-b border-border/50 shrink-0">
         <div>
           <h1 className="text-lg font-semibold tracking-tight text-foreground">Study Library</h1>
           <p className="text-xs text-muted-foreground mt-0.5">
@@ -168,25 +168,27 @@ const Library = () => {
 
       {/* Global Empty State */}
       {isEmpty ? (
-        <div className="py-20 px-6 rounded-2xl border border-dashed border-border/60 bg-card/30 flex flex-col items-center justify-center text-center max-w-md mx-auto space-y-4">
-          <div className="w-12 h-12 rounded-xl bg-muted/60 text-muted-foreground flex items-center justify-center">
-            <BookOpen className="w-6 h-6 stroke-[1.5]" />
+        <div className="flex-1 flex items-center justify-center py-12">
+          <div className="w-full max-w-md py-12 px-8 rounded-2xl border border-dashed border-border/60 bg-card/30 flex flex-col items-center justify-center text-center space-y-4 shadow-xs">
+            <div className="w-12 h-12 rounded-xl bg-muted/60 text-muted-foreground flex items-center justify-center">
+              <BookOpen className="w-6 h-6 stroke-[1.5]" />
+            </div>
+            <div className="space-y-1.5">
+              <h3 className="text-sm font-semibold text-foreground">No study notebooks yet</h3>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Synthesize any YouTube video or complete playlist into structured markdown notes with architecture diagrams, quizzes, and interview questions.
+              </p>
+            </div>
+            <Link to="/">
+              <Button size="sm" className="h-8 px-4 text-xs font-semibold gap-1.5 mt-2">
+                <Plus className="w-3.5 h-3.5" />
+                <span>Create Your First Notebook</span>
+              </Button>
+            </Link>
           </div>
-          <div className="space-y-1.5">
-            <h3 className="text-sm font-semibold text-foreground">No study notebooks yet</h3>
-            <p className="text-xs text-muted-foreground leading-relaxed">
-              Synthesize any YouTube video or complete playlist into structured markdown notes with architecture diagrams, quizzes, and interview questions.
-            </p>
-          </div>
-          <Link to="/">
-            <Button size="sm" className="h-8 px-4 text-xs font-semibold gap-1.5 mt-2">
-              <Plus className="w-3.5 h-3.5" />
-              <span>Create Your First Notebook</span>
-            </Button>
-          </Link>
         </div>
       ) : (
-        <div className="space-y-8">
+        <div className="space-y-8 mt-6">
           {/* Active Jobs Section */}
           {activeJobs.length > 0 && (
             <div className="space-y-3">
