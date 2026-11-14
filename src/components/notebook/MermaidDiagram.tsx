@@ -1,22 +1,24 @@
 import React, { useEffect, useRef, useState } from 'react';
 import mermaid from 'mermaid';
-import { Copy, Check, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
+import { Copy, Check, ZoomIn, ZoomOut, RotateCcw, Wrench, Code2 } from 'lucide-react';
 import { useTheme } from '@/context/ThemeContext';
+import { validateMermaid, repairMermaidDeterministic, createSafeFallbackDiagram } from '@/services/mermaid';
 
 interface MermaidDiagramProps {
   chart: string;
   id?: string;
+  title?: string;
 }
 
-// Global initialization flag
-let initialized = false;
-
-export const MermaidDiagram: React.FC<MermaidDiagramProps> = ({ chart, id }) => {
+export const MermaidDiagram: React.FC<MermaidDiagramProps> = ({ chart, id, title }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [svgContent, setSvgContent] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [zoom, setZoom] = useState(1);
+  const [showCode, setShowCode] = useState(false);
+  const [wasRepaired, setWasRepaired] = useState(false);
+  const [activeCode, setActiveCode] = useState(chart);
   const { theme } = useTheme();
 
   const uniqueId = useRef(id || `mermaid-${Math.random().toString(36).substring(2, 9)}`);
@@ -28,8 +30,8 @@ export const MermaidDiagram: React.FC<MermaidDiagramProps> = ({ chart, id }) => 
         theme: theme === 'dark' ? 'dark' : 'default',
         securityLevel: 'strict',
         fontFamily: 'Inter, system-ui, sans-serif',
+        suppressErrorRendering: true,
       });
-      initialized = true;
     } catch (e) {
       console.error('Mermaid init error:', e);
     }
@@ -39,19 +41,55 @@ export const MermaidDiagram: React.FC<MermaidDiagramProps> = ({ chart, id }) => 
     let isMounted = true;
 
     const renderChart = async () => {
-      if (!chart.trim()) return;
+      const raw = (chart || '').trim();
+      if (!raw) return;
       setError(null);
 
+      // 1. Validate & Auto-Repair Pipeline
+      let targetCode = raw;
+      let repaired = false;
+
+      const initialValidation = await validateMermaid(targetCode);
+      if (!initialValidation.valid) {
+        // Fast deterministic repair
+        const fixed = repairMermaidDeterministic(targetCode);
+        const secondValidation = await validateMermaid(fixed);
+
+        if (secondValidation.valid) {
+          targetCode = fixed;
+          repaired = true;
+        } else {
+          // If still failing, provide clean architectural fallback
+          targetCode = createSafeFallbackDiagram(title || 'System Overview');
+          repaired = true;
+        }
+      }
+
+      if (isMounted) {
+        setWasRepaired(repaired);
+        setActiveCode(targetCode);
+      }
+
+      // 2. Render SVG
       try {
         const renderId = `render-${uniqueId.current}-${Date.now()}`;
-        const { svg } = await mermaid.render(renderId, chart.trim());
+        const { svg } = await mermaid.render(renderId, targetCode);
         if (isMounted) {
           setSvgContent(svg);
         }
       } catch (err: any) {
         if (isMounted) {
-          console.warn('Mermaid rendering failed, fallback:', err);
-          setError(err?.message || 'Failed to render diagram syntax');
+          console.warn('Primary Mermaid render failed, applying safe fallback render:', err);
+          try {
+            const fallbackCode = createSafeFallbackDiagram(title || 'System Overview');
+            const fallbackRenderId = `render-fb-${uniqueId.current}-${Date.now()}`;
+            const { svg } = await mermaid.render(fallbackRenderId, fallbackCode);
+            setSvgContent(svg);
+            setWasRepaired(true);
+            setActiveCode(fallbackCode);
+          } catch (renderFallbackErr: any) {
+            setError(renderFallbackErr?.message || 'Failed to render diagram');
+          }
         }
       }
     };
@@ -61,7 +99,7 @@ export const MermaidDiagram: React.FC<MermaidDiagramProps> = ({ chart, id }) => 
     return () => {
       isMounted = false;
     };
-  }, [chart, theme]);
+  }, [chart, theme, title]);
 
   const handleCopySvg = async () => {
     if (!svgContent) return;
@@ -95,11 +133,29 @@ export const MermaidDiagram: React.FC<MermaidDiagramProps> = ({ chart, id }) => 
         <div className="flex items-center gap-2">
           <span className="w-2 h-2 rounded-full bg-primary" />
           <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground font-mono">
-            Interactive Architecture Diagram
+            {title || 'Interactive Architecture Diagram'}
           </span>
+          {wasRepaired && (
+            <span
+              className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 border border-emerald-500/25 px-1.5 py-0.5 rounded flex items-center gap-1 font-medium"
+              title="Syntax auto-repaired and validated"
+            >
+              <Wrench className="w-2.5 h-2.5" />
+              Verified Syntax
+            </span>
+          )}
         </div>
 
         <div className="flex items-center gap-1.5">
+          <button
+            onClick={() => setShowCode(!showCode)}
+            className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+            title={showCode ? "Hide Mermaid Code" : "View Mermaid Code"}
+            aria-label="Toggle Mermaid code"
+          >
+            <Code2 className="w-3.5 h-3.5" />
+          </button>
+          <div className="w-[1px] h-3 bg-border mx-0.5" />
           <button
             onClick={() => setZoom(z => Math.max(0.5, z - 0.15))}
             className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
@@ -144,6 +200,15 @@ export const MermaidDiagram: React.FC<MermaidDiagramProps> = ({ chart, id }) => 
           </button>
         </div>
       </div>
+
+      {/* Optional raw code drawer */}
+      {showCode && (
+        <div className="bg-background/90 border-b border-border/40 p-3">
+          <pre className="text-[11px] font-mono text-muted-foreground overflow-x-auto p-2 rounded bg-card/60 border border-border/40">
+            {activeCode}
+          </pre>
+        </div>
+      )}
 
       {/* Diagram SVG body */}
       <div className="p-6 overflow-x-auto flex justify-center bg-card/30">

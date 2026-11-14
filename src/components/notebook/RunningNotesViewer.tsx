@@ -247,7 +247,7 @@ function renderNotebook(md: string, onSeek?: (seconds: number) => void): React.R
         if (inMermaid) {
             if (line === '```') {
                 elements.push(
-                    <MermaidDiagram key={key()} chart={mermaidLines.join('\n')} />
+                    <MermaidDiagram key={key()} chart={mermaidLines.join('\n')} title={title} />
                 );
                 inMermaid = false;
             } else {
