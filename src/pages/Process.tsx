@@ -54,7 +54,7 @@ const Process = () => {
             case 'generating-notes':
             case 'assembling-notebook':
                 return (
-                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 max-w-7xl mx-auto w-full">
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 max-w-[1720px] mx-auto w-full">
                         {/* Left Main Column: Video & Pipeline Stepper */}
                         <div className="lg:col-span-7 space-y-4">
                             <SourceVideoCard
@@ -91,7 +91,7 @@ const Process = () => {
                     <motion.div
                         initial={{ opacity: 0, scale: 0.98 }}
                         animate={{ opacity: 1, scale: 1 }}
-                        className="w-full max-w-5xl mx-auto"
+                        className="w-full max-w-[1720px] mx-auto"
                     >
                         {state.index && (
                             <IndexReview
@@ -107,7 +107,7 @@ const Process = () => {
                     <motion.div
                         initial={{ opacity: 0, y: 15 }}
                         animate={{ opacity: 1, y: 0 }}
-                        className="w-full max-w-6xl mx-auto"
+                        className="w-full max-w-[1720px] mx-auto flex-1 flex flex-col"
                     >
                         {state.notes && (
                             <ResultsView
@@ -166,7 +166,7 @@ const Process = () => {
     };
 
     return (
-        <div className="container mx-auto px-4 py-6 min-h-[calc(100vh-4rem)]">
+        <div className="w-full max-w-[1720px] mx-auto px-1 md:px-3 py-2 flex-1 flex flex-col">
             <AnimatePresence mode="wait">
                 <motion.div
                     key={state.status}

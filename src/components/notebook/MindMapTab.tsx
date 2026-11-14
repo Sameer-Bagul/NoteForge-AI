@@ -211,7 +211,7 @@ function TopicMindMap({
             </div>
 
             {/* Canvas */}
-            <div className="h-[380px] w-full">
+            <div className="h-[460px] w-full">
                 {!generated ? (
                     <div className="h-full flex flex-col items-center justify-center gap-3 text-muted-foreground">
                         {loading ? (

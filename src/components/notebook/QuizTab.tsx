@@ -207,7 +207,7 @@ export function QuizTab({ notebookId, topicTitles, fullContent, existingQuiz }: 
                 </div>
             </div>
 
-            <div className="space-y-3">
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
                 {filtered.map((q, i) =>
                     q.type === 'mcq'
                         ? <MCQQuestion key={q.id || i} q={q} index={i} />

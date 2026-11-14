@@ -157,7 +157,7 @@ export function InterviewTab({ notebookId, topicTitles, fullContent, existingQue
                 </div>
             </div>
 
-            <div className="space-y-2">
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-3.5">
                 {filtered.map((q, i) => <IQCard key={q.id || i} q={q} index={i} />)}
             </div>
         </div>

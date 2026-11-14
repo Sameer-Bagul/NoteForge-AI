@@ -410,17 +410,11 @@ export function RunningNotesViewer({ content, title, className, showToolbar = tr
 
             {/* Notebook body */}
             <div className={cn(
-                'flex-1 overflow-auto rounded-xl border border-border/60 bg-card shadow-sm',
+                'flex-1 overflow-auto rounded-xl border border-border/60 bg-card shadow-sm scroll-smooth',
                 'relative',
             )}>
-                {/* Left margin line — notebook aesthetic */}
-                <div className="absolute left-[52px] top-0 bottom-0 w-px bg-red-500/15 pointer-events-none" />
-
-                <article className="relative px-8 py-8 max-w-none prose-sm">
-                    {/* Margin gutter */}
-                    <div className="pl-10">
-                        {renderNotebook(content, onSeek)}
-                    </div>
+                <article className="relative px-6 py-6 md:px-8 md:py-8 max-w-none">
+                    {renderNotebook(content, onSeek)}
                 </article>
             </div>
         </div>

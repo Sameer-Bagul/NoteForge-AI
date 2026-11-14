@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
     BookOpen, List, GitBranch, HelpCircle, Briefcase,
-    ArrowLeft, Download, Clock, Hash, FileText, Loader2, Sparkles, Tv, Columns2, Trash2
+    ArrowLeft, ArrowRight, Download, Clock, Hash, FileText, Loader2, Sparkles, Tv, Columns2, Trash2
 } from 'lucide-react';
 import { useSettings } from '@/context/SettingsContext';
 import { isTauri } from '@/services/tauri';
@@ -33,27 +33,36 @@ function TopicSidebar({
     onSelect: (id: string) => void;
 }) {
     return (
-        <nav className="rounded-xl border border-border/60 bg-card/60 overflow-hidden h-full flex flex-col">
-            <div className="px-4 py-3 border-b border-border/40 bg-card/80">
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">Topics</p>
+        <nav className="rounded-xl border border-border/60 bg-card/60 overflow-hidden h-full flex flex-col shadow-xs">
+            <div className="px-4 py-2.5 border-b border-border/40 bg-card/80 flex items-center justify-between">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest font-mono">Topics</p>
+                <span className="text-[11px] font-mono text-muted-foreground/80 bg-muted/60 px-2 py-0.5 rounded">
+                    {topics.length} items
+                </span>
             </div>
-            <div className="flex-1 overflow-y-auto">
+            <div className="flex-1 overflow-y-auto divide-y divide-border/20">
                 {topics.map((t, i) => (
                     <button
                         key={t.id}
                         onClick={() => onSelect(t.id)}
                         className={cn(
-                            'w-full text-left px-4 py-3 text-sm border-b border-border/20 transition-colors group',
+                            'w-full text-left px-4 py-3 text-sm transition-all group relative',
                             activeId === t.id
-                                ? 'bg-primary/10 text-primary font-medium border-l-2 border-l-primary'
-                                : 'text-foreground/70 hover:bg-muted/50 hover:text-foreground border-l-2 border-l-transparent',
+                                ? 'bg-primary/10 text-primary font-medium'
+                                : 'text-foreground/75 hover:bg-muted/40 hover:text-foreground',
                         )}
                     >
-                        <div className="flex items-start gap-2">
-                            <span className={cn('text-xs mt-0.5 shrink-0 font-mono', activeId === t.id ? 'text-primary' : 'text-muted-foreground/60')}>
+                        {activeId === t.id && (
+                            <span className="absolute left-0 top-0 bottom-0 w-1 bg-primary rounded-r" />
+                        )}
+                        <div className="flex items-start gap-2.5">
+                            <span className={cn(
+                                'text-xs mt-0.5 shrink-0 font-mono font-medium',
+                                activeId === t.id ? 'text-primary' : 'text-muted-foreground/60'
+                            )}>
                                 {String(i + 1).padStart(2, '0')}
                             </span>
-                            <span className="leading-snug">{t.title}</span>
+                            <span className="leading-snug text-xs sm:text-sm line-clamp-2">{t.title}</span>
                         </div>
                     </button>
                 ))}
@@ -64,28 +73,62 @@ function TopicSidebar({
 
 // ─── Index Panel ───────────────────────────────────────────────────────────────
 
-function IndexPanel({ topics }: { topics: VideoNotes['index'] }) {
+function IndexPanel({
+    topics,
+    onSelectTopic,
+}: {
+    topics: VideoNotes['index'];
+    onSelectTopic?: (id: string) => void;
+}) {
     return (
-        <div className="max-w-2xl mx-auto space-y-3">
-            {topics.map((t, i) => (
-                <div key={t.id} className="rounded-xl border border-border/50 bg-card/60 p-4">
-                    <div className="flex items-center gap-3 mb-2">
-                        <span className="w-8 h-8 rounded-lg bg-primary/15 flex items-center justify-center text-primary font-bold text-sm shrink-0">
-                            {i + 1}
-                        </span>
-                        <h3 className="font-semibold text-foreground">{t.title}</h3>
-                    </div>
-                    {t.subtopics?.length > 0 && (
-                        <div className="ml-11 flex flex-wrap gap-1.5">
-                            {t.subtopics.map((st, si) => (
-                                <span key={si} className="px-2 py-0.5 rounded-md bg-secondary/60 text-muted-foreground text-xs">
-                                    {st}
-                                </span>
-                            ))}
-                        </div>
-                    )}
+        <div className="w-full space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-border/40">
+                <div>
+                    <h2 className="text-sm font-semibold text-foreground tracking-tight">Curriculum Outline & Chapters</h2>
+                    <p className="text-xs text-muted-foreground">Comprehensive topic breakdown extracted from timestamps and transcript semantics</p>
                 </div>
-            ))}
+                <span className="text-xs font-mono text-muted-foreground bg-muted/60 px-2.5 py-1 rounded-md border border-border/40">
+                    {topics.length} Chapters
+                </span>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {topics.map((t, i) => (
+                    <div
+                        key={t.id}
+                        onClick={() => onSelectTopic?.(t.id)}
+                        className="group flex flex-col justify-between rounded-xl border border-border/60 bg-card/60 hover:bg-card hover:border-primary/40 transition-all p-4 cursor-pointer shadow-xs hover:shadow-sm"
+                    >
+                        <div className="space-y-2.5">
+                            <div className="flex items-center gap-2.5">
+                                <span className="w-7 h-7 rounded-lg bg-primary/10 group-hover:bg-primary text-primary group-hover:text-primary-foreground font-mono font-semibold text-xs flex items-center justify-center shrink-0 transition-colors">
+                                    {String(i + 1).padStart(2, '0')}
+                                </span>
+                                <h3 className="font-semibold text-sm text-foreground leading-snug group-hover:text-primary transition-colors line-clamp-2">
+                                    {t.title}
+                                </h3>
+                            </div>
+                            {t.subtopics && t.subtopics.length > 0 && (
+                                <div className="flex flex-wrap gap-1.5 pt-1">
+                                    {t.subtopics.map((st, si) => (
+                                        <span
+                                            key={si}
+                                            className="px-2 py-0.5 rounded-md bg-secondary/50 text-[11px] text-muted-foreground font-medium border border-border/30"
+                                        >
+                                            {st}
+                                        </span>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                        <div className="pt-3 mt-3 border-t border-border/30 flex items-center justify-between text-[11px] text-muted-foreground">
+                            <span>Chapter {i + 1}</span>
+                            <span className="group-hover:text-primary transition-colors flex items-center gap-1 font-medium">
+                                Read Notes <ArrowRight className="w-3 h-3" />
+                            </span>
+                        </div>
+                    </div>
+                ))}
+            </div>
         </div>
     );
 }
@@ -316,11 +359,11 @@ export function NotebookShell({ notes, onReset }: NotebookShellProps) {
 
                 {/* ── Running Notes Tab ──────────────────────────────────── */}
                 <TabsContent value="notes" className="mt-0">
-                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 h-[calc(100vh-280px)] min-h-[600px]">
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 h-[calc(100vh-210px)] min-h-[640px]">
                         {/* Sidebar / Left Column */}
                         <div className={cn(
                             "flex flex-col gap-4 overflow-hidden",
-                            isStudioMode && videoId ? "lg:col-span-5" : "lg:col-span-3"
+                            isStudioMode && videoId ? "lg:col-span-5 xl:col-span-4" : "lg:col-span-3 xl:col-span-2"
                         )}>
                             {isStudioMode && videoId && (
                                 <div className="rounded-xl overflow-hidden border border-border/60 bg-black shadow-sm aspect-video shrink-0">
@@ -348,7 +391,7 @@ export function NotebookShell({ notes, onReset }: NotebookShellProps) {
                         {/* Notes pane */}
                         <div className={cn(
                             "overflow-hidden flex flex-col",
-                            isStudioMode && videoId ? "lg:col-span-7" : "lg:col-span-9"
+                            isStudioMode && videoId ? "lg:col-span-7 xl:col-span-8" : "lg:col-span-9 xl:col-span-10"
                         )}>
                             {activeNote ? (
                                 <>
@@ -379,7 +422,13 @@ export function NotebookShell({ notes, onReset }: NotebookShellProps) {
 
                 {/* ── Index Tab ─────────────────────────────────────────── */}
                 <TabsContent value="index" className="mt-0">
-                    <IndexPanel topics={notes.index} />
+                    <IndexPanel
+                        topics={notes.index}
+                        onSelectTopic={(id) => {
+                            setActiveTopicId(id);
+                            setActiveTab('notes');
+                        }}
+                    />
                 </TabsContent>
 
                 {/* ── Mind Maps Tab ─────────────────────────────────────── */}
