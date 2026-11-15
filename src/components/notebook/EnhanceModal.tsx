@@ -1,13 +1,12 @@
 import { useState, useMemo } from 'react';
 import {
-    Sparkles,
     Key,
     ExternalLink,
     Check,
     Loader2,
     Shield,
-    Layers,
     Cpu,
+    SlidersHorizontal,
 } from 'lucide-react';
 import {
     Dialog,
@@ -40,22 +39,22 @@ interface EnhanceModalProps {
     isEnhancing?: boolean;
 }
 
-const RECOMMENDED_CLOUD_MODELS: Record<string, { id: string; label: string; description: string }[]> = {
+const RECOMMENDED_MODELS: Record<string, { id: string; label: string; description: string }[]> = {
     gemini: [
-        { id: 'gemini-1.5-pro', label: 'Gemini 1.5 Pro', description: 'Deepest technical rigor, math & code analysis' },
-        { id: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash', description: 'Fast, lightweight cloud reasoning' },
+        { id: 'gemini-1.5-pro', label: 'Gemini 1.5 Pro', description: 'Comprehensive technical depth, typed code and edge cases' },
+        { id: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash', description: 'Fast cloud reasoning and synthesis' },
     ],
     grok: [
         { id: 'grok-beta', label: 'Grok Beta', description: 'xAI cloud language reasoning' },
     ],
     ollama: [
-        { id: 'qwen2.5-coder:latest', label: 'Qwen 2.5 Coder', description: 'Local code specialization' },
-        { id: 'llama3.2:latest', label: 'Llama 3.2', description: 'Local balanced synthesis' },
+        { id: 'qwen2.5-coder:latest', label: 'Qwen 2.5 Coder', description: 'Local offline code specialization' },
+        { id: 'llama3.2:latest', label: 'Llama 3.2', description: 'Local offline balanced model' },
     ],
 };
 
 const KEY_HELP_LINKS: Record<string, { url: string; label: string }> = {
-    gemini: { url: 'https://aistudio.google.com/app/apikey', label: 'Google AI Studio (Free Tier available)' },
+    gemini: { url: 'https://aistudio.google.com/app/apikey', label: 'Google AI Studio' },
     grok: { url: 'https://console.x.ai/', label: 'xAI Console' },
 };
 
@@ -69,7 +68,6 @@ export function EnhanceModal({
 }: EnhanceModalProps) {
     const { settings, updateProviders, saveToBackend } = useSettings();
 
-    // Default to gemini or first cloud provider
     const [selectedProvider, setSelectedProvider] = useState<AIProvider>('gemini');
     const [selectedModel, setSelectedModel] = useState<string>('gemini-1.5-pro');
     const [upgradeAuxiliary, setUpgradeAuxiliary] = useState<boolean>(false);
@@ -77,7 +75,6 @@ export function EnhanceModal({
     const [savingKey, setSavingKey] = useState<boolean>(false);
     const [keySavedNotification, setKeySavedNotification] = useState<boolean>(false);
 
-    // Current configured provider from settings
     const activeConfig = useMemo(() => {
         return settings.providers.find(p => p.provider === selectedProvider);
     }, [settings.providers, selectedProvider]);
@@ -87,7 +84,7 @@ export function EnhanceModal({
 
     const handleProviderChange = (provider: AIProvider) => {
         setSelectedProvider(provider);
-        const models = RECOMMENDED_CLOUD_MODELS[provider];
+        const models = RECOMMENDED_MODELS[provider];
         if (models && models.length > 0) {
             setSelectedModel(models[0].id);
         } else {
@@ -110,7 +107,7 @@ export function EnhanceModal({
             updateProviders(updated);
             await saveToBackend();
             setKeySavedNotification(true);
-            setTimeout(() => setKeySavedNotification(false), 3000);
+            setTimeout(() => setKeySavedNotification(false), 2500);
         } catch (err) {
             console.error('Failed to save API key:', err);
         } finally {
@@ -129,31 +126,26 @@ export function EnhanceModal({
 
     return (
         <Dialog open={isOpen} onOpenChange={(open) => !open && !isEnhancing && onClose()}>
-            <DialogContent className="sm:max-w-[540px] p-6 rounded-2xl bg-card border border-border/80 shadow-2xl">
-                <DialogHeader className="space-y-2 text-left">
-                    <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary">
-                            <Sparkles className="w-4 h-4" />
-                        </div>
-                        <div>
-                            <DialogTitle className="text-base font-bold tracking-tight text-foreground flex items-center gap-2">
-                                <span>AI Deep Enhancement</span>
-                                <Badge variant="outline" className="text-[10px] font-mono border-primary/30 text-primary">
-                                    {mode === 'chapter' ? 'Single Chapter' : 'Entire Notebook'}
-                                </Badge>
-                            </DialogTitle>
-                            <DialogDescription className="text-xs text-muted-foreground line-clamp-1">
-                                {targetTitle}
-                            </DialogDescription>
-                        </div>
+            <DialogContent className="sm:max-w-[500px] p-6 rounded-2xl bg-card border border-border/60 shadow-xl">
+                <DialogHeader className="space-y-1.5 text-left">
+                    <div className="flex items-center justify-between gap-3">
+                        <DialogTitle className="text-sm font-semibold text-foreground flex items-center gap-2">
+                            <span>Enhance notes</span>
+                            <Badge variant="outline" className="text-[10px] font-mono border-border/60 text-muted-foreground font-normal">
+                                {mode === 'chapter' ? 'Single chapter' : 'Entire notebook'}
+                            </Badge>
+                        </DialogTitle>
                     </div>
+                    <DialogDescription className="text-xs text-muted-foreground line-clamp-1">
+                        {targetTitle}
+                    </DialogDescription>
                 </DialogHeader>
 
                 <div className="space-y-4 py-2">
                     {/* Provider Selection */}
                     <div className="space-y-1.5">
-                        <Label className="text-xs font-semibold text-foreground/90">
-                            Enhancement Engine
+                        <Label className="text-xs font-medium text-foreground">
+                            Provider
                         </Label>
                         <div className="grid grid-cols-3 gap-2">
                             {(['gemini', 'grok', 'ollama'] as AIProvider[]).map((prov) => {
@@ -167,26 +159,26 @@ export function EnhanceModal({
                                         key={prov}
                                         type="button"
                                         onClick={() => handleProviderChange(prov)}
-                                        className={`flex flex-col items-start p-2.5 rounded-xl border text-left transition-all ${
+                                        className={`flex flex-col items-start p-2.5 rounded-lg border text-left transition-colors ${
                                             isSelected
-                                                ? 'border-primary bg-primary/5 ring-1 ring-primary'
-                                                : 'border-border/60 bg-card hover:bg-muted/30'
+                                                ? 'border-foreground/30 bg-muted/50 font-medium'
+                                                : 'border-border/50 bg-card hover:bg-muted/30 text-muted-foreground hover:text-foreground'
                                         }`}
                                     >
                                         <div className="flex items-center justify-between w-full">
-                                            <span className="text-xs font-semibold text-foreground">
+                                            <span className="text-xs">
                                                 {PROVIDER_LABELS[prov]}
                                             </span>
                                             {isLocal ? (
-                                                <Cpu className="w-3 h-3 text-muted-foreground" />
+                                                <Cpu className="w-3 h-3 text-muted-foreground/70" />
                                             ) : hasKey ? (
-                                                <Check className="w-3 h-3 text-emerald-400" />
+                                                <Check className="w-3 h-3 text-muted-foreground" />
                                             ) : (
-                                                <Key className="w-3 h-3 text-amber-400" />
+                                                <Key className="w-3 h-3 text-muted-foreground/60" />
                                             )}
                                         </div>
-                                        <span className="text-[10px] text-muted-foreground/80 mt-1">
-                                            {isLocal ? 'Local Offline' : hasKey ? 'Key Configured' : 'Key Needed'}
+                                        <span className="text-[10px] text-muted-foreground mt-1">
+                                            {isLocal ? 'Local offline' : hasKey ? 'Key saved' : 'Key required'}
                                         </span>
                                     </button>
                                 );
@@ -196,20 +188,20 @@ export function EnhanceModal({
 
                     {/* API Key inline input if missing for cloud provider */}
                     {isCloudProvider && !hasApiKey && (
-                        <div className="p-3.5 rounded-xl border border-amber-500/20 bg-amber-500/5 space-y-2.5">
+                        <div className="p-3 rounded-lg border border-border/60 bg-muted/20 space-y-2">
                             <div className="flex items-center justify-between text-xs">
-                                <span className="font-semibold text-foreground flex items-center gap-1.5">
-                                    <Key className="w-3.5 h-3.5 text-amber-400" />
-                                    <span>Enter {PROVIDER_LABELS[selectedProvider]} API Key</span>
+                                <span className="font-medium text-foreground flex items-center gap-1.5">
+                                    <Key className="w-3 h-3 text-muted-foreground" />
+                                    <span>{PROVIDER_LABELS[selectedProvider]} API key</span>
                                 </span>
                                 {KEY_HELP_LINKS[selectedProvider] && (
                                     <a
                                         href={KEY_HELP_LINKS[selectedProvider].url}
                                         target="_blank"
                                         rel="noopener noreferrer"
-                                        className="text-[11px] text-primary hover:underline inline-flex items-center gap-1 font-medium"
+                                        className="text-[11px] text-muted-foreground hover:text-foreground inline-flex items-center gap-1 transition-colors"
                                     >
-                                        <span>Get API Key</span>
+                                        <span>Get key</span>
                                         <ExternalLink className="w-2.5 h-2.5" />
                                     </a>
                                 )}
@@ -217,23 +209,24 @@ export function EnhanceModal({
                             <div className="flex items-center gap-2">
                                 <Input
                                     type="password"
-                                    placeholder="Paste API Key here..."
+                                    placeholder="Paste API key"
                                     value={apiKeyInput}
                                     onChange={(e) => setApiKeyInput(e.target.value)}
-                                    className="h-8 text-xs font-mono rounded-lg border-border/80"
+                                    className="h-8 text-xs font-mono rounded-lg border-border/60 bg-background"
                                 />
                                 <Button
                                     size="sm"
+                                    variant="secondary"
                                     onClick={handleSaveApiKey}
                                     disabled={!apiKeyInput.trim() || savingKey}
                                     className="h-8 text-xs px-3 rounded-lg shrink-0"
                                 >
-                                    {savingKey ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Save Key'}
+                                    {savingKey ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Save key'}
                                 </Button>
                             </div>
                             {keySavedNotification && (
-                                <p className="text-[11px] text-emerald-400 font-mono">
-                                    API key saved securely to settings.
+                                <p className="text-[11px] text-muted-foreground font-mono">
+                                    API key saved.
                                 </p>
                             )}
                         </div>
@@ -241,20 +234,20 @@ export function EnhanceModal({
 
                     {/* Model Selection */}
                     <div className="space-y-1.5">
-                        <Label className="text-xs font-semibold text-foreground/90">
-                            Model Tier
+                        <Label className="text-xs font-medium text-foreground">
+                            Model
                         </Label>
                         <div className="space-y-1.5">
-                            {(RECOMMENDED_CLOUD_MODELS[selectedProvider] || []).map((m) => {
+                            {(RECOMMENDED_MODELS[selectedProvider] || []).map((m) => {
                                 const isSelected = selectedModel === m.id;
                                 return (
                                     <label
                                         key={m.id}
                                         onClick={() => setSelectedModel(m.id)}
-                                        className={`flex items-start gap-3 p-2.5 rounded-xl border cursor-pointer transition-all ${
+                                        className={`flex items-start gap-2.5 p-2.5 rounded-lg border cursor-pointer transition-colors ${
                                             isSelected
-                                                ? 'border-primary/80 bg-primary/5'
-                                                : 'border-border/60 hover:bg-muted/20'
+                                                ? 'border-foreground/30 bg-muted/40'
+                                                : 'border-border/50 hover:bg-muted/20'
                                         }`}
                                     >
                                         <input
@@ -262,10 +255,10 @@ export function EnhanceModal({
                                             name="model-select"
                                             checked={isSelected}
                                             onChange={() => setSelectedModel(m.id)}
-                                            className="mt-0.5 accent-primary"
+                                            className="mt-0.5"
                                         />
                                         <div className="min-w-0">
-                                            <div className="text-xs font-semibold text-foreground">
+                                            <div className="text-xs font-medium text-foreground">
                                                 {m.label}
                                             </div>
                                             <div className="text-[11px] text-muted-foreground">
@@ -284,9 +277,9 @@ export function EnhanceModal({
                             <Checkbox id="notes-opt" checked disabled />
                             <label
                                 htmlFor="notes-opt"
-                                className="text-xs font-medium text-foreground leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                                className="text-xs text-foreground peer-disabled:opacity-80"
                             >
-                                Deep Study Notes (Refined prose, rich typed code & memory diagrams)
+                                Study notes (Technical depth, verified code and architecture)
                             </label>
                         </div>
                         <div className="flex items-center space-x-2">
@@ -297,18 +290,18 @@ export function EnhanceModal({
                             />
                             <label
                                 htmlFor="aux-opt"
-                                className="text-xs font-medium text-foreground leading-none cursor-pointer"
+                                className="text-xs text-foreground cursor-pointer"
                             >
-                                Also regenerate Concept Mind Map & Self-Check Quiz
+                                Regenerate concept map and quiz
                             </label>
                         </div>
                     </div>
 
                     {/* Rollback Safety Notice */}
-                    <div className="flex items-center gap-2 p-2 rounded-lg bg-secondary/40 border border-border/30 text-[11px] text-muted-foreground">
-                        <Shield className="w-3.5 h-3.5 text-primary shrink-0" />
+                    <div className="flex items-center gap-2 p-2 rounded-lg bg-muted/30 border border-border/40 text-[11px] text-muted-foreground">
+                        <Shield className="w-3.5 h-3.5 shrink-0" />
                         <span>
-                            Your current notes will be backed up safely. You can revert with 1 click at any time.
+                            Pre-enhanced version will be preserved for one-click rollback.
                         </span>
                     </div>
                 </div>
@@ -320,7 +313,7 @@ export function EnhanceModal({
                         size="sm"
                         onClick={onClose}
                         disabled={isEnhancing}
-                        className="rounded-xl h-8 text-xs"
+                        className="rounded-lg h-8 text-xs"
                     >
                         Cancel
                     </Button>
@@ -329,18 +322,15 @@ export function EnhanceModal({
                         size="sm"
                         onClick={handleStart}
                         disabled={isEnhancing || (isCloudProvider && !hasApiKey)}
-                        className="rounded-xl h-8 text-xs font-semibold gap-1.5 shadow-xs"
+                        className="rounded-lg h-8 text-xs font-medium gap-1.5 shadow-xs bg-foreground text-background hover:bg-foreground/90"
                     >
                         {isEnhancing ? (
                             <>
-                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                <span>Enhancing Notes…</span>
+                                <Loader2 className="w-3 h-3 animate-spin" />
+                                <span>Enhancing notes…</span>
                             </>
                         ) : (
-                            <>
-                                <Sparkles className="w-3.5 h-3.5" />
-                                <span>Start AI Enhancement</span>
-                            </>
+                            <span>{mode === 'chapter' ? 'Enhance chapter' : 'Enhance notebook'}</span>
                         )}
                     </Button>
                 </DialogFooter>
@@ -348,4 +338,3 @@ export function EnhanceModal({
         </Dialog>
     );
 }
-

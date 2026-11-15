@@ -32,19 +32,19 @@ interface MindMapTabProps {
 
 function CentralNode({ data }: { data: { label: string } }) {
     return (
-        <div className="relative group px-5 py-3 rounded-2xl bg-gradient-to-r from-violet-600 via-indigo-600 to-blue-600 text-white font-bold text-center shadow-xl shadow-indigo-500/25 border-2 border-white/20 min-w-[170px] max-w-[240px] select-none transition-transform hover:scale-[1.02]">
+        <div className="relative px-5 py-2.5 rounded-xl bg-card border border-border/80 text-foreground font-semibold text-center shadow-xs min-w-[160px] max-w-[240px] select-none">
             <Handle
                 type="target"
                 position={Position.Left}
-                className="!w-2 !h-2 !bg-white/90 !border-0"
+                className="!w-2 !h-2 !bg-muted-foreground !border-0"
             />
-            <span className="text-xs sm:text-sm font-bold tracking-tight leading-snug">
+            <span className="text-xs sm:text-sm font-semibold tracking-tight leading-snug">
                 {data.label}
             </span>
             <Handle
                 type="source"
                 position={Position.Right}
-                className="!w-2 !h-2 !bg-white/90 !border-0"
+                className="!w-2 !h-2 !bg-muted-foreground !border-0"
             />
         </div>
     );
@@ -54,24 +54,23 @@ function BranchNode({ data }: { data: { label: string; color?: string } }) {
     const bgColor = data.color || '#6366f1';
     return (
         <div
-            className="relative group px-4 py-2 rounded-xl text-white font-semibold text-center min-w-[130px] max-w-[190px] border border-white/25 select-none transition-transform hover:scale-[1.02]"
+            className="relative px-3.5 py-1.5 rounded-lg text-white font-medium text-center min-w-[120px] max-w-[180px] border border-white/20 select-none shadow-xs"
             style={{
                 backgroundColor: bgColor,
-                boxShadow: `0 4px 14px -2px ${bgColor}55`,
             }}
         >
             <Handle
                 type="target"
                 position={Position.Left}
-                className="!w-2 !h-2 !bg-white/90 !border-0"
+                className="!w-2 !h-2 !bg-white/80 !border-0"
             />
-            <span className="text-xs font-bold tracking-wide uppercase leading-snug">
+            <span className="text-xs font-medium leading-snug">
                 {data.label}
             </span>
             <Handle
                 type="source"
                 position={Position.Right}
-                className="!w-2 !h-2 !bg-white/90 !border-0"
+                className="!w-2 !h-2 !bg-white/80 !border-0"
             />
         </div>
     );
@@ -80,23 +79,23 @@ function BranchNode({ data }: { data: { label: string; color?: string } }) {
 function LeafNode({ data }: { data: { label: string; color?: string } }) {
     const dotColor = data.color || '#6366f1';
     return (
-        <div className="group relative px-3.5 py-2.5 rounded-xl bg-card/95 backdrop-blur-xs border border-border/80 hover:border-primary/50 text-foreground transition-all duration-200 shadow-xs hover:shadow-md min-w-[170px] max-w-[260px] flex items-center gap-2.5">
+        <div className="group relative px-3 py-2 rounded-lg bg-card/90 border border-border/60 hover:border-border text-foreground transition-colors shadow-xs min-w-[160px] max-w-[250px] flex items-center gap-2">
             <Handle
                 type="target"
                 position={Position.Left}
-                className="!w-2 !h-2 !bg-border group-hover:!bg-primary !border-0 transition-colors"
+                className="!w-2 !h-2 !bg-border group-hover:!bg-muted-foreground !border-0 transition-colors"
             />
             <div
-                className="w-2 h-2 rounded-full shrink-0 shadow-xs"
+                className="w-1.5 h-1.5 rounded-full shrink-0"
                 style={{ backgroundColor: dotColor }}
             />
-            <span className="text-xs font-medium leading-snug tracking-tight text-foreground/90 select-none">
+            <span className="text-xs font-normal leading-snug text-foreground/90 select-none">
                 {data.label}
             </span>
             <Handle
                 type="source"
                 position={Position.Right}
-                className="!w-2 !h-2 !bg-border group-hover:!bg-primary !border-0 transition-colors"
+                className="!w-2 !h-2 !bg-border group-hover:!bg-muted-foreground !border-0 transition-colors"
             />
         </div>
     );
@@ -348,12 +347,12 @@ export function MindMapTab({
     return (
         <div className="flex-1 h-full min-h-0 flex flex-col p-3 sm:p-3.5 gap-3">
             {/* ── Studio Header Toolbar ────────────────────────────────────────── */}
-            <div className="px-4 py-2.5 rounded-xl border border-border/40 bg-card/40 backdrop-blur-xs flex flex-wrap items-center justify-between gap-3 shrink-0 select-none shadow-xs">
+            <div className="px-4 py-2.5 rounded-xl border border-border/40 bg-card/40 flex flex-wrap items-center justify-between gap-3 shrink-0 select-none shadow-xs">
                 <div className="flex items-center gap-3 min-w-0">
                     <div className="flex items-center gap-2">
-                        <GitBranch className="w-4 h-4 text-cyan-400 shrink-0" />
-                        <span className="font-semibold text-xs tracking-tight text-foreground">
-                            Concept Architecture Map
+                        <GitBranch className="w-4 h-4 text-muted-foreground shrink-0" />
+                        <span className="font-medium text-xs text-foreground">
+                            Concept map
                         </span>
                     </div>
 
@@ -364,9 +363,9 @@ export function MindMapTab({
                                     key={t.id}
                                     onClick={() => setSelectedTopicId(t.id)}
                                     className={cn(
-                                        "px-2.5 py-1 rounded-md text-xs font-mono transition-all whitespace-nowrap",
+                                        "px-2.5 py-1 rounded-md text-xs font-mono transition-colors whitespace-nowrap",
                                         selectedTopicId === t.id
-                                            ? "bg-foreground text-background font-semibold shadow-xs"
+                                            ? "bg-foreground text-background font-medium shadow-xs"
                                             : "text-muted-foreground hover:text-foreground hover:bg-muted/40"
                                     )}
                                 >
@@ -375,8 +374,8 @@ export function MindMapTab({
                             ))}
                         </div>
                     ) : (
-                        <Badge variant="outline" className="text-[11px] font-mono border-primary/20 text-primary">
-                            {activeTopic?.title} · {activeTopic?.subtopics?.length || 0} Subtopics
+                        <Badge variant="outline" className="text-[11px] font-mono border-border/60 text-muted-foreground font-normal">
+                            {activeTopic?.title} · {activeTopic?.subtopics?.length || 0} subtopics
                         </Badge>
                     )}
                 </div>
@@ -388,7 +387,7 @@ export function MindMapTab({
                         size="sm"
                         onClick={handleGenerate}
                         disabled={loading}
-                        className="h-7 text-xs rounded-lg px-2.5 gap-1.5 font-medium transition-all"
+                        className="h-7 text-xs rounded-lg px-2.5 gap-1.5 font-medium transition-colors"
                     >
                         {loading ? (
                             <>
@@ -398,12 +397,12 @@ export function MindMapTab({
                         ) : hasGraph ? (
                             <>
                                 <RefreshCw className="w-3.5 h-3.5" />
-                                <span>Regenerate Map</span>
+                                <span>Regenerate map</span>
                             </>
                         ) : (
                             <>
                                 <Brain className="w-3.5 h-3.5" />
-                                <span>Generate Map</span>
+                                <span>Generate map</span>
                             </>
                         )}
                     </Button>

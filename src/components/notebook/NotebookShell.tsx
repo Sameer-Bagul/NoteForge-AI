@@ -181,43 +181,43 @@ function IndexPanel({
             <div className="p-6 sm:p-8 rounded-2xl border border-border/40 bg-card/40 backdrop-blur-xs space-y-6 shadow-xs">
                 <div className="space-y-2">
                     <div className="flex items-center gap-2">
-                        <span className="text-[11px] font-mono tracking-widest text-primary uppercase font-bold">
-                            Curriculum Syllabus & Index
+                        <span className="text-xs font-mono text-muted-foreground">
+                            Curriculum index
                         </span>
                         <span className="text-muted-foreground/40">•</span>
-                        <span className="text-[11px] font-mono text-muted-foreground">
-                            {chaptersCount} {chaptersCount === 1 ? 'Chapter' : 'Chapters'}
+                        <span className="text-xs font-mono text-muted-foreground">
+                            {chaptersCount} {chaptersCount === 1 ? 'chapter' : 'chapters'}
                         </span>
                         <span className="text-muted-foreground/40">•</span>
-                        <span className="text-[11px] font-mono text-muted-foreground">
-                            ~{readingTime} Min Total Read
+                        <span className="text-xs font-mono text-muted-foreground">
+                            ~{readingTime} min read
                         </span>
                     </div>
 
-                    <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-foreground leading-tight">
+                    <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-foreground leading-tight">
                         {notes.title}
                     </h1>
 
                     <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed max-w-3xl">
-                        Comprehensive curriculum decomposed into {chaptersCount} structured {chaptersCount === 1 ? 'chapter' : 'chapters'} with timestamped video markers, deep conceptual explanations, code implementations, and interactive knowledge checks.
+                        Lecture curriculum structured into {chaptersCount} {chaptersCount === 1 ? 'chapter' : 'chapters'} with timestamps, technical notes, and concept diagrams.
                     </p>
                 </div>
 
                 {/* Metrics bar */}
                 <div className="flex flex-wrap items-center gap-4 text-xs font-mono text-muted-foreground pt-1 border-t border-border/25">
                     <span className="flex items-center gap-1.5">
-                        <Layers className="w-3.5 h-3.5 text-primary" />
-                        <span>{chaptersCount} Topics Decomposed</span>
+                        <Layers className="w-3.5 h-3.5" />
+                        <span>{chaptersCount} {chaptersCount === 1 ? 'chapter' : 'chapters'}</span>
                     </span>
                     <span>•</span>
                     <span className="flex items-center gap-1.5">
-                        <FileText className="w-3.5 h-3.5 text-muted-foreground/70" />
-                        <span>{wordCount.toLocaleString()} Total Words</span>
+                        <FileText className="w-3.5 h-3.5" />
+                        <span>{wordCount.toLocaleString()} words</span>
                     </span>
                     <span>•</span>
                     <span className="flex items-center gap-1.5">
-                        <Clock className="w-3.5 h-3.5 text-muted-foreground/70" />
-                        <span>~{readingTime} min Reading Time</span>
+                        <Clock className="w-3.5 h-3.5" />
+                        <span>~{readingTime} min read</span>
                     </span>
                 </div>
 
@@ -225,19 +225,18 @@ function IndexPanel({
                 <div className="pt-2 flex flex-wrap items-center gap-3">
                     <Button
                         onClick={onStartReading}
-                        className="rounded-xl px-5 h-9 text-xs font-semibold bg-foreground text-background hover:bg-foreground/90 gap-2 shadow-xs transition-transform active:scale-95"
+                        className="rounded-lg px-4 h-8 text-xs font-medium bg-foreground text-background hover:bg-foreground/90 gap-2 shadow-xs transition-colors"
                     >
-                        <span>Start Reading from Chapter 1</span>
+                        <span>Start reading</span>
                         <ArrowRight className="w-3.5 h-3.5" />
                     </Button>
                     {onEnhanceNotebook && (
                         <Button
                             variant="outline"
                             onClick={onEnhanceNotebook}
-                            className="rounded-xl px-4 h-9 text-xs font-semibold border-primary/40 hover:bg-primary/10 text-primary gap-2 shadow-xs transition-transform active:scale-95"
+                            className="rounded-lg px-3.5 h-8 text-xs font-medium border-border/60 hover:bg-muted/30 text-foreground gap-1.5 transition-colors"
                         >
-                            <Sparkles className="w-3.5 h-3.5 text-primary" />
-                            <span>Enhance Entire Notebook</span>
+                            <span>Enhance notebook</span>
                         </Button>
                     )}
                 </div>

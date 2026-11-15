@@ -527,7 +527,7 @@ export function RunningNotesViewer({
     const handleCopy = useCallback(async () => {
         await navigator.clipboard.writeText(content);
         setCopied(true);
-        toast({ title: 'Copied!', description: 'Notes copied to clipboard.' });
+        toast({ title: 'Copied to clipboard' });
         setTimeout(() => setCopied(false), 2000);
     }, [content]);
 
@@ -541,20 +541,20 @@ export function RunningNotesViewer({
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
-        toast({ title: 'Downloaded!', description: 'Notes saved as Markdown.' });
+        toast({ title: 'Downloaded notes as Markdown' });
     }, [content, title]);
 
     return (
         <div className={cn('flex flex-col h-full relative', className)}>
             {/* ── Outer Notebook Paper Container ─────────────────────────────────── */}
             <div className="flex-1 flex flex-col overflow-hidden rounded-xl border border-border/40 bg-card/40 backdrop-blur-xs shadow-xs">
-                {/* ── Notebook Page Top Header Bar (Un-slopped Chapter Status) ───── */}
+                {/* ── Notebook Page Top Header Bar ──────────────────────────────── */}
                 <div className="px-5 py-2.5 border-b border-border/40 bg-muted/15 flex items-center justify-between gap-3 shrink-0 select-none">
                     <div className="flex items-center flex-wrap gap-2.5 min-w-0">
                         {chapterNumber !== undefined && (
-                            <span className="px-2.5 py-0.5 rounded-md bg-primary/10 border border-primary/20 text-primary font-mono font-bold text-xs tracking-tight">
-                                CHAPTER {String(chapterNumber).padStart(2, '0')}
-                                {totalChapters ? ` / ${String(totalChapters).padStart(2, '0')}` : ''}
+                            <span className="px-2 py-0.5 rounded-md bg-secondary/80 border border-border/50 text-foreground font-mono font-medium text-xs">
+                                Chapter {String(chapterNumber).padStart(2, '0')}
+                                {totalChapters ? ` of ${String(totalChapters).padStart(2, '0')}` : ''}
                             </span>
                         )}
 
@@ -562,22 +562,21 @@ export function RunningNotesViewer({
                             <button
                                 type="button"
                                 onClick={() => startTime !== undefined && onSeek?.(startTime)}
-                                className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md bg-secondary/60 hover:bg-primary/15 hover:text-primary text-muted-foreground font-mono text-xs transition-colors border border-border/30"
+                                className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-secondary/50 hover:bg-secondary text-muted-foreground hover:text-foreground font-mono text-xs transition-colors border border-border/40"
                                 title={`Jump to video timestamp ${timeDisplay}`}
                             >
-                                <Play className="w-2.5 h-2.5 fill-current text-primary" />
+                                <Play className="w-2.5 h-2.5 fill-current opacity-80" />
                                 <span>{timeDisplay}</span>
                             </button>
                         )}
 
                         {isStreaming ? (
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20 text-xs font-mono font-medium animate-pulse">
-                                <span className="w-1.5 h-1.5 rounded-full bg-primary animate-ping" />
-                                {streamingStatus || 'Streaming…'}
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md bg-secondary/80 text-foreground border border-border/50 text-xs font-mono">
+                                <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />
+                                <span>{streamingStatus || 'Streaming…'}</span>
                             </span>
                         ) : isEnhanced && (
-                            <Badge variant="outline" className="text-[10px] font-mono border-primary/30 text-primary gap-1 py-0.5">
-                                <Sparkles className="w-2.5 h-2.5" />
+                            <Badge variant="outline" className="text-[10px] font-mono border-border/60 text-muted-foreground font-normal py-0.5">
                                 <span>Enhanced{enhancedWith ? ` · ${enhancedWith}` : ''}</span>
                             </Badge>
                         )}
@@ -585,7 +584,7 @@ export function RunningNotesViewer({
 
                     {/* Right chapter reading stats & actions */}
                     <div className="flex items-center gap-2 shrink-0">
-                        <span className="text-[11px] font-mono text-muted-foreground/60 hidden sm:inline">
+                        <span className="text-[11px] font-mono text-muted-foreground/70 hidden sm:inline">
                             ~{readingTime}m · {wordCount.toLocaleString()} words
                         </span>
 
@@ -595,11 +594,11 @@ export function RunningNotesViewer({
                                 variant="ghost"
                                 size="sm"
                                 onClick={onRevert}
-                                className="h-7 text-xs px-2.5 gap-1.5 text-muted-foreground hover:text-foreground"
+                                className="h-7 text-xs px-2 gap-1 text-muted-foreground hover:text-foreground font-normal"
                                 title="Revert to original pre-enhanced version"
                             >
-                                <RotateCcw className="w-3.5 h-3.5" />
-                                <span className="text-[11px] font-mono">Revert</span>
+                                <RotateCcw className="w-3 h-3" />
+                                <span className="text-[11px]">Revert</span>
                             </Button>
                         )}
 
@@ -609,13 +608,10 @@ export function RunningNotesViewer({
                                 variant={isEnhanced ? "outline" : "default"}
                                 size="sm"
                                 onClick={onEnhance}
-                                className="h-7 text-xs px-2.5 gap-1.5 font-semibold rounded-lg shadow-xs"
+                                className="h-7 text-xs px-2.5 font-medium rounded-lg"
                                 title="Elevate technical depth with a cloud LLM"
                             >
-                                <Sparkles className="w-3 h-3 text-primary-foreground" />
-                                <span className="text-[11px]">
-                                    {isEnhanced ? 'Re-Enhance' : 'Enhance'}
-                                </span>
+                                <span>{isEnhanced ? 'Re-enhance' : 'Enhance'}</span>
                             </Button>
                         )}
 
@@ -623,18 +619,18 @@ export function RunningNotesViewer({
                             variant="ghost"
                             size="sm"
                             onClick={handleCopy}
-                            className="h-7 text-xs px-2.5 gap-1.5 text-muted-foreground hover:text-foreground"
+                            className="h-7 text-xs px-2 gap-1 text-muted-foreground hover:text-foreground font-normal"
                             title="Copy this chapter notes"
                         >
                             {copied ? (
                                 <>
-                                    <Check className="w-3.5 h-3.5 text-emerald-400" />
-                                    <span className="text-emerald-400 font-mono text-[11px]">Copied</span>
+                                    <Check className="w-3 h-3 text-foreground" />
+                                    <span className="text-[11px]">Copied</span>
                                 </>
                             ) : (
                                 <>
-                                    <Copy className="w-3.5 h-3.5" />
-                                    <span className="text-[11px]">Copy Chapter</span>
+                                    <Copy className="w-3 h-3" />
+                                    <span className="text-[11px]">Copy</span>
                                 </>
                             )}
                         </Button>
@@ -713,10 +709,10 @@ export function RunningNotesViewer({
             {isStreaming && userScrolledUp && (
                 <button
                     onClick={scrollToBottom}
-                    className="absolute bottom-5 right-8 px-4 py-2 rounded-full bg-primary text-primary-foreground text-xs font-semibold shadow-xl hover:shadow-2xl transition-all flex items-center gap-1.5 animate-bounce z-30"
+                    className="absolute bottom-5 right-8 px-3.5 py-1.5 rounded-lg bg-foreground text-background text-xs font-medium shadow-md hover:bg-foreground/90 transition-colors flex items-center gap-1.5 z-30"
                 >
                     <ArrowDown className="w-3.5 h-3.5" />
-                    <span>Follow Live Stream</span>
+                    <span>Follow live stream</span>
                 </button>
             )}
         </div>
