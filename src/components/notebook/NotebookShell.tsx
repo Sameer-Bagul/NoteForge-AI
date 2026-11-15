@@ -23,6 +23,7 @@ import { MindMapTab } from './MindMapTab';
 import { QuizTab } from './QuizTab';
 import { InterviewTab } from './InterviewTab';
 import { EnhanceModal, EnhanceOptions } from './EnhanceModal';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { VideoNotes, Notebook } from '@/types';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
@@ -942,11 +943,9 @@ export function NotebookShell({ notes, onReset }: NotebookShellProps) {
         toast({ title: 'Downloaded!', description: 'Notebook saved as Markdown.' });
     };
 
-    const handleDeleteNotebook = async () => {
-        if (!window.confirm(`Delete notebook "${notes.title}"? This cannot be undone.`)) {
-            return;
-        }
+    const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 
+    const handleConfirmDeleteNotebook = async () => {
         try {
             setIsDeleting(true);
             const targetId = notes.notebookId || notes.videoId;
@@ -954,14 +953,14 @@ export function NotebookShell({ notes, onReset }: NotebookShellProps) {
                 await api.deleteNotebook(targetId);
             }
             toast({
-                title: 'Notebook Deleted',
-                description: `"${notes.title}" has been deleted.`,
+                title: 'Notebook deleted',
+                description: `"${notes.title}" has been removed.`,
             });
             onReset();
         } catch (err: any) {
             console.error('Failed to delete notebook:', err);
             toast({
-                title: 'Delete Failed',
+                title: 'Delete failed',
                 description: err?.message || 'Failed to delete notebook.',
                 variant: 'destructive',
             });
@@ -1059,7 +1058,7 @@ export function NotebookShell({ notes, onReset }: NotebookShellProps) {
                     onDownloadMarkdown={handleDownloadAll}
                     onExportCmsJson={handleExportCmsJson}
                     isExportingPdf={isExportingPdf}
-                    onDeleteNotebook={handleDeleteNotebook}
+                    onDeleteNotebook={() => setIsDeleteDialogOpen(true)}
                     isDeleting={isDeleting}
                 />
 
@@ -1279,6 +1278,17 @@ export function NotebookShell({ notes, onReset }: NotebookShellProps) {
                 }
                 onConfirm={handleEnhanceConfirm}
                 isEnhancing={isEnhancing}
+            />
+
+            {/* Dedicated Notebook Deletion Dialog */}
+            <ConfirmDialog
+                open={isDeleteDialogOpen}
+                onOpenChange={setIsDeleteDialogOpen}
+                title="Delete notebook"
+                description={`Delete "${notes.title}"? All chapters, visual concept maps, and quizzes will be permanently removed from local storage.`}
+                confirmText="Delete notebook"
+                isLoading={isDeleting}
+                onConfirm={handleConfirmDeleteNotebook}
             />
         </TooltipProvider>
     );
