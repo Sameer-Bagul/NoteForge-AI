@@ -119,7 +119,7 @@ function Callout({ text, raw, onSeek }: { text: string; raw: string; onSeek?: (s
 // ─── Inline Text Renderer ──────────────────────────────────────────────────────
 
 function parseTimestampToSeconds(ts: string): number {
-    const clean = ts.replace(/[\[\]]/g, '');
+    const clean = ts.replace(/[[\]]/g, '');
     const parts = clean.split(':').map(Number);
     if (parts.length === 2) {
         return parts[0] * 60 + parts[1];

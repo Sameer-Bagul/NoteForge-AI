@@ -4,10 +4,14 @@ import { execSync } from 'child_process';
 import { validateMermaid } from '../validator';
 import { repairMermaidDeterministic } from '../repair';
 
-const dbPath = '/home/sameer/.local/share/com.tauri.dev/noteforge.db';
+const dbPath = process.env.NOTEFORGE_DB_PATH || '/home/sameer/.local/share/com.tauri.dev/noteforge.db';
 
 describe('Mermaid Database Repair and Migration Script', () => {
   it('should repair all invalid mermaid diagrams in SQLite and verify persistence', async () => {
+    if (!fs.existsSync(dbPath)) {
+      console.log(`Skipping migration test: SQLite DB not found at ${dbPath}`);
+      return;
+    }
     // 1. Export raw rows from SQLite
     const exportCmd = `sqlite3 "${dbPath}" "SELECT json_group_array(json_object('id', id, 'title', title, 'content_json', content_json)) FROM notebooks;"`;
     const rawJson = execSync(exportCmd, { maxBuffer: 50 * 1024 * 1024, encoding: 'utf8' });

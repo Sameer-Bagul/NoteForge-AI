@@ -34,12 +34,16 @@ function loadFromStorage(): AppSettings {
             const def = defaultMap.get(key)!;
             const saved = savedMap.get(key as any);
             if (!saved) return def;
+            let model = saved.model;
+            let indexingModel = saved.indexingModel;
+            if (model === 'llama3.2:1b' || model === 'mistral') model = def.model;
+            if (indexingModel === 'llama3.2:1b') indexingModel = def.indexingModel;
             return {
                 ...def,
                 ...saved,
                 apiKey: saved.apiKey || def.apiKey || '',
-                model: (saved.model && saved.model !== 'mistral') ? saved.model : def.model,
-                indexingModel: saved.indexingModel || def.indexingModel,
+                model: model || def.model,
+                indexingModel: indexingModel || def.indexingModel,
                 baseUrl: saved.baseUrl || def.baseUrl,
             };
         });

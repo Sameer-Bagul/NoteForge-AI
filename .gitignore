@@ -42,4 +42,5 @@ server/storage/
 # Tauri & Rust artifacts
 src-tauri/target/
 src-tauri/gen/
+*.exe
 

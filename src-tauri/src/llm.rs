@@ -186,8 +186,8 @@ impl LLMService {
             .as_deref()
             .unwrap_or("http://localhost:11434");
 
-        let model = if config.model.is_empty() {
-            "llama3.2:1b"
+        let model = if config.model.is_empty() || config.model == "llama3.2:1b" {
+            "qwen2.5:7b"
         } else {
             &config.model
         };
@@ -205,10 +205,10 @@ impl LLMService {
         }
 
         let send_fut = self.client.post(&url).json(&body).send();
-        let resp = match tokio::time::timeout(std::time::Duration::from_secs(120), send_fut).await {
+        let resp = match tokio::time::timeout(std::time::Duration::from_secs(600), send_fut).await {
             Ok(Ok(r)) => r,
             Ok(Err(e)) => return Err(format!("Ollama connection error (check if Ollama is running): {e}")),
-            Err(_) => return Err("Ollama connection timed out after 120s".to_string()),
+            Err(_) => return Err("Ollama connection timed out after 600s".to_string()),
         };
 
         if !resp.status().is_success() {
@@ -222,7 +222,7 @@ impl LLMService {
 
         loop {
             let chunk_fut = stream.next();
-            match tokio::time::timeout(std::time::Duration::from_secs(60), chunk_fut).await {
+            match tokio::time::timeout(std::time::Duration::from_secs(180), chunk_fut).await {
                 Ok(Some(chunk_res)) => {
                     let chunk = chunk_res.map_err(|e| format!("Stream read error: {e}"))?;
                     let text = String::from_utf8_lossy(&chunk);

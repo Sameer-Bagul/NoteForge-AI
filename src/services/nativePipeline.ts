@@ -44,6 +44,76 @@ export const PIPELINE_STEPS: ProcessingStep[] = [
   { id: 'assemble', label: 'Study Assets & Vault Archival', description: 'Generating flashcards, mind maps, quizzes, and saving to SQLite vault', status: 'pending' },
 ];
 
+export function formatTimeDisplay(seconds: number): string {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = Math.floor(seconds % 60);
+  if (h > 0) {
+    return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  }
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+export function getTranscriptDuration(t: ExtractedTranscript): number {
+  if (t.segments && t.segments.length > 0) {
+    const last = t.segments[t.segments.length - 1];
+    return Math.round(last.start + (last.duration || 0));
+  }
+  return 0;
+}
+
+export interface VideoAnalysis {
+  transcript: ExtractedTranscript;
+  durationSeconds: number;
+  chapters: Array<{
+    title: string;
+    start_seconds: number;
+    end_seconds?: number;
+    time_display: string;
+  }>;
+  isLongOrCompound: boolean;
+}
+
+export function analyzeVideoSyllabus(transcripts: ExtractedTranscript[]): VideoAnalysis[] {
+  return transcripts.map(t => {
+    const duration = getTranscriptDuration(t);
+    const rawChapters = (t.chapters || t.video_info.chapters || []).map(c => ({
+      title: c.title,
+      start_seconds: c.start_seconds,
+      end_seconds: c.end_seconds,
+      time_display: c.time_display,
+    }));
+
+    // Video is compound if creator explicitly supplied >= 2 chapters, OR if duration > 30 minutes (1800s)
+    const isLongOrCompound = rawChapters.length >= 2 || duration > 1800;
+
+    let resolvedChapters = rawChapters;
+    // If long video (> 30 mins) without creator chapters, synthesize 15-minute logical windows
+    if (isLongOrCompound && resolvedChapters.length < 2 && duration > 0) {
+      const windowSize = 900; // 15 mins (900 seconds)
+      const windowCount = Math.max(2, Math.ceil(duration / windowSize));
+      resolvedChapters = [];
+      for (let i = 0; i < windowCount; i++) {
+        const start = i * windowSize;
+        const end = Math.min(duration, (i + 1) * windowSize);
+        resolvedChapters.push({
+          title: `${t.video_info.title} (Part ${i + 1})`,
+          start_seconds: start,
+          end_seconds: end,
+          time_display: formatTimeDisplay(start),
+        });
+      }
+    }
+
+    return {
+      transcript: t,
+      durationSeconds: duration,
+      chapters: resolvedChapters,
+      isLongOrCompound,
+    };
+  });
+}
+
 export function getAIConfigForTask(task: 'notes' | 'indexing' | 'features'): { provider: string; model: string; baseUrl?: string; apiKey?: string } {
   try {
     const raw = localStorage.getItem('noteforge_ai_settings');
@@ -54,14 +124,31 @@ export function getAIConfigForTask(task: 'notes' | 'indexing' | 'features'): { p
         ? parsed.providers.find(p => p.provider === assigned && p.enabled)
         : null;
 
+      // Prioritize enabled provider that is either local (Ollama) or has an API key
+      if (!providerConfig) {
+        providerConfig = parsed.providers.find(p => p.enabled && (p.provider === 'ollama' || p.provider === 'lmstudio' || Boolean(p.apiKey?.trim())));
+      }
+
       if (!providerConfig) {
         providerConfig = parsed.providers.find(p => p.enabled) || parsed.providers[0];
       }
 
+      // If selected provider is cloud without an API key, fallback to Ollama if active
+      if (providerConfig && (providerConfig.provider === 'gemini' || providerConfig.provider === 'grok') && !providerConfig.apiKey?.trim()) {
+        const ollamaCandidate = parsed.providers.find(p => p.provider === 'ollama');
+        if (ollamaCandidate) {
+          providerConfig = ollamaCandidate;
+        }
+      }
+
       if (providerConfig) {
-        let model = (task === 'indexing' && providerConfig.indexingModel)
+        let model = (task === 'indexing' && providerConfig.indexingModel && providerConfig.indexingModel !== 'llama3.2:1b')
           ? providerConfig.indexingModel
-          : (providerConfig.model || 'gemini-flash-lite-latest');
+          : (providerConfig.model || (providerConfig.provider === 'ollama' ? 'qwen2.5:7b' : 'gemini-flash-lite-latest'));
+
+        if (model === 'llama3.2:1b') {
+          model = 'qwen2.5:7b';
+        }
 
         // Migrate away from models experiencing high-demand outages or deprecations
         if (model === 'gemini-flash-latest' || model === 'gemini-2.5-flash' || model === 'gemini-1.5-flash') {
@@ -79,8 +166,9 @@ export function getAIConfigForTask(task: 'notes' | 'indexing' | 'features'): { p
   } catch {}
 
   return {
-    provider: 'gemini',
-    model: 'gemini-flash-lite-latest',
+    provider: 'ollama',
+    model: 'qwen2.5:7b',
+    baseUrl: 'http://localhost:11434',
   };
 }
 
@@ -292,7 +380,7 @@ export const nativePipeline = {
         throw new Error('Invalid YouTube URL or unsupported format');
       }
 
-      let transcripts: ExtractedTranscript[] = [];
+      const transcripts: ExtractedTranscript[] = [];
       let videoSources: VideoInfo[] = [];
       let overallTitle = 'Study Notebook';
 
@@ -316,6 +404,10 @@ export const nativePipeline = {
             const t = await tauriApi.fetchTranscript(v.id);
             transcripts.push(t);
             const chapters = t.chapters || t.video_info.chapters || [];
+            const vsMatch = videoSources.find(vs => vs.id === v.id);
+            if (vsMatch) {
+              vsMatch.chapters = chapters;
+            }
             if (chapters.length > 0) {
               notifyLog(session, `Discovered ${chapters.length} creator chapters for "${t.video_info.title}"`, 'info');
             }
@@ -367,36 +459,61 @@ export const nativePipeline = {
 
       const aiConfig = getAIConfigForTask('indexing');
       notifyLog(session, `Connecting to ${aiConfig.provider} (${aiConfig.model})...`, 'info');
-      const combinedText = transcripts.map(t => `Video: ${t.video_info.title}\n${t.full_text}`).join('\n\n---\n\n');
-      const textSample = combinedText.slice(0, 16000); // 16k chars sample for indexing
+      const isPlaylist = transcripts.length > 1;
+      const videoAnalyses = analyzeVideoSyllabus(transcripts);
+      const combinedText = transcripts.map(t => t.full_text).join('\n\n');
 
-      const allDiscoveredChapters = transcripts.flatMap(t => t.chapters || t.video_info.chapters || []);
+      let syllabusSummary = '';
+      if (isPlaylist) {
+        syllabusSummary = `Playlist Lessons (${transcripts.length} videos):\n` +
+          videoAnalyses.map((va, idx) => {
+            const durStr = formatTimeDisplay(va.durationSeconds);
+            if (!va.isLongOrCompound) {
+              return `${idx + 1}. [Video ID: ${va.transcript.video_info.id}] "${va.transcript.video_info.title}" (${durStr}) - Single Lesson`;
+            }
+            const chList = va.chapters.map(c => `     - [${c.time_display}] ${c.title}`).join('\n');
+            return `${idx + 1}. [Video ID: ${va.transcript.video_info.id}] "${va.transcript.video_info.title}" (${durStr}) - Multi-Chapter Deep Dive (${va.chapters.length} chapters):\n${chList}`;
+          }).join('\n\n');
+      } else {
+        const va = videoAnalyses[0];
+        if (va && va.chapters.length > 0) {
+          syllabusSummary = `YouTube Creator Timeline Chapters (${va.chapters.length} markers found on timeline):\n` +
+            va.chapters.map(c => `- [${c.time_display}] ${c.title}`).join('\n');
+        }
+      }
 
-      const chaptersContext = allDiscoveredChapters.length > 0
-        ? `\nYouTube Creator Timeline Chapters (${allDiscoveredChapters.length} markers found on video timeline):\n` +
-          allDiscoveredChapters.map(c => `- [${c.time_display}] ${c.title}`).join('\n') +
-          `\n\nCRITICAL INSTRUCTION: The video creator marked these exact chapters on the YouTube timeline. You MUST base your curriculum outline directly on these timeline markers! Keep each topic faithful to the creator's timeline label, provide a clear 1-2 sentence description, 2-4 subtopics, and include "startTime" (${allDiscoveredChapters[0].start_seconds}) and "timeDisplay" ("${allDiscoveredChapters[0].time_display}").`
-        : '';
+      const maxSample = aiConfig.provider === 'ollama' ? 5000 : 16000;
+      const textSample = isPlaylist
+        ? syllabusSummary
+        : (syllabusSummary
+            ? `${syllabusSummary}\n\nTranscript Excerpt:\n${combinedText.slice(0, maxSample)}`
+            : combinedText.slice(0, maxSample));
 
-      const indexPrompt = `Analyze this video transcript and generate a structured topic outline for study notes.
+      const firstVideoId = videoAnalyses[0]?.transcript.video_info.id || 'video_id';
+
+      const indexPrompt = `Analyze this video curriculum and generate a structured topic outline for study notes.
 Title: "${overallTitle}"
-${chaptersContext}
 
-Source Transcript:
+${syllabusSummary}
+
+Source Content Structure:
 """
 ${textSample}
 """
 
 Instructions:
-1. ${allDiscoveredChapters.length > 0 ? `Create a topic for each creator timeline chapter (or group tightly-spaced ones if >16 chapters).` : `Extract 4 to 8 clear, progressive study topics.`}
-2. For each topic, supply a title, short description, 2-4 subtopics, and matching "startTime" and "timeDisplay".
+${isPlaylist ? `1. For single lessons, produce 1 study topic for that video with its matching "videoId", "startTime": 0, and "timeDisplay": "0:00".
+2. For multi-chapter deep dives, expand into 1 topic per chapter, preserving the matching "videoId", "startTime", and "timeDisplay".` : (videoAnalyses[0]?.chapters.length > 0 ? `1. Create a topic for each creator timeline chapter (or group tightly-spaced ones if >16 chapters).
+2. For each topic, assign matching "videoId" ("${firstVideoId}"), "startTime", and "timeDisplay".` : `1. Extract 4 to 8 clear, progressive study topics with "videoId": "${firstVideoId}", "startTime", and "timeDisplay".`)}
 3. Return ONLY a valid JSON array of topics matching this schema:
 [
   {
+    "videoId": "${firstVideoId}",
     "title": "Topic Name",
     "description": "Short overview of what is taught",
     "subtopics": ["Subtopic 1", "Subtopic 2"],
     "startTime": 0,
+    "endTime": 600,
     "timeDisplay": "0:00"
   }
 ]`;
@@ -430,6 +547,7 @@ Instructions:
       cleanedJson = cleanedJson.trim();
 
       let parsedTopics: Array<{
+        videoId?: string;
         title: string;
         description: string;
         subtopics: string[];
@@ -441,37 +559,63 @@ Instructions:
       try {
         parsedTopics = JSON.parse(cleanedJson);
       } catch {
-        notifyLog(session, 'Using robust outline fallback structure', 'info');
-        if (allDiscoveredChapters.length > 0) {
-          parsedTopics = allDiscoveredChapters.map(c => ({
-            title: c.title,
-            description: `Core analysis and takeaways for ${c.title} [${c.time_display}]`,
-            subtopics: ['Key Concepts', 'Detailed Breakdown', 'Practical Implications'],
-            startTime: c.start_seconds,
-            endTime: c.end_seconds,
-            timeDisplay: c.time_display,
-          }));
-        } else {
-          parsedTopics = [
-            { title: 'Core Concepts & Fundamentals', description: 'Overview and fundamental concepts', subtopics: ['Architecture', 'Setup'] },
-            { title: 'In-Depth Walkthrough', description: 'Detailed implementation steps', subtopics: ['Execution', 'Configuration'] },
-            { title: 'Summary & Key Takeaways', description: 'Conclusion and practical guidelines', subtopics: ['Best Practices', 'Next Steps'] }
-          ];
+        notifyLog(session, 'Using robust hybrid outline fallback structure', 'info');
+        parsedTopics = [];
+        for (const va of videoAnalyses) {
+          if (va.isLongOrCompound && va.chapters.length > 0) {
+            for (const c of va.chapters) {
+              parsedTopics.push({
+                videoId: va.transcript.video_info.id,
+                title: c.title,
+                description: `Core analysis and takeaways for ${c.title} [${c.time_display}]`,
+                subtopics: ['Key Concepts', 'Detailed Breakdown', 'Practical Implications'],
+                startTime: c.start_seconds,
+                endTime: c.end_seconds,
+                timeDisplay: c.time_display,
+              });
+            }
+          } else {
+            parsedTopics.push({
+              videoId: va.transcript.video_info.id,
+              title: va.transcript.video_info.title,
+              description: `In-depth analysis and takeaways for ${va.transcript.video_info.title}`,
+              subtopics: ['Core Principles', 'Code Walkthrough', 'Key Takeaways'],
+              startTime: 0,
+              endTime: va.durationSeconds > 0 ? va.durationSeconds : undefined,
+              timeDisplay: '0:00',
+            });
+          }
         }
       }
+
+      const allChapters = videoAnalyses.flatMap(va => 
+        va.chapters.map(c => ({ ...c, videoId: va.transcript.video_info.id }))
+      );
 
       const generatedIndex: UnifiedIndex = {
         id: `idx-${Date.now()}`,
         title: overallTitle,
         topics: parsedTopics.map((t, idx) => {
-          const matched = allDiscoveredChapters.find(c =>
-            c.title.toLowerCase().includes(t.title.toLowerCase()) ||
-            t.title.toLowerCase().includes(c.title.toLowerCase())
-          ) || allDiscoveredChapters[idx];
+          // Resolve videoId
+          let matchedVideoId = t.videoId;
+          if (!matchedVideoId || !transcripts.some(tr => tr.video_info.id === matchedVideoId)) {
+            const foundByTitle = videoAnalyses.find(va => 
+              va.transcript.video_info.title.toLowerCase().includes(t.title.toLowerCase()) ||
+              va.chapters.some(c => c.title.toLowerCase().includes(t.title.toLowerCase()))
+            );
+            matchedVideoId = foundByTitle?.transcript.video_info.id || videoSources[Math.min(idx, videoSources.length - 1)]?.id || videoSources[0]?.id || '';
+          }
 
-          const startTime = t.startTime ?? matched?.start_seconds;
-          const endTime = t.endTime ?? matched?.end_seconds;
-          const timeDisplay = t.timeDisplay ?? matched?.time_display;
+          const matchedChapter = allChapters.find(c =>
+            c.videoId === matchedVideoId && (
+              c.title.toLowerCase().includes(t.title.toLowerCase()) ||
+              t.title.toLowerCase().includes(c.title.toLowerCase())
+            )
+          );
+
+          const startTime = t.startTime ?? matchedChapter?.start_seconds ?? 0;
+          const endTime = t.endTime ?? matchedChapter?.end_seconds;
+          const timeDisplay = t.timeDisplay ?? matchedChapter?.time_display ?? formatTimeDisplay(startTime);
 
           return {
             id: `topic-${idx + 1}-${Math.random().toString(36).substring(2, 6)}`,
@@ -480,9 +624,9 @@ Instructions:
             subtopics: (t.subtopics || []).map((st, sidx) => ({
               id: `sub-${idx}-${sidx}`,
               title: st,
-              videoSources: [videoSources[0]?.id || ''],
+              videoSources: [matchedVideoId],
             })),
-            videoSources: [videoSources[0]?.id || ''],
+            videoSources: [matchedVideoId],
             order: idx + 1,
             startTime,
             endTime,
@@ -516,7 +660,7 @@ Instructions:
       notifyAwaitingApproval(session, generatedIndex);
     } catch (err: any) {
       console.error('Native pipeline error:', err);
-      const errMsg = err?.message || 'Pipeline execution failed';
+      const errMsg = (typeof err === 'string' ? err : err?.message) || 'Pipeline execution failed';
       const failedStep = session.currentStep ?? 1;
       notifyStepChange(session, failedStep, 'error', errMsg);
       notifyStatusChange(session, 'error');
@@ -565,40 +709,43 @@ Instructions:
           creativity === 3 ? 'Enhanced with diagrams and deep context' :
           'Creative, comprehensive publication-grade mastery notes';
 
-        const transcriptExcerpt = transcripts
-          .map(t => {
-            let segs = t.segments;
-            if (topic.startTime !== undefined) {
-              const start = topic.startTime;
-              const end = topic.endTime ?? (start + 600);
-              const filtered = segs.filter(s => s.start >= Math.max(0, start - 15) && s.start <= end + 15);
-              if (filtered.length >= 5) {
-                segs = filtered;
-              }
-            }
-            if (segs === t.segments && approvedIndex.topics.length > 1) {
-              const segsPerTopic = Math.max(30, Math.floor(t.segments.length / approvedIndex.topics.length));
-              const startIdx = Math.min((topicIndex - 1) * segsPerTopic, Math.max(0, t.segments.length - segsPerTopic));
-              segs = t.segments.slice(startIdx, startIdx + segsPerTopic * 2);
-            }
-            return segs
-              .slice(0, 200)
-              .map(s => {
-                const h = Math.floor(s.start / 3600);
-                const m = Math.floor((s.start % 3600) / 60);
-                const sec = Math.floor(s.start % 60);
-                const ts = h > 0
-                  ? `${h}:${m.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`
-                  : `${m}:${sec.toString().padStart(2, '0')}`;
-                return `[${ts}] ${s.text}`;
-              })
-              .join(' ');
+        // 1. Identify which video transcript this topic belongs to
+        const targetTranscript = (topic.videoSources && topic.videoSources.length > 0)
+          ? transcripts.find(t => topic.videoSources.includes(t.video_info.id))
+          : transcripts.find(t => t.video_info.title.toLowerCase() === topic.title.toLowerCase())
+            || transcripts[Math.min(topicIndex - 1, transcripts.length - 1)];
+
+        const activeTranscript = targetTranscript || transcripts[0];
+
+        // 2. Extract and window transcript segments
+        let segs = activeTranscript.segments;
+        if (topic.startTime !== undefined && (topic.endTime !== undefined || activeTranscript.segments.length > 80)) {
+          const start = topic.startTime;
+          const end = topic.endTime ?? (start + 900);
+          const filtered = segs.filter(s => s.start >= Math.max(0, start - 15) && s.start <= end + 15);
+          if (filtered.length >= 5) {
+            segs = filtered;
+          }
+        }
+
+        const maxExcerpt = aiConfig.provider === 'ollama' ? 7000 : 14000;
+        const transcriptExcerpt = segs
+          .slice(0, 250)
+          .map(s => {
+            const h = Math.floor(s.start / 3600);
+            const m = Math.floor((s.start % 3600) / 60);
+            const sec = Math.floor(s.start % 60);
+            const ts = h > 0
+              ? `${h}:${m.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`
+              : `${m}:${sec.toString().padStart(2, '0')}`;
+            return `[${ts}] ${s.text}`;
           })
-          .join('\n\n')
-          .slice(0, 14000);
+          .join(' ')
+          .slice(0, maxExcerpt);
 
         const prompt = `Write comprehensive, book-quality study notes for the following topic.
 Topic: "${topic.title}"${topic.timeDisplay ? ` [Timeline Chapter: ${topic.timeDisplay}]` : ''}
+Video Source: "${activeTranscript.video_info.title}"
 Description: ${topic.description || ''}
 Subtopics to cover:
 ${topic.subtopics.map(s => `- ${s.title}`).join('\n')}
@@ -645,8 +792,8 @@ Begin directly with the topic notes in structured Markdown.`;
           sections: [],
           keyTakeaways: [],
           videoSources: [{
-            videoId: videoSources[0]?.id || '',
-            videoTitle: videoSources[0]?.title || '',
+            videoId: activeTranscript.video_info.id,
+            videoTitle: activeTranscript.video_info.title,
             timestamps: topic.startTime !== undefined ? [topic.startTime] : undefined,
           }],
           generatedAt: new Date().toISOString(),
@@ -728,7 +875,7 @@ Begin directly with the topic notes in structured Markdown.`;
       return finalNotebook;
     } catch (err: any) {
       console.error('Error during notes generation:', err);
-      const errMsg = err?.message || 'Notes generation failed';
+      const errMsg = (typeof err === 'string' ? err : err?.message) || 'Notes generation failed';
       notifyStepChange(session, session.currentStep, 'error', errMsg);
       notifyStatusChange(session, 'error');
       notifyLog(session, errMsg, 'error');

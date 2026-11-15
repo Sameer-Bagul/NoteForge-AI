@@ -42,7 +42,7 @@ export const DEFAULT_MODELS: Record<AIProvider, string> = {
     gemini: 'gemini-flash-lite-latest',
     grok: 'grok-beta',
     lmstudio: 'local-model',
-    ollama: 'llama3.2:1b',
+    ollama: 'qwen2.5:7b',
 };
 
 export const DEFAULT_BASE_URLS: Record<AIProvider, string | undefined> = {
@@ -62,21 +62,21 @@ export const IS_LOCAL_PROVIDER: Record<AIProvider, boolean> = {
 export const DEFAULT_SETTINGS: AppSettings = {
     providers: [
         {
-            provider: 'gemini',
+            provider: 'ollama',
             enabled: true,
+            apiKey: '',
+            model: 'qwen2.5:7b',
+            indexingModel: 'qwen2.5:7b',
+            baseUrl: 'http://localhost:11434',
+            priority: 1,
+        },
+        {
+            provider: 'gemini',
+            enabled: false,
             apiKey: '',
             model: 'gemini-flash-lite-latest',
             indexingModel: 'gemini-flash-lite-latest',
             baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
-            priority: 1,
-        },
-        {
-            provider: 'ollama',
-            enabled: false,
-            apiKey: '',
-            model: 'llama3.2:1b',
-            indexingModel: 'llama3.2:1b',
-            baseUrl: 'http://localhost:11434',
             priority: 2,
         },
         {
@@ -97,9 +97,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
         },
     ],
     taskMapping: {
-        notes: 'auto',
-        indexing: 'auto',
-        features: 'auto',
+        notes: 'ollama',
+        indexing: 'ollama',
+        features: 'ollama',
     },
     pdfTheme: 'modern',
 };

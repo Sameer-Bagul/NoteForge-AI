@@ -7,6 +7,9 @@ export default defineConfig(({ mode }) => ({
   server: {
     host: "::",
     port: 8080,
+    watch: {
+      ignored: ["**/src-tauri/**"],
+    },
   },
   plugins: [react()],
   resolve: {

@@ -32,13 +32,27 @@ function getAIForTask(task: 'notes' | 'indexing' | 'features'): { provider: stri
         : null;
 
       if (!providerConfig) {
+        providerConfig = parsed.providers?.find((p: any) => p.enabled && (p.provider === 'ollama' || p.provider === 'lmstudio' || Boolean(p.apiKey?.trim())));
+      }
+
+      if (!providerConfig) {
         providerConfig = parsed.providers?.find((p: any) => p.enabled) || parsed.providers?.[0];
       }
 
+      if (providerConfig && (providerConfig.provider === 'gemini' || providerConfig.provider === 'grok') && !providerConfig.apiKey?.trim()) {
+        const ollamaCandidate = parsed.providers?.find((p: any) => p.provider === 'ollama');
+        if (ollamaCandidate) {
+          providerConfig = ollamaCandidate;
+        }
+      }
+
       if (providerConfig) {
-        let model = (task === 'indexing' && providerConfig.indexingModel)
+        let model = (task === 'indexing' && providerConfig.indexingModel && providerConfig.indexingModel !== 'llama3.2:1b')
           ? providerConfig.indexingModel
-          : (providerConfig.model || 'gemini-flash-lite-latest');
+          : (providerConfig.model || (providerConfig.provider === 'ollama' ? 'qwen2.5:7b' : 'gemini-flash-lite-latest'));
+        if (model === 'llama3.2:1b') {
+          model = 'qwen2.5:7b';
+        }
         if (model === 'gemini-flash-latest' || model === 'gemini-2.5-flash' || model === 'gemini-1.5-flash') {
           model = 'gemini-flash-lite-latest';
         }
@@ -51,7 +65,7 @@ function getAIForTask(task: 'notes' | 'indexing' | 'features'): { provider: stri
       }
     }
   } catch {}
-  return { provider: 'gemini', model: 'gemini-flash-lite-latest' };
+  return { provider: 'ollama', model: 'qwen2.5:7b', baseUrl: 'http://localhost:11434' };
 }
 
 export const api = {
