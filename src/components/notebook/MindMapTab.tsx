@@ -32,33 +32,72 @@ interface MindMapTabProps {
 
 function CentralNode({ data }: { data: { label: string } }) {
     return (
-        <div className="px-5 py-3 rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-600 text-white font-bold text-center shadow-lg shadow-indigo-500/25 border-2 border-white/20 min-w-[160px] max-w-[220px]">
-            <Handle type="source" position={Position.Right} className="opacity-0" />
-            <Handle type="target" position={Position.Left} className="opacity-0" />
-            <span className="text-sm leading-snug">{data.label}</span>
+        <div className="relative group px-5 py-3 rounded-2xl bg-gradient-to-r from-violet-600 via-indigo-600 to-blue-600 text-white font-bold text-center shadow-xl shadow-indigo-500/25 border-2 border-white/20 min-w-[170px] max-w-[240px] select-none transition-transform hover:scale-[1.02]">
+            <Handle
+                type="target"
+                position={Position.Left}
+                className="!w-2 !h-2 !bg-white/90 !border-0"
+            />
+            <span className="text-xs sm:text-sm font-bold tracking-tight leading-snug">
+                {data.label}
+            </span>
+            <Handle
+                type="source"
+                position={Position.Right}
+                className="!w-2 !h-2 !bg-white/90 !border-0"
+            />
         </div>
     );
 }
 
 function BranchNode({ data }: { data: { label: string; color?: string } }) {
+    const bgColor = data.color || '#6366f1';
     return (
         <div
-            className="px-4 py-2 rounded-xl text-white font-semibold text-center shadow-md min-w-[130px] max-w-[180px] border border-white/20"
-            style={{ background: data.color || '#6366f1' }}
+            className="relative group px-4 py-2 rounded-xl text-white font-semibold text-center min-w-[130px] max-w-[190px] border border-white/25 select-none transition-transform hover:scale-[1.02]"
+            style={{
+                backgroundColor: bgColor,
+                boxShadow: `0 4px 14px -2px ${bgColor}55`,
+            }}
         >
-            <Handle type="source" position={Position.Right} className="opacity-0" />
-            <Handle type="target" position={Position.Left} className="opacity-0" />
-            <span className="text-xs leading-snug">{data.label}</span>
+            <Handle
+                type="target"
+                position={Position.Left}
+                className="!w-2 !h-2 !bg-white/90 !border-0"
+            />
+            <span className="text-xs font-bold tracking-wide uppercase leading-snug">
+                {data.label}
+            </span>
+            <Handle
+                type="source"
+                position={Position.Right}
+                className="!w-2 !h-2 !bg-white/90 !border-0"
+            />
         </div>
     );
 }
 
-function LeafNode({ data }: { data: { label: string } }) {
+function LeafNode({ data }: { data: { label: string; color?: string } }) {
+    const dotColor = data.color || '#6366f1';
     return (
-        <div className="px-3.5 py-1.5 rounded-xl bg-card border border-border/70 text-foreground/90 text-center shadow-xs min-w-[120px] max-w-[180px]">
-            <Handle type="source" position={Position.Right} className="opacity-0" />
-            <Handle type="target" position={Position.Left} className="opacity-0" />
-            <span className="text-[11px] font-mono leading-snug">{data.label}</span>
+        <div className="group relative px-3.5 py-2.5 rounded-xl bg-card/95 backdrop-blur-xs border border-border/80 hover:border-primary/50 text-foreground transition-all duration-200 shadow-xs hover:shadow-md min-w-[170px] max-w-[260px] flex items-center gap-2.5">
+            <Handle
+                type="target"
+                position={Position.Left}
+                className="!w-2 !h-2 !bg-border group-hover:!bg-primary !border-0 transition-colors"
+            />
+            <div
+                className="w-2 h-2 rounded-full shrink-0 shadow-xs"
+                style={{ backgroundColor: dotColor }}
+            />
+            <span className="text-xs font-medium leading-snug tracking-tight text-foreground/90 select-none">
+                {data.label}
+            </span>
+            <Handle
+                type="source"
+                position={Position.Right}
+                className="!w-2 !h-2 !bg-border group-hover:!bg-primary !border-0 transition-colors"
+            />
         </div>
     );
 }
@@ -69,78 +108,164 @@ const nodeTypes: NodeTypes = {
     leaf: LeafNode,
 };
 
-// ─── Tree Layout Helper ────────────────────────────────────────────────────────
+// ─── Tree Layout Helper (Collision-Free Hierarchical Algorithm) ────────────────
 
-const BRANCH_COLORS = ['#06b6d4', '#10b981', '#f59e0b', '#f43f5e', '#8b5cf6', '#3b82f6'];
+const BRANCH_COLORS = ['#8b5cf6', '#06b6d4', '#10b981', '#f59e0b', '#ef4444', '#ec4899', '#3b82f6', '#14b8a6'];
 
 function layoutTree(rawNodes: any[], rawEdges: any[]): { nodes: Node[]; edges: Edge[] } {
-    if (!rawNodes.length) return { nodes: [], edges: [] };
+    if (!rawNodes || !rawNodes.length) return { nodes: [], edges: [] };
 
-    const root = rawNodes.find(n => n.id === 'root') || rawNodes[0];
-    const branches = rawNodes.filter(n => n.type === 'branch');
-    const leaves = rawNodes.filter(n => n.type === 'leaf');
+    // 1. Build adjacency graph & lookup maps
+    const childrenMap = new Map<string, string[]>();
+    const parentMap = new Map<string, string>();
+    const nodeById = new Map<string, any>();
 
-    const branchCount = branches.length;
-    const branchSpacing = 110;
-    const startY = -(branchCount * branchSpacing) / 2;
-
-    const nodeMap = new Map<string, Node>();
-
-    // Root
-    nodeMap.set(root.id, {
-        id: root.id,
-        type: 'central',
-        position: { x: 0, y: 0 },
-        data: { label: root.label },
+    rawNodes.forEach(n => {
+        childrenMap.set(n.id, []);
+        nodeById.set(n.id, n);
     });
 
-    // Branches
-    branches.forEach((b, i) => {
-        nodeMap.set(b.id, {
-            id: b.id,
-            type: 'branch',
-            position: { x: 320, y: startY + i * branchSpacing },
-            data: { label: b.label, color: b.color || BRANCH_COLORS[i % BRANCH_COLORS.length] },
-        });
-    });
-
-    // Leaves — positioned to the right of their parent branch
-    const branchChildCount = new Map<string, number>();
     rawEdges.forEach(e => {
-        if (leaves.find(l => l.id === e.target)) {
-            branchChildCount.set(e.source, (branchChildCount.get(e.source) || 0) + 1);
+        if (childrenMap.has(e.source)) {
+            childrenMap.get(e.source)!.push(e.target);
+        }
+        parentMap.set(e.target, e.source);
+    });
+
+    // 2. Identify root node
+    let root = rawNodes.find(n => n.id === 'root' || n.type === 'central');
+    if (!root) {
+        root = rawNodes.find(n => !parentMap.has(n.id)) || rawNodes[0];
+    }
+
+    // 3. Connect any orphan nodes to root to prevent disconnected / floating nodes
+    rawNodes.forEach(n => {
+        if (n.id !== root.id && !parentMap.has(n.id)) {
+            childrenMap.get(root.id)?.push(n.id);
+            parentMap.set(n.id, root.id);
         }
     });
 
-    const branchChildIndex = new Map<string, number>();
-    rawEdges.forEach(e => {
-        const leaf = leaves.find(l => l.id === e.target);
-        if (leaf) {
-            const parentNode = nodeMap.get(e.source);
-            const idx = branchChildIndex.get(e.source) || 0;
-            const count = branchChildCount.get(e.source) || 1;
-            const leafStartY = (parentNode?.position.y || 0) - ((count - 1) * 55) / 2;
+    // 4. Assign colors to branches and propagate down to all descendant leaf nodes
+    const rootChildren = childrenMap.get(root.id) || [];
+    const nodeColorMap = new Map<string, string>();
 
-            nodeMap.set(leaf.id, {
-                id: leaf.id,
-                type: 'leaf',
-                position: { x: 640, y: leafStartY + idx * 55 },
-                data: { label: leaf.label },
+    rootChildren.forEach((bId, idx) => {
+        const branchColor =
+            nodeById.get(bId)?.data?.color ||
+            nodeById.get(bId)?.color ||
+            BRANCH_COLORS[idx % BRANCH_COLORS.length];
+        nodeColorMap.set(bId, branchColor);
+
+        // Breadth-first propagation to all descendants of this branch
+        const queue = [bId];
+        while (queue.length > 0) {
+            const curr = queue.shift()!;
+            const kids = childrenMap.get(curr) || [];
+            kids.forEach(kidId => {
+                nodeColorMap.set(kidId, branchColor);
+                queue.push(kidId);
             });
-            branchChildIndex.set(e.source, idx + 1);
         }
     });
 
-    const edges: Edge[] = rawEdges.map(e => ({
-        id: `${e.source}-${e.target}`,
-        source: e.source,
-        target: e.target,
-        type: 'smoothstep',
-        style: { stroke: '#6366f1', strokeWidth: 1.75, opacity: 0.65 },
-        animated: false,
-    }));
+    // 5. Post-order subtree bounding height calculation (guarantees zero collisions)
+    const ROW_PITCH = 64; // leaf card height + vertical spacing gap
+    const subtreeHeight = new Map<string, number>();
+    const visited = new Set<string>();
 
-    return { nodes: Array.from(nodeMap.values()), edges };
+    function calcSubtreeHeight(id: string): number {
+        if (visited.has(id)) return ROW_PITCH;
+        visited.add(id);
+
+        const children = (childrenMap.get(id) || []).filter(c => c !== id);
+        if (children.length === 0) {
+            subtreeHeight.set(id, ROW_PITCH);
+            return ROW_PITCH;
+        }
+
+        let total = 0;
+        for (const childId of children) {
+            total += calcSubtreeHeight(childId);
+        }
+        const height = Math.max(ROW_PITCH, total);
+        subtreeHeight.set(id, height);
+        return height;
+    }
+
+    const totalHeight = calcSubtreeHeight(root.id);
+    visited.clear();
+
+    // 6. Pre-order position assignment in non-overlapping vertical slices
+    const positions = new Map<string, { x: number; y: number }>();
+    const X_GAP = 280;
+
+    function assignPositions(id: string, depth: number, topY: number) {
+        if (visited.has(id)) return;
+        visited.add(id);
+
+        const children = (childrenMap.get(id) || []).filter(c => c !== id);
+        const h = subtreeHeight.get(id) || ROW_PITCH;
+        const x = depth * X_GAP;
+
+        if (children.length === 0) {
+            positions.set(id, { x, y: Math.round(topY + h / 2) });
+            return;
+        }
+
+        let currY = topY;
+        const childYPositions: number[] = [];
+        for (const childId of children) {
+            const childH = subtreeHeight.get(childId) || ROW_PITCH;
+            assignPositions(childId, depth + 1, currY);
+            childYPositions.push(positions.get(childId)?.y ?? (currY + childH / 2));
+            currY += childH;
+        }
+
+        // Center parent vertically at the midpoint of its children
+        const y = Math.round((childYPositions[0] + childYPositions[childYPositions.length - 1]) / 2);
+        positions.set(id, { x, y });
+    }
+
+    // Center root around y = 0
+    assignPositions(root.id, 0, -totalHeight / 2);
+
+    // 7. Format output ReactFlow nodes
+    const formattedNodes: Node[] = rawNodes.map(n => {
+        const pos = positions.get(n.id) || { x: 0, y: 0 };
+        const color = nodeColorMap.get(n.id) || n.color || n.data?.color;
+        const label = n.label || n.data?.label || n.id;
+        const type = n.id === root.id ? 'central' : rootChildren.includes(n.id) ? 'branch' : 'leaf';
+
+        return {
+            id: n.id,
+            type,
+            position: pos,
+            data: { label, color },
+        };
+    });
+
+    // 8. Format edges with matching branch colors and smoothstep curvature
+    const formattedEdges: Edge[] = rawEdges.map(e => {
+        const sourceColor = nodeColorMap.get(e.source);
+        const targetColor = nodeColorMap.get(e.target);
+        const edgeColor = targetColor || sourceColor || '#6366f1';
+
+        return {
+            id: `${e.source}-${e.target}`,
+            source: e.source,
+            target: e.target,
+            type: 'smoothstep',
+            style: {
+                stroke: edgeColor,
+                strokeWidth: 1.75,
+                opacity: 0.7,
+            },
+            animated: false,
+        };
+    });
+
+    return { nodes: formattedNodes, edges: formattedEdges };
 }
 
 // ─── Mind Map Tab Component ───────────────────────────────────────────────────
@@ -166,8 +291,7 @@ export function MindMapTab({
         if (!activeTopic) return;
         const topicData = existingMindMaps?.[activeTopic.id];
         if (topicData && topicData.nodes && topicData.nodes.length > 0) {
-            const hasPositions = topicData.nodes[0]?.position?.x !== undefined;
-            const formatted = hasPositions ? topicData : layoutTree(topicData.nodes, topicData.edges || []);
+            const formatted = layoutTree(topicData.nodes, topicData.edges || []);
             setNodes(formatted.nodes);
             setEdges(formatted.edges);
         } else {
@@ -332,6 +456,7 @@ export function MindMapTab({
                     </div>
                 ) : (
                     <ReactFlow
+                        key={`${activeTopic?.id}-${nodes.length}`}
                         nodes={nodes}
                         edges={edges}
                         onNodesChange={onNodesChange}
@@ -348,13 +473,10 @@ export function MindMapTab({
                         <MiniMap
                             className="!bg-card/90 !border-border/50 !rounded-xl !overflow-hidden !shadow-md"
                             maskColor="rgba(0, 0, 0, 0.75)"
-                            nodeColor={(node) =>
-                                node.type === 'central'
-                                    ? '#6366f1'
-                                    : node.type === 'branch'
-                                    ? ((node.data as any)?.color || '#8b5cf6')
-                                    : '#3b4252'
-                            }
+                            nodeColor={(node) => {
+                                if (node.type === 'central') return '#6366f1';
+                                return (node.data as any)?.color || '#3b4252';
+                            }}
                         />
                         <Background
                             variant={BackgroundVariant.Dots}
