@@ -522,6 +522,10 @@ export const LiveStreamingNotebook: React.FC<LiveStreamingNotebookProps> = ({
                   content={activeNote.content}
                   title={activeTopic?.title}
                   showToolbar={false}
+                  chapterNumber={topicsList.findIndex((t) => t.id === selectedTopicId) !== -1 ? topicsList.findIndex((t) => t.id === selectedTopicId) + 1 : undefined}
+                  totalChapters={topicsList.length}
+                  timeDisplay={activeTopic?.timeDisplay}
+                  startTime={activeTopic?.startTime}
                   onSeek={(secs) => {
                     setSeekTime(secs);
                     setIsStudioVideo(true);
@@ -597,3 +601,4 @@ export const LiveStreamingNotebook: React.FC<LiveStreamingNotebookProps> = ({
 };
 
 export default LiveStreamingNotebook;
+

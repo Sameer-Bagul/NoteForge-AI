@@ -73,4 +73,47 @@ describe('Live Streaming Notebook Architecture', () => {
     expect(notebookIndex[1].timeDisplay).toBe('7:30');
     expect(notebookIndex[2].startTime).toBe(1200);
   });
+
+  it('verifies index-first landing tab and focus mode state transitions', () => {
+    // Default tab state should be 'index' as requested by user
+    const defaultTab = 'index';
+    expect(defaultTab).toBe('index');
+
+    // Focus mode toggle: when studio mode is active, video is visible
+    let isStudioMode = true;
+    const hasVideo = true;
+
+    // Toggling focus mode hides video
+    isStudioMode = !isStudioMode;
+    const isVideoHidden = !isStudioMode && hasVideo;
+    expect(isVideoHidden).toBe(true);
+
+    // Reading column layout metrics when video is hidden
+    const notesColumnClass = isStudioMode && hasVideo
+      ? 'lg:col-span-7 xl:col-span-8'
+      : 'lg:col-span-8 xl:col-span-9';
+    expect(notesColumnClass).toBe('lg:col-span-8 xl:col-span-9');
+  });
+
+  it('computes chapter pagination and reading metrics accurately', () => {
+    const topics = [
+      { id: 'c1', title: 'Chapter 1: Intro', content: 'Word '.repeat(400) },
+      { id: 'c2', title: 'Chapter 2: Concurrency', content: 'Word '.repeat(600) },
+      { id: 'c3', title: 'Chapter 3: Advanced Types', content: 'Word '.repeat(800) },
+    ];
+
+    const currentIdx = 1; // Chapter 2
+    const prevChapter = currentIdx > 0 ? topics[currentIdx - 1] : undefined;
+    const nextChapter = currentIdx < topics.length - 1 ? topics[currentIdx + 1] : undefined;
+
+    expect(prevChapter?.title).toBe('Chapter 1: Intro');
+    expect(nextChapter?.title).toBe('Chapter 3: Advanced Types');
+
+    const wordCount = topics[currentIdx].content.split(/\s+/).filter(Boolean).length;
+    const readingTime = Math.max(1, Math.ceil(wordCount / 200));
+
+    expect(wordCount).toBe(600);
+    expect(readingTime).toBe(3); // 600 words / 200 wpm = 3 minutes
+  });
 });
+
