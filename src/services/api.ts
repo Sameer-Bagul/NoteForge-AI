@@ -466,7 +466,7 @@ export const api = {
     if (isTauri()) {
       const ai = getAIForTask('features');
       const systemPrompt = `You are a mind-map data generator. Produce a structured JSON mind map.
-The output MUST be valid JSON only — no markdown, no commentary.
+The output MUST be valid JSON only — no markdown, no commentary. Do NOT use emojis anywhere in node labels.
 Schema:
 {
   "nodes": [
@@ -481,6 +481,7 @@ Rules:
 - Central node id = "root"
 - Branch nodes = main subtopics (max 8)
 - Leaf nodes = key points under each branch (max 4 per branch)
+- Do NOT use emojis in labels
 - colors: central="#6366f1", branch="#8b5cf6","#06b6d4","#10b981","#f59e0b","#ef4444","#ec4899","#14b8a6"`;
 
       const prompt = `Create a mind map for topic: "${topicTitle}"
@@ -511,7 +512,7 @@ ${notesContent.slice(0, 3000)}
   async generateQuiz(topicTitles: string[], fullContent: string): Promise<any[]> {
     if (isTauri()) {
       const ai = getAIForTask('features');
-      const systemPrompt = `You are an expert quiz generator. Return ONLY valid JSON array — no markdown fences.
+      const systemPrompt = `You are an expert quiz generator. Return ONLY valid JSON array — no markdown fences. Do NOT use emojis anywhere in questions, options, answers, or explanations.
 Schema:
 [
   {
@@ -553,7 +554,7 @@ ${fullContent.slice(0, 4000)}
   async generateInterview(topicTitles: string[], fullContent: string): Promise<any[]> {
     if (isTauri()) {
       const ai = getAIForTask('features');
-      const systemPrompt = `You are an expert technical interviewer. Return ONLY valid JSON array — no markdown fences.
+      const systemPrompt = `You are an expert technical interviewer. Return ONLY valid JSON array — no markdown fences. Do NOT use emojis anywhere in questions, answers, or follow-ups.
 Schema:
 [
   {

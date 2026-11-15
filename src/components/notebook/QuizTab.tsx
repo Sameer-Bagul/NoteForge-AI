@@ -84,7 +84,7 @@ function MCQQuestion({ q, index }: { q: Question; index: number }) {
             {/* Reveal / Explanation */}
             {(selected || revealed) && (
                 <div className={cn('ml-10 p-3 rounded-lg text-xs leading-relaxed border', isCorrect || revealed ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-200/90' : 'bg-red-500/10 border-red-500/20 text-red-200/90')}>
-                    <strong>{isCorrect ? '✓ Correct! ' : !selected ? '' : '✗ Not quite. '}</strong>
+                    <strong>{isCorrect ? 'Correct. ' : !selected ? '' : 'Incorrect. '}</strong>
                     {q.explanation}
                 </div>
             )}

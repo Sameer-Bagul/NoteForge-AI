@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useMemo } from 'react';
 import {
     Plus, Eye, EyeOff, ChevronUp, ChevronDown, Zap, Save,
-    CheckCircle2, Cpu, Settings2, Loader2, ShieldCheck, Database, Sliders, RefreshCw
+    CheckCircle2, Cpu, Settings2, Loader2, ShieldCheck, Database, Sliders, RefreshCw, X
 } from 'lucide-react';
 import { checkForAppUpdates } from '@/services/updater';
 import { Button } from '@/components/ui/button';
@@ -267,10 +267,10 @@ function ProviderCard({
                                         <button
                                             type="button"
                                             onClick={() => update({ apiKey: '' })}
-                                            className="text-muted-foreground/60 hover:text-foreground p-1 transition-colors text-[10px]"
+                                            className="text-muted-foreground/60 hover:text-foreground p-1 transition-colors"
                                             title="Clear API key"
                                         >
-                                            ✕
+                                            <X className="w-3 h-3" />
                                         </button>
                                     ) : null}
                                     <button

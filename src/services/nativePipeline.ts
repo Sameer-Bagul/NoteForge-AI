@@ -32,9 +32,12 @@ FORMATTING RULES:
 - Write in rich, educational Markdown.
 - Use headings (##, ###) for major sections.
 - When key concepts are explained, insert clickable timestamp badges in format [mm:ss] or [hh:mm:ss] based on the video context.
-- Use blockquotes (> **💡 Tip:** ... or > **⚠️ Warning:** ...) for critical callouts.
+- Use blockquotes (> **Tip:** ... or > **Warning:** ... or > **Note:** ...) for critical callouts.
 - Include tables for comparisons and syntax-highlighted code blocks where applicable.
 - Where beneficial for understanding architecture or data flow, include an interactive Mermaid diagram.
+- STRICT NO EMOJIS: Do NOT use emojis anywhere in your output (no emojis in headings, callouts, lists, code comments, or diagram labels). Maintain a clean, academic textbook tone.
+- STRICT CLEAN MARKDOWN: NEVER output raw HTML tags (e.g. <span>, <font>, <div>).
+- STRICT CODE FENCE FORMATTING: Always place code fences (\`\`\`) on their own separate line. Never prefix or suffix text or timestamps on the same line as a code fence.
 `;
 
 export const PIPELINE_STEPS: ProcessingStep[] = [
@@ -578,7 +581,7 @@ Instructions:
   }
 ]`;
 
-        const systemPrompt = "You are an expert curriculum designer. Output ONLY valid JSON array with no conversational filler or markdown fences.";
+        const systemPrompt = "You are an expert curriculum designer. Output ONLY valid JSON array with no conversational filler or markdown fences. Do NOT use emojis anywhere in titles or descriptions.";
 
         let streamedChars = 0;
         const rawIndexResponse = await tauriApi.streamLLM(
@@ -788,7 +791,7 @@ ${MERMAID_PROMPT}
 
 Begin directly with the topic notes in structured Markdown.`;
 
-        const systemPrompt = "You are an expert academic tutor and technical note author. Write thoroughly, formatting with rich markdown, clickable timestamps [mm:ss], and valid Mermaid diagrams where useful.";
+        const systemPrompt = "You are an expert academic tutor and technical note author. Write thoroughly, formatting with rich markdown, clickable timestamps [mm:ss], and valid Mermaid diagrams where useful. Strictly avoid emojis and do NOT output raw HTML tags.";
 
         let topicContent = '';
         await tauriApi.streamLLM(

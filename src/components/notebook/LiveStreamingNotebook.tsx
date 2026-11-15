@@ -393,19 +393,20 @@ export const LiveStreamingNotebook: React.FC<LiveStreamingNotebookProps> = ({
                       <div className="flex items-center justify-between text-[10px] font-mono pl-6">
                         <span
                           className={cn(
-                            'transition-colors',
+                            'transition-colors inline-flex items-center gap-1.5',
                             isStreamingThis
-                              ? 'text-primary font-semibold animate-pulse'
+                              ? 'text-primary font-semibold'
                               : isCompleted
                               ? 'text-emerald-400/90'
                               : 'text-muted-foreground/50'
                           )}
                         >
+                          {isStreamingThis && <span className="w-1.5 h-1.5 rounded-full bg-primary animate-ping" />}
                           {isStreamingThis
-                            ? 'Writing Live ⚡'
+                            ? 'Writing Live'
                             : isCompleted
-                            ? 'Generated ✓'
-                            : 'Queued ⌛'}
+                            ? 'Generated'
+                            : 'Queued'}
                         </span>
                         {isCompleted && (
                           <span className="text-muted-foreground/70">

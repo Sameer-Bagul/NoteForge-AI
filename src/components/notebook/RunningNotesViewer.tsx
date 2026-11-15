@@ -3,7 +3,8 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import {
     Copy, Check, Download, Play, ArrowDown,
-    ChevronLeft, ChevronRight, Clock, FileText, Sparkles, BookOpen
+    ChevronLeft, ChevronRight, Clock, FileText,
+    Lightbulb, AlertTriangle, Info, Terminal
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/hooks/use-toast';
@@ -29,7 +30,7 @@ interface RunningNotesViewerProps {
     onToggleFocusMode?: () => void;
 }
 
-// ─── Code Block Component ──────────────────────────────────────────────────────
+// ─── Code Block Component (Un-slopped & Minimalist) ───────────────────────────
 
 function CodeBlock({ code, language }: { code: string; language: string }) {
     const [copied, setCopied] = useState(false);
@@ -40,32 +41,33 @@ function CodeBlock({ code, language }: { code: string; language: string }) {
         setTimeout(() => setCopied(false), 2000);
     };
 
-    const lang = language || 'text';
+    const lang = (language || 'text').toLowerCase();
 
     return (
-        <div className="relative my-5 rounded-xl overflow-hidden border border-border/60 shadow-sm">
-            {/* Code block header */}
-            <div className="flex items-center justify-between px-4 py-2 bg-[#1e1e2e] border-b border-white/10">
+        <div className="relative my-4 rounded-xl overflow-hidden border border-border/50 bg-[#12131a] shadow-xs">
+            {/* Minimalist Code Block Header */}
+            <div className="flex items-center justify-between px-3.5 py-1.5 bg-black/40 border-b border-white/5 select-none">
                 <div className="flex items-center gap-2">
-                    <div className="flex gap-1.5">
-                        <div className="w-3 h-3 rounded-full bg-red-500/80" />
-                        <div className="w-3 h-3 rounded-full bg-yellow-500/80" />
-                        <div className="w-3 h-3 rounded-full bg-green-500/80" />
-                    </div>
-                    {lang !== 'text' && (
-                        <span className="text-xs text-white/50 font-mono ml-2 uppercase tracking-wider">
-                            {lang}
-                        </span>
-                    )}
+                    <Terminal className="w-3.5 h-3.5 text-muted-foreground/50" />
+                    <span className="text-[11px] font-mono text-muted-foreground/80 lowercase">
+                        {lang !== 'text' ? lang : 'code'}
+                    </span>
                 </div>
                 <button
                     onClick={handleCopy}
-                    className="flex items-center gap-1.5 text-xs text-white/40 hover:text-white/80 transition-colors"
+                    className="flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-mono text-muted-foreground hover:text-foreground transition-colors hover:bg-white/5"
+                    title="Copy code"
                 >
                     {copied ? (
-                        <><Check className="w-3.5 h-3.5 text-green-400" /><span className="text-green-400">Copied!</span></>
+                        <>
+                            <Check className="w-3 h-3 text-emerald-400" />
+                            <span className="text-emerald-400">Copied</span>
+                        </>
                     ) : (
-                        <><Copy className="w-3.5 h-3.5" />Copy</>
+                        <>
+                            <Copy className="w-3 h-3" />
+                            <span>Copy</span>
+                        </>
                     )}
                 </button>
             </div>
@@ -76,11 +78,11 @@ function CodeBlock({ code, language }: { code: string; language: string }) {
                     margin: 0,
                     borderRadius: 0,
                     fontSize: '0.8rem',
-                    background: '#1a1b26',
+                    background: 'transparent',
                     padding: '1rem 1.25rem',
                     lineHeight: '1.6',
                 }}
-                showLineNumbers={code.split('\n').length > 4}
+                showLineNumbers={code.split('\n').length > 3}
                 wrapLines
             >
                 {code.trim()}
@@ -89,42 +91,51 @@ function CodeBlock({ code, language }: { code: string; language: string }) {
     );
 }
 
-// ─── Callout Component ─────────────────────────────────────────────────────────
+// ─── Callout Component (Zero Emojis, Pure Semantic SVGs) ───────────────────────
 
 function Callout({ text, raw, onSeek }: { text: string; raw: string; onSeek?: (seconds: number) => void }) {
-    // Detect callout type from emoji/keyword
+    // Detect callout type without relying on raw emojis
     const tipMatch = raw.match(/\*\*(💡|Tip)[:\s*]/i);
     const warnMatch = raw.match(/\*\*(⚠️|Warning)[:\s*]/i);
-    const importantMatch = raw.match(/\*\*(📌|Important)[:\s*]/i);
+    const importantMatch = raw.match(/\*\*(📌|Important|Note)[:\s*]/i);
 
     if (tipMatch) {
         return (
-            <div className="my-4 flex gap-3 p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
-                <span className="text-lg shrink-0">💡</span>
-                <p className="text-sm text-emerald-100/90 leading-relaxed">{text.replace(/\*\*(💡 Tip:|Tip:?)\*\*/i, '').trim()}</p>
+            <div className="my-4 flex items-start gap-3 p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
+                <Lightbulb className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                <div className="space-y-0.5 text-xs text-foreground/90 leading-relaxed">
+                    <span className="font-mono font-semibold uppercase text-[10px] tracking-wider text-emerald-400 block">Tip</span>
+                    <p>{text.replace(/\*\*(💡 Tip:|Tip:?)\*\*/i, '').trim()}</p>
+                </div>
             </div>
         );
     }
     if (warnMatch) {
         return (
-            <div className="my-4 flex gap-3 p-4 rounded-xl bg-amber-500/10 border border-amber-500/20">
-                <span className="text-lg shrink-0">⚠️</span>
-                <p className="text-sm text-amber-100/90 leading-relaxed">{text.replace(/\*\*(⚠️ Warning:|Warning:?)\*\*/i, '').trim()}</p>
+            <div className="my-4 flex items-start gap-3 p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/20">
+                <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                <div className="space-y-0.5 text-xs text-foreground/90 leading-relaxed">
+                    <span className="font-mono font-semibold uppercase text-[10px] tracking-wider text-amber-400 block">Warning</span>
+                    <p>{text.replace(/\*\*(⚠️ Warning:|Warning:?)\*\*/i, '').trim()}</p>
+                </div>
             </div>
         );
     }
     if (importantMatch) {
         return (
-            <div className="my-4 flex gap-3 p-4 rounded-xl bg-blue-500/10 border border-blue-500/20">
-                <span className="text-lg shrink-0">📌</span>
-                <p className="text-sm text-blue-100/90 leading-relaxed">{text.replace(/\*\*(📌 Important:|Important:?)\*\*/i, '').trim()}</p>
+            <div className="my-4 flex items-start gap-3 p-3.5 rounded-xl bg-blue-500/10 border border-blue-500/20">
+                <Info className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" />
+                <div className="space-y-0.5 text-xs text-foreground/90 leading-relaxed">
+                    <span className="font-mono font-semibold uppercase text-[10px] tracking-wider text-blue-400 block">Note</span>
+                    <p>{text.replace(/\*\*(📌 Important:|Important:|📌 Note:|Note:?)\*\*/i, '').trim()}</p>
+                </div>
             </div>
         );
     }
 
-    // Regular blockquote
+    // Regular clean blockquote
     return (
-        <blockquote className="my-4 border-l-4 border-primary/40 pl-4 py-1 italic text-muted-foreground bg-secondary/20 rounded-r-lg">
+        <blockquote className="my-4 border-l-2 border-primary/40 pl-4 py-1 text-xs sm:text-sm text-muted-foreground bg-secondary/15 rounded-r-lg">
             <InlineText text={text} onSeek={onSeek} />
         </blockquote>
     );
@@ -133,7 +144,7 @@ function Callout({ text, raw, onSeek }: { text: string; raw: string; onSeek?: (s
 // ─── Inline Text Renderer ──────────────────────────────────────────────────────
 
 function parseTimestampToSeconds(ts: string): number {
-    const clean = ts.replace(/[[\]]/g, '');
+    const clean = ts.replace(/[[\]]/g, '').replace(/<[^>]*>/g, '').trim();
     const parts = clean.split(':').map(Number);
     if (parts.length === 2) {
         return parts[0] * 60 + parts[1];
@@ -144,15 +155,20 @@ function parseTimestampToSeconds(ts: string): number {
 }
 
 function InlineText({ text, onSeek }: { text: string; onSeek?: (seconds: number) => void }) {
-    // Process: inline code → bold → italic → timestamp → plain
-    const parts = text.split(/(`[^`]+`|\*\*[^*]+\*\*|_[^_]+_|\*[^*]+\*|\[\d{1,2}:\d{2}(?::\d{2})?\])/g);
+    // Normalize raw HTML timestamp spans like [<span...>0:06</span>] or <span...>0:06</span> -> [0:06]
+    const normalized = text
+        .replace(/\[?\s*<span[^>]*style="[^"]*monospace[^"]*"[^>]*>(\d{1,2}:\d{2}(?::\d{2})?)<\/span>\s*\]?/gi, '[$1]')
+        .replace(/\[?\s*<span[^>]*>(\d{1,2}:\d{2}(?::\d{2})?)<\/span>\s*\]?/gi, '[$1]')
+        .replace(/&nbsp;/g, ' ');
+
+    const parts = normalized.split(/(`[^`]+`|\*\*[^*]+\*\*|_[^_]+_|\*[^*]+\*|\[\d{1,2}:\d{2}(?::\d{2})?\])/g);
 
     return (
         <>
             {parts.map((part, i) => {
                 if (part.startsWith('`') && part.endsWith('`')) {
                     return (
-                        <code key={i} className="bg-primary/15 text-primary px-1.5 py-0.5 rounded text-[0.8em] font-mono">
+                        <code key={i} className="bg-primary/10 text-primary px-1.5 py-0.5 rounded text-[0.8em] font-mono">
                             {part.slice(1, -1)}
                         </code>
                     );
@@ -170,7 +186,7 @@ function InlineText({ text, onSeek }: { text: string; onSeek?: (seconds: number)
                             key={i}
                             type="button"
                             onClick={() => onSeek?.(secs)}
-                            className="inline-flex items-center gap-1 px-1.5 py-0.5 mx-0.5 rounded bg-primary/10 hover:bg-primary/20 text-primary text-xs font-mono font-medium border border-primary/25 hover:border-primary/50 transition-all cursor-pointer align-baseline"
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 mx-0.5 rounded bg-primary/10 hover:bg-primary/20 text-primary text-[11px] font-mono font-medium border border-primary/25 hover:border-primary/50 transition-all cursor-pointer align-baseline"
                             title={`Jump video to ${part.slice(1, -1)}`}
                         >
                             <Play className="w-2.5 h-2.5 fill-current opacity-80" />
@@ -192,7 +208,19 @@ function renderNotebook(
     onSeek?: (seconds: number) => void,
     isStreaming?: boolean
 ): React.ReactNode[] {
-    const lines = md.split('\n');
+    // 1. Sanitize raw HTML timestamp spans: [<span...>0:06</span>] or <span...>0:06</span> -> [0:06]
+    let cleanMd = md
+        .replace(/\[?\s*<span[^>]*style="[^"]*monospace[^"]*"[^>]*>(\d{1,2}:\d{2}(?::\d{2})?)<\/span>\s*\]?/gi, '[$1]')
+        .replace(/\[?\s*<span[^>]*>(\d{1,2}:\d{2}(?::\d{2})?)<\/span>\s*\]?/gi, '[$1]');
+
+    // 2. Convert single-line code blocks like ```bash cargo new my_project``` -> \n```bash\ncargo new my_project\n```\n
+    cleanMd = cleanMd.replace(/```([a-zA-Z0-9_-]+)\s+([^\n`]+)```/g, '\n```$1\n$2\n```\n');
+
+    // 3. Ensure code fence ``` is always isolated on its own line if preceded by inline text or timestamps
+    // e.g. "[0:06].```bash" -> "[0:06].\n\n```bash"
+    cleanMd = cleanMd.replace(/([^\n])\s*```([a-zA-Z0-9_-]*)/g, '$1\n\n```$2');
+
+    const lines = cleanMd.split('\n');
     const elements: React.ReactNode[] = [];
     let inCode = false;
     let codeLines: string[] = [];
@@ -264,7 +292,7 @@ function renderNotebook(
             continue;
         }
         if (inMermaid) {
-            if (line === '```') {
+            if (line.trim() === '```') {
                 elements.push(
                     <MermaidDiagram key={key()} chart={mermaidLines.join('\n')} title={topicTitle} />
                 );
