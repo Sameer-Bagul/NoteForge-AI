@@ -35,9 +35,8 @@ function loadFromStorage(): AppSettings {
             const saved = savedMap.get(key as any);
             if (!saved) return def;
             let model = saved.model;
-            let indexingModel = saved.indexingModel;
-            if (model === 'llama3.2:1b' || model === 'mistral') model = def.model;
-            if (indexingModel === 'llama3.2:1b') indexingModel = def.indexingModel;
+            const indexingModel = saved.indexingModel;
+            if (model === 'mistral') model = def.model;
             return {
                 ...def,
                 ...saved,

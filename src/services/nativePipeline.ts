@@ -213,13 +213,9 @@ export function getAIConfigForTask(task: 'notes' | 'indexing' | 'features'): { p
       }
 
       if (providerConfig) {
-        let model = (task === 'indexing' && providerConfig.indexingModel && providerConfig.indexingModel !== 'llama3.2:1b')
+        let model = (task === 'indexing' && providerConfig.indexingModel)
           ? providerConfig.indexingModel
-          : (providerConfig.model || (providerConfig.provider === 'ollama' ? 'qwen2.5:7b' : 'gemini-flash-lite-latest'));
-
-        if (model === 'llama3.2:1b') {
-          model = 'qwen2.5:7b';
-        }
+          : (providerConfig.model || (providerConfig.provider === 'ollama' ? 'llama3.2:1b' : 'gemini-flash-lite-latest'));
 
         // Migrate away from models experiencing high-demand outages or deprecations
         if (model === 'gemini-flash-latest' || model === 'gemini-2.5-flash' || model === 'gemini-1.5-flash') {
