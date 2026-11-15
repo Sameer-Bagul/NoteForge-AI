@@ -175,7 +175,7 @@ function InlineText({ text, onSeek }: { text: string; onSeek?: (seconds: number)
         .replace(/&nbsp;/g, ' ');
 
     // 2. Normalize all bracketed timestamps: [[01:28]], [ [01:28] ], [ 01:28 ], [01:28] -> [01:28]
-    normalized = normalized.replace(/\[+[\s\[]*(\d{1,2}:\d{2}(?::\d{2})?)[\s\]]*\]+/g, '[$1]');
+    normalized = normalized.replace(/\[+[\s[]*(\d{1,2}:\d{2}(?::\d{2})?)[\s\]]*\]+/g, '[$1]');
 
     const parts = normalized.split(/(`[^`]+`|\*\*[^*]+\*\*|_[^_]+_|\*[^*]+\*|\[\d{1,2}:\d{2}(?::\d{2})?\])/g);
 
@@ -229,7 +229,7 @@ function renderNotebook(
         .replace(/<span[^>]*style="[^"]*monospace[^"]*"[^>]*>(\d{1,2}:\d{2}(?::\d{2})?)<\/span>/gi, '$1')
         .replace(/<span[^>]*>(\d{1,2}:\d{2}(?::\d{2})?)<\/span>/gi, '$1')
         // Normalize any bracket variations: [[01:28]], [ [01:28] ], [ 01:28 ] -> [01:28]
-        .replace(/\[+[\s\[]*(\d{1,2}:\d{2}(?::\d{2})?)[\s\]]*\]+/g, '[$1]');
+        .replace(/\[+[\s[]*(\d{1,2}:\d{2}(?::\d{2})?)[\s\]]*\]+/g, '[$1]');
 
     // 2. Convert single-line code blocks like ```bash cargo new my_project``` -> \n```bash\ncargo new my_project\n```\n
     cleanMd = cleanMd.replace(/```([a-zA-Z0-9_-]+)\s+([^\n`]+)```/g, '\n```$1\n$2\n```\n');

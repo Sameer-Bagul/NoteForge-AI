@@ -121,7 +121,7 @@ describe('Live Streaming Notebook Architecture', () => {
       return input
         .replace(/<span[^>]*style="[^"]*monospace[^"]*"[^>]*>(\d{1,2}:\d{2}(?::\d{2})?)<\/span>/gi, '$1')
         .replace(/<span[^>]*>(\d{1,2}:\d{2}(?::\d{2})?)<\/span>/gi, '$1')
-        .replace(/\[+[\s\[]*(\d{1,2}:\d{2}(?::\d{2})?)[\s\]]*\]+/g, '[$1]');
+        .replace(/\[+[\s[]*(\d{1,2}:\d{2}(?::\d{2})?)[\s\]]*\]+/g, '[$1]');
     }
 
     expect(normalizeTimestamps('Cargo & Basic Syntax [ 1:28 ]')).toBe('Cargo & Basic Syntax [1:28]');

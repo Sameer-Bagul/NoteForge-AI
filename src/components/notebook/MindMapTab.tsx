@@ -298,7 +298,7 @@ export function MindMapTab({
             setNodes([]);
             setEdges([]);
         }
-    }, [activeTopic?.id, existingMindMaps]);
+    }, [activeTopic, existingMindMaps, setNodes, setEdges]);
 
     const handleGenerate = useCallback(async () => {
         if (!activeTopic) return;
@@ -341,7 +341,7 @@ export function MindMapTab({
         } finally {
             setLoading(false);
         }
-    }, [activeTopic, fullContent, existingMindMaps, notebookId, onUpdateNotes]);
+    }, [activeTopic, fullContent, existingMindMaps, notebookId, onUpdateNotes, setNodes, setEdges]);
 
     const hasGraph = nodes.length > 0;
 
