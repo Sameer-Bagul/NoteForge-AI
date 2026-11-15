@@ -84,11 +84,13 @@ export function analyzeVideoSyllabus(transcripts: ExtractedTranscript[]): VideoA
       time_display: c.time_display,
     }));
 
-    // Video is compound if creator explicitly supplied >= 2 chapters, OR if duration > 30 minutes (1800s)
-    const isLongOrCompound = rawChapters.length >= 2 || duration > 1800;
+    // A video is ONLY considered a "Big Video" to be decomposed into sub-notes (e.g. 10.1, 10.2)
+    // if its duration is genuinely long (> 40 minutes / 2400s).
+    // Normal 5-35 minute lectures ALWAYS stay as 1 single cohesive lecture note.
+    const isLongOrCompound = duration > 2400;
 
     let resolvedChapters = rawChapters;
-    // If long video (> 30 mins) without creator chapters, synthesize 15-minute logical windows
+    // If long video (> 40 mins) without creator chapters, synthesize 15-minute logical windows
     if (isLongOrCompound && resolvedChapters.length < 2 && duration > 0) {
       const windowSize = 900; // 15 mins (900 seconds)
       const windowCount = Math.max(2, Math.ceil(duration / windowSize));
@@ -146,11 +148,15 @@ export function buildLectureWiseOutline(videoAnalyses: VideoAnalysis[]): Array<{
 
     if (!va.isLongOrCompound || va.chapters.length === 0) {
       // Standard small/single lecture (e.g. 9 out of 10 videos)
+      const subtopics = va.chapters.length > 0
+        ? va.chapters.slice(0, 6).map(c => c.title)
+        : ['Core Principles', 'Detailed Breakdown', 'Code & Practical Examples', 'Key Takeaways'];
+
       topics.push({
         videoId: va.transcript.video_info.id,
         title: isMultiVideo ? `Lecture ${lectureNum}: ${cleanTitle}` : cleanTitle,
         description: `Comprehensive study notes for ${cleanTitle}`,
-        subtopics: ['Core Principles', 'Detailed Breakdown', 'Code & Practical Examples', 'Key Takeaways'],
+        subtopics,
         startTime: 0,
         endTime: va.durationSeconds > 0 ? va.durationSeconds : undefined,
         timeDisplay: '0:00',
