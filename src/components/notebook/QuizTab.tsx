@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { api } from '@/services/api';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -142,14 +142,22 @@ interface QuizTabProps {
     topicTitles: string[];
     fullContent: string;
     existingQuiz?: Question[];
+    onUpdateNotes?: (updates: { quiz: Question[] }) => void;
 }
 
-export function QuizTab({ notebookId, topicTitles, fullContent, existingQuiz }: QuizTabProps) {
+export function QuizTab({ notebookId, topicTitles, fullContent, existingQuiz, onUpdateNotes }: QuizTabProps) {
     const [questions, setQuestions] = useState<Question[]>(existingQuiz || []);
     const [loading, setLoading] = useState(false);
     const [generated, setGenerated] = useState(!!existingQuiz && existingQuiz.length > 0);
     const [error, setError] = useState<string | null>(null);
     const [filter, setFilter] = useState<'all' | 'mcq' | 'short'>('all');
+
+    useEffect(() => {
+        if (existingQuiz && existingQuiz.length > 0) {
+            setQuestions(existingQuiz);
+            setGenerated(true);
+        }
+    }, [existingQuiz]);
 
     const generate = useCallback(async () => {
         setLoading(true); setError(null);
@@ -159,16 +167,21 @@ export function QuizTab({ notebookId, topicTitles, fullContent, existingQuiz }: 
             setQuestions(quizData);
             setGenerated(true);
 
-            // Persist to backend if we have a notebookId
+            // Persist to backend and update parent state if we have a notebookId
             if (notebookId && quizData.length > 0) {
-                await api.updateNotebook(notebookId, { quiz: quizData });
+                try {
+                    await api.updateNotebook(notebookId, { quiz: quizData });
+                } catch (persistErr) {
+                    console.error('Failed to persist quiz to SQLite:', persistErr);
+                }
+                onUpdateNotes?.({ quiz: quizData });
             }
         } catch {
             setError('Failed to generate quiz. Please try again.');
         } finally {
             setLoading(false);
         }
-    }, [notebookId, topicTitles, fullContent]);
+    }, [notebookId, topicTitles, fullContent, onUpdateNotes]);
 
     const filtered = filter === 'all' ? questions : questions.filter(q => q.type === filter);
 

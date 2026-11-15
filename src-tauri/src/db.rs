@@ -169,7 +169,9 @@ impl Database {
     pub fn get_notebook(&self, id: &str) -> Result<Option<NotebookRecord>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT id, job_id, title, content_json, created_at FROM notebooks WHERE id = ?1",
+            "SELECT id, job_id, title, content_json, created_at FROM notebooks
+             WHERE id = ?1 OR job_id = ?1
+             ORDER BY created_at DESC LIMIT 1",
         )?;
         let mut rows = stmt.query(params![id])?;
 
@@ -182,7 +184,24 @@ impl Database {
                 created_at: row.get(4)?,
             }))
         } else {
-            Ok(None)
+            // Secondary fallback: search by videoId or identifier embedded in content_json
+            let mut fallback_stmt = conn.prepare(
+                "SELECT id, job_id, title, content_json, created_at FROM notebooks
+                 WHERE content_json LIKE '%' || ?1 || '%'
+                 ORDER BY created_at DESC LIMIT 1",
+            )?;
+            let mut fallback_rows = fallback_stmt.query(params![id])?;
+            if let Some(row) = fallback_rows.next()? {
+                Ok(Some(NotebookRecord {
+                    id: row.get(0)?,
+                    job_id: row.get(1)?,
+                    title: row.get(2)?,
+                    content_json: row.get(3)?,
+                    created_at: row.get(4)?,
+                }))
+            } else {
+                Ok(None)
+            }
         }
     }
 

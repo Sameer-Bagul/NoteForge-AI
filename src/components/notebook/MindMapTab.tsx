@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import {
     ReactFlow,
     Node,
@@ -146,17 +146,29 @@ function TopicMindMap({
     topic,
     fullContent,
     existingData,
+    onSaveMindMap,
 }: {
     notebookId?: string;
     topic: { id: string; title: string; subtopics: string[] };
     fullContent: string;
     existingData?: { nodes: any[]; edges: any[] };
+    onSaveMindMap?: (topicId: string, mapData: any) => Promise<void>;
 }) {
     const [nodes, setNodes, onNodesChange] = useNodesState(existingData?.nodes || []);
     const [edges, setEdges, onEdgesChange] = useEdgesState(existingData?.edges || []);
     const [loading, setLoading] = useState(false);
-    const [generated, setGenerated] = useState(!!existingData);
+    const [generated, setGenerated] = useState(!!existingData && (existingData.nodes?.length || 0) > 0);
     const [error, setError] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (existingData && existingData.nodes && existingData.nodes.length > 0) {
+            const hasPositions = existingData.nodes[0]?.position?.x !== undefined;
+            const formatted = hasPositions ? existingData : layoutTree(existingData.nodes, existingData.edges || []);
+            setNodes(formatted.nodes);
+            setEdges(formatted.edges);
+            setGenerated(true);
+        }
+    }, [existingData]);
 
     const generate = useCallback(async () => {
         setLoading(true);
@@ -172,26 +184,29 @@ function TopicMindMap({
             setEdges(lEdges);
             setGenerated(true);
 
-            // Persist to backend if we have a notebookId
-            if (notebookId) {
-                // Get current mindMaps or empty object
-                const update = {
-                    mindMaps: {
-                        [topic.id]: {
-                            topicId: topic.id,
-                            nodes: lNodes,
-                            edges: lEdges
-                        }
-                    }
-                };
-                await api.updateNotebook(notebookId, update);
+            const mapData = {
+                topicId: topic.id,
+                nodes: lNodes,
+                edges: lEdges
+            };
+
+            if (onSaveMindMap) {
+                await onSaveMindMap(topic.id, mapData);
+            } else if (notebookId) {
+                try {
+                    await api.updateNotebook(notebookId, {
+                        mindMaps: { [topic.id]: mapData }
+                    });
+                } catch (persistErr) {
+                    console.error('Failed to persist mind map to SQLite:', persistErr);
+                }
             }
         } catch (err) {
             setError('Failed to generate mind map. Please try again.');
         } finally {
             setLoading(false);
         }
-    }, [notebookId, topic, fullContent]);
+    }, [notebookId, topic, fullContent, onSaveMindMap]);
 
     return (
         <div className="rounded-xl border border-border/60 overflow-hidden bg-card/40">
@@ -247,8 +262,31 @@ function TopicMindMap({
 
 // ─── Mind Map Tab ──────────────────────────────────────────────────────────────
 
-export function MindMapTab({ notebookId, topics, fullContent, existingMindMaps }: MindMapTabProps) {
+interface MindMapTabProps {
+    notebookId?: string;
+    topics: { id: string; title: string; subtopics: string[] }[];
+    fullContent: string;
+    existingMindMaps?: Record<string, any>;
+    onUpdateNotes?: (updates: { mindMaps: Record<string, any> }) => void;
+}
+
+export function MindMapTab({ notebookId, topics, fullContent, existingMindMaps, onUpdateNotes }: MindMapTabProps) {
     const [expanded, setExpanded] = useState<string | null>(topics[0]?.id ?? null);
+
+    const handleSaveMindMap = useCallback(async (topicId: string, mapData: any) => {
+        const updatedMaps = {
+            ...(existingMindMaps || {}),
+            [topicId]: mapData
+        };
+        if (notebookId) {
+            try {
+                await api.updateNotebook(notebookId, { mindMaps: updatedMaps });
+            } catch (err) {
+                console.error('Failed to save mind map in SQLite:', err);
+            }
+        }
+        onUpdateNotes?.({ mindMaps: updatedMaps });
+    }, [notebookId, existingMindMaps, onUpdateNotes]);
 
     return (
         <div className="space-y-4">
@@ -273,6 +311,7 @@ export function MindMapTab({ notebookId, topics, fullContent, existingMindMaps }
                             topic={topic}
                             fullContent={fullContent}
                             existingData={existingMindMaps?.[topic.id]}
+                            onSaveMindMap={handleSaveMindMap}
                         />
                     )}
                 </div>

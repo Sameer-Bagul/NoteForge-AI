@@ -533,10 +533,24 @@ function DynamicIslandNavRail({
 // ─── NotebookShell ─────────────────────────────────────────────────────────────
 
 export function NotebookShell({ notes, onReset }: NotebookShellProps) {
+    const [currentNotes, setCurrentNotes] = useState<VideoNotes>(notes);
     const [activeTopicId, setActiveTopicId] = useState(notes.index[0]?.id);
     const [activeTab, setActiveTab] = useState<TabType>('index');
     const [isStudioMode, setIsStudioMode] = useState(true);
     const [seekTime, setSeekTime] = useState<number | null>(null);
+
+    useEffect(() => {
+        setCurrentNotes(notes);
+    }, [notes]);
+
+    const handleUpdateNotes = useCallback((updates: Partial<Notebook>) => {
+        setCurrentNotes(prev => ({
+            ...prev,
+            quiz: (updates.quiz as any) || prev.quiz,
+            mindMaps: updates.mindMaps ? { ...(prev.mindMaps || {}), ...updates.mindMaps } : prev.mindMaps,
+            interviewQA: (updates.interviewQA as any) || prev.interviewQA,
+        }));
+    }, []);
 
     const rawId = notes.videoId || (notes as any).id || (notes.notes?.[0] as any)?.videoSources?.[0]?.videoId || '';
     const videoId = rawId.includes('watch?v=')
@@ -682,9 +696,9 @@ export function NotebookShell({ notes, onReset }: NotebookShellProps) {
                     isStudioMode={isStudioMode}
                     onToggleStudioMode={() => setIsStudioMode(!isStudioMode)}
                     hasVideo={Boolean(videoId)}
-                    topicsCount={notes.index.length}
-                    quizCount={notes.quiz?.length}
-                    interviewCount={notes.interviewQA?.length}
+                    topicsCount={currentNotes.index.length}
+                    quizCount={currentNotes.quiz?.length}
+                    interviewCount={currentNotes.interviewQA?.length}
                     onExportPdf={handleDownloadPdf}
                     onDownloadMarkdown={handleDownloadAll}
                     onExportCmsJson={handleExportCmsJson}
@@ -745,8 +759,8 @@ export function NotebookShell({ notes, onReset }: NotebookShellProps) {
                         {activeTab === 'index' && (
                             <div className="flex-1 overflow-y-auto min-h-0 scroll-smooth">
                                 <IndexPanel
-                                    topics={notes.index}
-                                    notes={notes}
+                                    topics={currentNotes.index}
+                                    notes={currentNotes}
                                     onSelectTopic={(id) => {
                                         setActiveTopicId(id);
                                         setActiveTab('notes');
@@ -757,12 +771,12 @@ export function NotebookShell({ notes, onReset }: NotebookShellProps) {
                                         setActiveTab('notes');
                                     }}
                                     onStartReading={() => {
-                                        if (notes.index[0]?.id) {
-                                            setActiveTopicId(notes.index[0].id);
+                                        if (currentNotes.index[0]?.id) {
+                                            setActiveTopicId(currentNotes.index[0].id);
                                         }
                                         setActiveTab('notes');
                                     }}
-                                    onOpenMindMap={notes.mindMaps ? () => setActiveTab('mindmap') : undefined}
+                                    onOpenMindMap={() => setActiveTab('mindmap')}
                                     onOpenQuiz={() => setActiveTab('quiz')}
                                     onOpenInterview={() => setActiveTab('interview')}
                                 />
@@ -843,10 +857,11 @@ export function NotebookShell({ notes, onReset }: NotebookShellProps) {
                         {activeTab === 'mindmap' && (
                             <div className="flex-1 overflow-hidden min-h-0">
                                 <MindMapTab
-                                    notebookId={notes.notebookId || notes.videoId}
+                                    notebookId={currentNotes.notebookId || currentNotes.videoId}
                                     topics={mapTopics}
-                                    fullContent={notes.fullContent}
-                                    existingMindMaps={notes.mindMaps}
+                                    fullContent={currentNotes.fullContent}
+                                    existingMindMaps={currentNotes.mindMaps}
+                                    onUpdateNotes={handleUpdateNotes}
                                 />
                             </div>
                         )}
@@ -856,10 +871,11 @@ export function NotebookShell({ notes, onReset }: NotebookShellProps) {
                             <div className="flex-1 overflow-y-auto min-h-0 p-6 sm:p-8">
                                 <div className="max-w-4xl mx-auto">
                                     <QuizTab
-                                        notebookId={notes.notebookId || notes.videoId}
+                                        notebookId={currentNotes.notebookId || currentNotes.videoId}
                                         topicTitles={topicTitles}
-                                        fullContent={notes.fullContent}
-                                        existingQuiz={notes.quiz}
+                                        fullContent={currentNotes.fullContent}
+                                        existingQuiz={currentNotes.quiz}
+                                        onUpdateNotes={handleUpdateNotes}
                                     />
                                 </div>
                             </div>
@@ -870,10 +886,11 @@ export function NotebookShell({ notes, onReset }: NotebookShellProps) {
                             <div className="flex-1 overflow-y-auto min-h-0 p-6 sm:p-8">
                                 <div className="max-w-4xl mx-auto">
                                     <InterviewTab
-                                        notebookId={notes.notebookId || notes.videoId}
+                                        notebookId={currentNotes.notebookId || currentNotes.videoId}
                                         topicTitles={topicTitles}
-                                        fullContent={notes.fullContent}
-                                        existingQuestions={notes.interviewQA}
+                                        fullContent={currentNotes.fullContent}
+                                        existingQuestions={currentNotes.interviewQA}
+                                        onUpdateNotes={handleUpdateNotes}
                                     />
                                 </div>
                             </div>

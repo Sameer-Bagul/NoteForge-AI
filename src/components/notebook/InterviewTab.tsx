@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { api } from '@/services/api';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -88,14 +88,22 @@ interface InterviewTabProps {
     topicTitles: string[];
     fullContent: string;
     existingQuestions?: IQuestion[];
+    onUpdateNotes?: (updates: { interviewQA: IQuestion[] }) => void;
 }
 
-export function InterviewTab({ notebookId, topicTitles, fullContent, existingQuestions }: InterviewTabProps) {
+export function InterviewTab({ notebookId, topicTitles, fullContent, existingQuestions, onUpdateNotes }: InterviewTabProps) {
     const [questions, setQuestions] = useState<IQuestion[]>(existingQuestions || []);
     const [loading, setLoading] = useState(false);
     const [generated, setGenerated] = useState(!!existingQuestions && existingQuestions.length > 0);
     const [error, setError] = useState<string | null>(null);
     const [filter, setFilter] = useState<'all' | 'conceptual' | 'technical' | 'practical'>('all');
+
+    useEffect(() => {
+        if (existingQuestions && existingQuestions.length > 0) {
+            setQuestions(existingQuestions);
+            setGenerated(true);
+        }
+    }, [existingQuestions]);
 
     const generate = useCallback(async () => {
         setLoading(true); setError(null);
@@ -107,14 +115,19 @@ export function InterviewTab({ notebookId, topicTitles, fullContent, existingQue
 
             // Persist to backend if we have a notebookId
             if (notebookId && interviewData.length > 0) {
-                await api.updateNotebook(notebookId, { interviewQA: interviewData });
+                try {
+                    await api.updateNotebook(notebookId, { interviewQA: interviewData });
+                } catch (persistErr) {
+                    console.error('Failed to persist interview Q&A to SQLite:', persistErr);
+                }
+                onUpdateNotes?.({ interviewQA: interviewData });
             }
         } catch {
             setError('Failed to generate interview Q&A. Please try again.');
         } finally {
             setLoading(false);
         }
-    }, [notebookId, topicTitles, fullContent]);
+    }, [notebookId, topicTitles, fullContent, onUpdateNotes]);
 
     const categories = ['all', 'conceptual', 'technical', 'practical'] as const;
     const filtered = filter === 'all' ? questions : questions.filter(q => q.category === filter);

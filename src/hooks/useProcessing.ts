@@ -110,6 +110,9 @@ export const useProcessing = (initialJobId?: string | null) => {
             generatedAt: note.generatedAt || new Date().toISOString(),
           })),
           fullContent: allTopicNotes.map((note: any) => `## ${note.topicTitle}\n\n${buildContentFromSections(note)}`).join('\n\n---\n\n'),
+          mindMaps: jobStatus.notebook.mindMaps,
+          quiz: jobStatus.notebook.quiz,
+          interviewQA: jobStatus.notebook.interviewQA,
         };
       }
 
@@ -167,6 +170,9 @@ export const useProcessing = (initialJobId?: string | null) => {
             index: active.notebook.index.topics.map(t => ({ id: t.id, title: t.title, subtopics: t.subtopics.map(s => s.title) })),
             notes: allNotes as any,
             fullContent: allNotes.map(n => `## ${n.topicTitle}\n\n${n.content}`).join('\n\n---\n\n'),
+            mindMaps: active.notebook.mindMaps,
+            quiz: active.notebook.quiz,
+            interviewQA: active.notebook.interviewQA,
           } : undefined,
           error: active.error,
         });
@@ -283,6 +289,9 @@ export const useProcessing = (initialJobId?: string | null) => {
               index: notebook.index.topics.map(t => ({ id: t.id, title: t.title, subtopics: t.subtopics.map(s => s.title) })),
               notes: allNotes as any,
               fullContent: allNotes.map(n => `## ${n.topicTitle}\n\n${n.content}`).join('\n\n---\n\n'),
+              mindMaps: notebook.mindMaps,
+              quiz: notebook.quiz,
+              interviewQA: notebook.interviewQA,
             },
           }));
         },
@@ -366,6 +375,9 @@ export const useProcessing = (initialJobId?: string | null) => {
             index: notebook.index.topics.map(t => ({ id: t.id, title: t.title, subtopics: t.subtopics.map(s => s.title) })),
             notes: allNotes as any,
             fullContent: allNotes.map(n => `## ${n.topicTitle}\n\n${n.content}`).join('\n\n---\n\n'),
+            mindMaps: notebook.mindMaps,
+            quiz: notebook.quiz,
+            interviewQA: notebook.interviewQA,
           },
         }));
         return;

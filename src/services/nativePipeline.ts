@@ -839,8 +839,8 @@ Begin directly with the topic notes in structured Markdown.`;
 
       // ── Step 3: Assembling Notebook & Saving to SQLite Vault ──────────────
       notifyStatusChange(session, 'assembling');
-      notifyStepChange(session, 3, 'active', 'Compiling study guide and archiving to SQLite vault...');
-      notifyLog(session, 'Archiving notebook in SQLite database...', 'info');
+      notifyStepChange(session, 3, 'active', 'Synthesizing quizzes, concept diagrams & archiving to SQLite...');
+      notifyLog(session, 'Generating self-check quiz and concept flow diagrams...', 'info');
 
       const notebookId = `nb-${Date.now()}`;
       const fullMarkdown = allTopicNotes
@@ -849,6 +849,43 @@ Begin directly with the topic notes in structured Markdown.`;
 
       const wordCount = fullMarkdown.split(/\s+/).length;
       const readTime = Math.max(1, Math.round(wordCount / 200));
+
+      // Synthesize Quiz Questions automatically
+      let generatedQuiz: any[] = [];
+      try {
+        const topicNames = approvedIndex.topics.map(t => t.title);
+        const quizRes = await api.generateQuiz(topicNames, fullMarkdown.slice(0, 4000));
+        if (Array.isArray(quizRes) && quizRes.length > 0) {
+          generatedQuiz = quizRes;
+          notifyLog(session, `Synthesized ${quizRes.length} interactive self-check questions`, 'success');
+        }
+      } catch (qErr) {
+        console.warn('Pipeline automatic quiz generation skipped:', qErr);
+      }
+
+      // Synthesize Visual Concept Flow Diagram (Mind Map) for first topic
+      const generatedMindMaps: Record<string, any> = {};
+      try {
+        const primaryTopic = approvedIndex.topics[0];
+        if (primaryTopic) {
+          const subtopicTitles = primaryTopic.subtopics.map(s => typeof s === 'string' ? s : s.title);
+          const mapRes = await api.generateMindMap(
+            primaryTopic.title,
+            subtopicTitles,
+            allTopicNotes[0]?.content?.slice(0, 3000) || fullMarkdown.slice(0, 3000)
+          );
+          if (mapRes && Array.isArray(mapRes.nodes) && mapRes.nodes.length > 0) {
+            generatedMindMaps[primaryTopic.id] = {
+              topicId: primaryTopic.id,
+              nodes: mapRes.nodes,
+              edges: mapRes.edges || [],
+            };
+            notifyLog(session, `Constructed visual concept flow diagram for "${primaryTopic.title}"`, 'success');
+          }
+        }
+      } catch (mmErr) {
+        console.warn('Pipeline automatic mind map generation skipped:', mmErr);
+      }
 
       const finalNotebook: Notebook = {
         id: notebookId,
@@ -870,6 +907,8 @@ Begin directly with the topic notes in structured Markdown.`;
           estimatedReadTime: readTime,
           sourceVideos: videoSources,
         },
+        quiz: generatedQuiz.length > 0 ? generatedQuiz : undefined,
+        mindMaps: Object.keys(generatedMindMaps).length > 0 ? generatedMindMaps : undefined,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };

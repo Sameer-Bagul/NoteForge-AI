@@ -330,7 +330,11 @@ export const api = {
 
   async getNotebook(notebookId: string): Promise<Notebook> {
     if (isTauri()) {
-      const record = await tauriApi.getNotebook(notebookId).catch(() => null);
+      let record = await tauriApi.getNotebook(notebookId).catch(() => null);
+      if (!record) {
+        const list = await tauriApi.listNotebooks().catch(() => []);
+        record = list.find(n => n.id === notebookId || n.job_id === notebookId) || null;
+      }
       if (record && record.content_json) {
         return JSON.parse(record.content_json);
       }
@@ -348,12 +352,35 @@ export const api = {
 
   async updateNotebook(notebookId: string, updates: Partial<Notebook>): Promise<Notebook> {
     if (isTauri()) {
-      const existing = await tauriApi.getNotebook(notebookId).catch(() => null);
+      let existing = await tauriApi.getNotebook(notebookId).catch(() => null);
+      if (!existing) {
+        const list = await tauriApi.listNotebooks().catch(() => []);
+        existing = list.find(n => n.id === notebookId || n.job_id === notebookId) || null;
+      }
       if (existing) {
-        const parsed = JSON.parse(existing.content_json);
-        const updated = { ...parsed, ...updates, updatedAt: new Date().toISOString() };
+        let parsed: any = {};
+        try {
+          parsed = JSON.parse(existing.content_json);
+        } catch (e) {
+          console.error('Failed to parse existing notebook JSON:', e);
+        }
+
+        // Deep merge updates: preserve all topic mind maps and existing assets
+        const mergedMindMaps = (parsed.mindMaps || updates.mindMaps)
+          ? { ...(parsed.mindMaps || {}), ...(updates.mindMaps || {}) }
+          : undefined;
+
+        const updated = {
+          ...parsed,
+          ...updates,
+          ...(mergedMindMaps ? { mindMaps: mergedMindMaps } : {}),
+          quiz: updates.quiz || parsed.quiz,
+          interviewQA: updates.interviewQA || parsed.interviewQA,
+          updatedAt: new Date().toISOString(),
+        };
+
         await tauriApi.saveNotebook({
-          id: notebookId,
+          id: existing.id,
           job_id: existing.job_id,
           title: updated.title || existing.title,
           content_json: JSON.stringify(updated),
