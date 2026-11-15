@@ -149,3 +149,4 @@ flowchart TD
 ### Phase 3: Visual & Audio Independence
 - [ ] Stream scene changes via `ffmpeg` + `yt-dlp -g` to insert actual lecture slides into Markdown notes.
 - [ ] Add `whisper-rs` fallback for uncaptioned videos.
+
