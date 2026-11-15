@@ -4,9 +4,11 @@ import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import {
     Copy, Check, Download, Play, ArrowDown,
     ChevronLeft, ChevronRight, Clock, FileText,
-    Lightbulb, AlertTriangle, Info, Terminal
+    Lightbulb, AlertTriangle, Info, Terminal,
+    Sparkles, RotateCcw
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { MermaidDiagram } from './MermaidDiagram';
@@ -18,6 +20,7 @@ interface RunningNotesViewerProps {
     showToolbar?: boolean;
     onSeek?: (seconds: number) => void;
     isStreaming?: boolean;
+    streamingStatus?: string;
     chapterNumber?: number;
     totalChapters?: number;
     timeDisplay?: string;
@@ -28,6 +31,10 @@ interface RunningNotesViewerProps {
     nextChapterTitle?: string;
     isFocusMode?: boolean;
     onToggleFocusMode?: () => void;
+    isEnhanced?: boolean;
+    enhancedWith?: string;
+    onEnhance?: () => void;
+    onRevert?: () => void;
 }
 
 // ─── Code Block Component (Un-slopped & Minimalist) ───────────────────────────
@@ -485,6 +492,11 @@ export function RunningNotesViewer({
     nextChapterTitle,
     isFocusMode,
     onToggleFocusMode,
+    isEnhanced,
+    enhancedWith,
+    onEnhance,
+    onRevert,
+    streamingStatus,
 }: RunningNotesViewerProps) {
     const [copied, setCopied] = useState(false);
     const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -558,19 +570,55 @@ export function RunningNotesViewer({
                             </button>
                         )}
 
-                        {isStreaming && (
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-xs font-mono font-medium animate-pulse">
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
-                                Streaming
+                        {isStreaming ? (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20 text-xs font-mono font-medium animate-pulse">
+                                <span className="w-1.5 h-1.5 rounded-full bg-primary animate-ping" />
+                                {streamingStatus || 'Streaming…'}
                             </span>
+                        ) : isEnhanced && (
+                            <Badge variant="outline" className="text-[10px] font-mono border-primary/30 text-primary gap-1 py-0.5">
+                                <Sparkles className="w-2.5 h-2.5" />
+                                <span>Enhanced{enhancedWith ? ` · ${enhancedWith}` : ''}</span>
+                            </Badge>
                         )}
                     </div>
 
-                    {/* Right chapter reading stats & copy */}
+                    {/* Right chapter reading stats & actions */}
                     <div className="flex items-center gap-2 shrink-0">
                         <span className="text-[11px] font-mono text-muted-foreground/60 hidden sm:inline">
                             ~{readingTime}m · {wordCount.toLocaleString()} words
                         </span>
+
+                        {/* Revert Action if Enhanced */}
+                        {onRevert && isEnhanced && !isStreaming && (
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={onRevert}
+                                className="h-7 text-xs px-2.5 gap-1.5 text-muted-foreground hover:text-foreground"
+                                title="Revert to original pre-enhanced version"
+                            >
+                                <RotateCcw className="w-3.5 h-3.5" />
+                                <span className="text-[11px] font-mono">Revert</span>
+                            </Button>
+                        )}
+
+                        {/* Enhance Chapter Button */}
+                        {onEnhance && !isStreaming && (
+                            <Button
+                                variant={isEnhanced ? "outline" : "default"}
+                                size="sm"
+                                onClick={onEnhance}
+                                className="h-7 text-xs px-2.5 gap-1.5 font-semibold rounded-lg shadow-xs"
+                                title="Elevate technical depth with a cloud LLM"
+                            >
+                                <Sparkles className="w-3 h-3 text-primary-foreground" />
+                                <span className="text-[11px]">
+                                    {isEnhanced ? 'Re-Enhance' : 'Enhance'}
+                                </span>
+                            </Button>
+                        )}
+
                         <Button
                             variant="ghost"
                             size="sm"

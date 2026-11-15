@@ -3,7 +3,7 @@ import {
     BookOpen, Layers, GitBranch, HelpCircle, Briefcase,
     ArrowLeft, ArrowRight, Download, Clock, FileText,
     Loader2, Tv, Trash2, Play, Search, X, Eye,
-    Printer, Share2
+    Printer, Share2, Sparkles, RotateCcw
 } from 'lucide-react';
 import { useSettings } from '@/context/SettingsContext';
 import { isTauri } from '@/services/tauri';
@@ -22,6 +22,7 @@ import { RunningNotesViewer } from './RunningNotesViewer';
 import { MindMapTab } from './MindMapTab';
 import { QuizTab } from './QuizTab';
 import { InterviewTab } from './InterviewTab';
+import { EnhanceModal, EnhanceOptions } from './EnhanceModal';
 import { VideoNotes, Notebook } from '@/types';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
@@ -146,6 +147,7 @@ function IndexPanel({
     onOpenMindMap,
     onOpenQuiz,
     onOpenInterview,
+    onEnhanceNotebook,
 }: {
     topics: VideoNotes['index'];
     notes: VideoNotes;
@@ -155,6 +157,7 @@ function IndexPanel({
     onOpenMindMap?: () => void;
     onOpenQuiz?: () => void;
     onOpenInterview?: () => void;
+    onEnhanceNotebook?: () => void;
 }) {
     const [searchQuery, setSearchQuery] = useState('');
 
@@ -227,6 +230,16 @@ function IndexPanel({
                         <span>Start Reading from Chapter 1</span>
                         <ArrowRight className="w-3.5 h-3.5" />
                     </Button>
+                    {onEnhanceNotebook && (
+                        <Button
+                            variant="outline"
+                            onClick={onEnhanceNotebook}
+                            className="rounded-xl px-4 h-9 text-xs font-semibold border-primary/40 hover:bg-primary/10 text-primary gap-2 shadow-xs transition-transform active:scale-95"
+                        >
+                            <Sparkles className="w-3.5 h-3.5 text-primary" />
+                            <span>Enhance Entire Notebook</span>
+                        </Button>
+                    )}
                 </div>
             </div>
 
@@ -647,6 +660,276 @@ export function NotebookShell({ notes, onReset }: NotebookShellProps) {
     const [isExportingPdf, setIsExportingPdf] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
 
+    // ─── Enhancement State & Handlers ──────────────────────────────────────────
+    const [isEnhanceModalOpen, setIsEnhanceModalOpen] = useState(false);
+    const [enhanceMode, setEnhanceMode] = useState<'chapter' | 'notebook'>('chapter');
+    const [isEnhancing, setIsEnhancing] = useState(false);
+    const [streamingTopicId, setStreamingTopicId] = useState<string | null>(null);
+    const [streamingContent, setStreamingContent] = useState<string>('');
+    const [streamingStatus, setStreamingStatus] = useState<string>('');
+
+    const handleEnhanceChapter = (topicId?: string) => {
+        setEnhanceMode('chapter');
+        if (topicId) setActiveTopicId(topicId);
+        setIsEnhanceModalOpen(true);
+    };
+
+    const handleEnhanceNotebook = () => {
+        setEnhanceMode('notebook');
+        setIsEnhanceModalOpen(true);
+    };
+
+    const handleEnhanceConfirm = async (options: EnhanceOptions) => {
+        setIsEnhancing(true);
+        const provConfig = settings.providers.find(p => p.provider === options.provider);
+        const apiKey = provConfig?.apiKey;
+        const baseUrl = provConfig?.baseUrl;
+
+        if (enhanceMode === 'chapter') {
+            const targetTopic = currentNotes.notes.find(n => n.topicId === activeTopicId) || currentNotes.notes[0];
+            if (!targetTopic) {
+                setIsEnhancing(false);
+                return;
+            }
+
+            const currentText = targetTopic.content || '';
+            const topicInfo = currentNotes.index.find(t => t.id === targetTopic.topicId);
+            const subtopics = topicInfo?.subtopics || [];
+
+            setStreamingTopicId(targetTopic.topicId);
+            setStreamingContent('');
+            setStreamingStatus(`Enhancing with ${options.model}…`);
+
+            try {
+                let accumulated = '';
+                const enhanced = await api.enhanceTopicNotes(
+                    targetTopic.topicTitle || topicInfo?.title || 'Chapter',
+                    subtopics,
+                    currentText,
+                    options.provider,
+                    options.model,
+                    apiKey,
+                    baseUrl,
+                    (token) => {
+                        accumulated += token;
+                        setStreamingContent(accumulated);
+                    }
+                );
+
+                const finalContent = enhanced || accumulated;
+
+                // Update notes array
+                const updatedNotesList = currentNotes.notes.map(n => {
+                    if (n.topicId === targetTopic.topicId) {
+                        return {
+                            ...n,
+                            content: finalContent,
+                            originalContent: n.originalContent || currentText,
+                            isEnhanced: true,
+                            enhancedAt: new Date().toISOString(),
+                            enhancedWith: `${options.model}`,
+                        };
+                    }
+                    return n;
+                });
+
+                const newFullContent = updatedNotesList.map(n => n.content).join('\n\n---\n\n');
+                let updatedMindMaps = currentNotes.mindMaps;
+                let updatedQuiz = currentNotes.quiz;
+
+                // Optional auxiliary updates
+                if (options.upgradeAuxiliary) {
+                    try {
+                        const newMap = await api.generateMindMap(
+                            targetTopic.topicTitle || topicInfo?.title || 'Chapter',
+                            subtopics,
+                            finalContent.slice(0, 3000)
+                        );
+                        if (newMap && newMap.nodes) {
+                            updatedMindMaps = {
+                                ...(updatedMindMaps || {}),
+                                [targetTopic.topicId]: {
+                                    topicId: targetTopic.topicId,
+                                    nodes: newMap.nodes,
+                                    edges: newMap.edges || [],
+                                }
+                            };
+                        }
+                    } catch (mErr) {
+                        console.warn('Failed to upgrade mind map:', mErr);
+                    }
+
+                    try {
+                        const newQuiz = await api.generateQuiz(
+                            [targetTopic.topicTitle || topicInfo?.title || 'Chapter'],
+                            finalContent.slice(0, 4000)
+                        );
+                        if (Array.isArray(newQuiz) && newQuiz.length > 0) {
+                            updatedQuiz = newQuiz;
+                        }
+                    } catch (qErr) {
+                        console.warn('Failed to upgrade quiz:', qErr);
+                    }
+                }
+
+                const updatedNotesState: VideoNotes = {
+                    ...currentNotes,
+                    notes: updatedNotesList,
+                    fullContent: newFullContent,
+                    mindMaps: updatedMindMaps,
+                    quiz: updatedQuiz,
+                };
+
+                setCurrentNotes(updatedNotesState);
+
+                // Persist changes in SQLite
+                const notebookId = currentNotes.notebookId || currentNotes.videoId;
+                if (notebookId) {
+                    await api.updateNotebook(notebookId, {
+                        notes: updatedNotesList,
+                        fullContent: newFullContent,
+                        mindMaps: updatedMindMaps,
+                        quiz: updatedQuiz,
+                    });
+                }
+
+                toast({
+                    title: 'Chapter Enhanced',
+                    description: `Upgraded with ${options.model}. Pre-enhanced copy saved for rollback.`,
+                });
+            } catch (err: any) {
+                console.error('Enhancement failed:', err);
+                toast({
+                    title: 'Enhancement Failed',
+                    description: err?.message || 'Could not complete enhancement.',
+                    variant: 'destructive',
+                });
+            } finally {
+                setIsEnhancing(false);
+                setStreamingTopicId(null);
+                setStreamingContent('');
+                setStreamingStatus('');
+            }
+        } else {
+            // Notebook-wide sequential enhancement
+            setStreamingStatus(`Enhancing notebook with ${options.model}…`);
+            try {
+                const updatedNotesList = [...currentNotes.notes];
+                for (let i = 0; i < updatedNotesList.length; i++) {
+                    const topic = updatedNotesList[i];
+                    const topicInfo = currentNotes.index.find(t => t.id === topic.topicId);
+                    const subtopics = topicInfo?.subtopics || [];
+                    const currentText = topic.content || '';
+
+                    setStreamingTopicId(topic.topicId);
+                    setStreamingStatus(`Enhancing chapter ${i + 1}/${updatedNotesList.length}…`);
+
+                    let accumulated = '';
+                    const enhanced = await api.enhanceTopicNotes(
+                        topic.topicTitle || topicInfo?.title || `Chapter ${i + 1}`,
+                        subtopics,
+                        currentText,
+                        options.provider,
+                        options.model,
+                        apiKey,
+                        baseUrl,
+                        (token) => {
+                            accumulated += token;
+                            setStreamingContent(accumulated);
+                        }
+                    );
+
+                    const finalContent = enhanced || accumulated;
+                    updatedNotesList[i] = {
+                        ...topic,
+                        content: finalContent,
+                        originalContent: topic.originalContent || currentText,
+                        isEnhanced: true,
+                        enhancedAt: new Date().toISOString(),
+                        enhancedWith: `${options.model}`,
+                    };
+                }
+
+                const newFullContent = updatedNotesList.map(n => n.content).join('\n\n---\n\n');
+
+                const updatedNotesState: VideoNotes = {
+                    ...currentNotes,
+                    notes: updatedNotesList,
+                    fullContent: newFullContent,
+                };
+
+                setCurrentNotes(updatedNotesState);
+
+                const notebookId = currentNotes.notebookId || currentNotes.videoId;
+                if (notebookId) {
+                    await api.updateNotebook(notebookId, {
+                        notes: updatedNotesList,
+                        fullContent: newFullContent,
+                    });
+                }
+
+                toast({
+                    title: 'Notebook Enhanced',
+                    description: `All ${updatedNotesList.length} chapters upgraded with ${options.model}.`,
+                });
+            } catch (err: any) {
+                console.error('Batch enhancement failed:', err);
+                toast({
+                    title: 'Enhancement Failed',
+                    description: err?.message || 'Failed to enhance full notebook.',
+                    variant: 'destructive',
+                });
+            } finally {
+                setIsEnhancing(false);
+                setStreamingTopicId(null);
+                setStreamingContent('');
+                setStreamingStatus('');
+            }
+        }
+    };
+
+    const handleRevertChapter = async (topicId?: string) => {
+        const targetId = topicId || activeTopicId;
+        const targetTopic = currentNotes.notes.find(n => n.topicId === targetId);
+        if (!targetTopic || !targetTopic.originalContent) return;
+
+        const updatedNotesList = currentNotes.notes.map(n => {
+            if (n.topicId === targetId) {
+                return {
+                    ...n,
+                    content: n.originalContent!,
+                    isEnhanced: false,
+                    enhancedAt: undefined,
+                    enhancedWith: undefined,
+                };
+            }
+            return n;
+        });
+
+        const newFullContent = updatedNotesList.map(n => n.content).join('\n\n---\n\n');
+
+        const updatedNotesState: VideoNotes = {
+            ...currentNotes,
+            notes: updatedNotesList,
+            fullContent: newFullContent,
+        };
+
+        setCurrentNotes(updatedNotesState);
+
+        const notebookId = currentNotes.notebookId || currentNotes.videoId;
+        if (notebookId) {
+            await api.updateNotebook(notebookId, {
+                notes: updatedNotesList,
+                fullContent: newFullContent,
+            });
+        }
+
+        toast({
+            title: 'Reverted to Original',
+            description: 'Restored pre-enhanced chapter content.',
+        });
+    };
+
     const handleDownloadAll = () => {
         const content = `# ${notes.title}\n\n---\n\n## Table of Contents\n\n${notes.index.map((t, i) => `${i + 1}. ${t.title}`).join('\n')}\n\n---\n\n${notes.fullContent}`;
         const blob = new Blob([content], { type: 'text/markdown' });
@@ -861,6 +1144,7 @@ export function NotebookShell({ notes, onReset }: NotebookShellProps) {
                                     onOpenMindMap={() => setActiveTab('mindmap')}
                                     onOpenQuiz={() => setActiveTab('quiz')}
                                     onOpenInterview={() => setActiveTab('interview')}
+                                    onEnhanceNotebook={handleEnhanceNotebook}
                                 />
                             </div>
                         )}
@@ -906,7 +1190,7 @@ export function NotebookShell({ notes, onReset }: NotebookShellProps) {
                                 <div className="flex-1 overflow-hidden h-full flex flex-col min-w-0">
                                     {activeNote ? (
                                         <RunningNotesViewer
-                                            content={(activeNote as any).content || ''}
+                                            content={streamingTopicId === (activeNote as any)?.topicId && streamingContent ? streamingContent : ((activeNote as any).content || '')}
                                             title={(activeNote as any).topicTitle || (activeNote as any).title}
                                             className="h-full"
                                             chapterNumber={activeTopicIdx + 1}
@@ -921,6 +1205,12 @@ export function NotebookShell({ notes, onReset }: NotebookShellProps) {
                                                 setSeekTime(secs);
                                                 if (!isStudioMode) setIsStudioMode(true);
                                             }}
+                                            isStreaming={streamingTopicId === (activeNote as any)?.topicId}
+                                            streamingStatus={streamingStatus}
+                                            isEnhanced={(activeNote as any)?.isEnhanced}
+                                            enhancedWith={(activeNote as any)?.enhancedWith}
+                                            onEnhance={() => handleEnhanceChapter((activeNote as any)?.topicId)}
+                                            onRevert={() => handleRevertChapter((activeNote as any)?.topicId)}
                                         />
                                     ) : (
                                         <div className="flex flex-col items-center justify-center h-full p-8 text-center text-muted-foreground space-y-2">
@@ -977,6 +1267,20 @@ export function NotebookShell({ notes, onReset }: NotebookShellProps) {
                     </div>
                 </main>
             </div>
+
+            {/* AI Deep Enhancement Modal */}
+            <EnhanceModal
+                isOpen={isEnhanceModalOpen}
+                onClose={() => setIsEnhanceModalOpen(false)}
+                mode={enhanceMode}
+                targetTitle={
+                    enhanceMode === 'chapter'
+                        ? (activeNote as any)?.topicTitle || activeTopic?.title || 'Current Chapter'
+                        : `${currentNotes.title} (${currentNotes.index.length} Chapters)`
+                }
+                onConfirm={handleEnhanceConfirm}
+                isEnhancing={isEnhancing}
+            />
         </TooltipProvider>
     );
 }

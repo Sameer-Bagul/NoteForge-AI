@@ -618,4 +618,58 @@ ${fullContent.slice(0, 4000)}
     const result = await response.json();
     return result.data;
   },
+
+  async enhanceTopicNotes(
+    topicTitle: string,
+    subtopics: string[],
+    currentContent: string,
+    provider: string,
+    model: string,
+    apiKey?: string,
+    baseUrl?: string,
+    onToken?: (token: string) => void
+  ): Promise<string> {
+    const systemPrompt = `You are a world-class principal computer scientist, systems engineer, and technical author.
+Your task is to significantly elevate, expand, and upgrade the technical rigor, depth, and clarity of the provided study notes.
+
+CRITICAL INSTRUCTIONS:
+1. Preserve all existing video timestamps [mm:ss] and chronological structure precisely.
+2. Upgrade conceptual depth: explain the "why", runtime characteristics, memory implications, compiler checks, or architectural tradeoffs.
+3. Replace brief pseudo-code or minimal snippets with robust, production-grade, typed, well-commented code implementations.
+4. Keep all Mermaid diagrams valid or enhance them into clear architectural flowcharts.
+5. Use clean GitHub-flavored markdown with bold taxonomy, callout quotes, and tables where appropriate.
+6. Do NOT use emojis anywhere in the output.
+7. Return ONLY the enhanced markdown content — no greetings, commentary, or meta text.`;
+
+    const prompt = `Elevate and enhance the following study notes for the topic "${topicTitle}".
+Subtopics covered: ${subtopics.join(', ')}
+
+CURRENT NOTES:
+"""
+${currentContent}
+"""
+
+Produce an elevated, deeply technical, and production-grade upgraded version:`;
+
+    if (isTauri()) {
+      return tauriApi.streamLLM(
+        prompt,
+        systemPrompt,
+        provider,
+        model,
+        baseUrl,
+        onToken || (() => {}),
+        apiKey
+      );
+    }
+
+    const response = await fetch(`${API_BASE}/generate/enhance`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ topicTitle, subtopics, currentContent, provider, model, apiKey }),
+    });
+    if (!response.ok) throw new Error('Failed to enhance notes');
+    const result = await response.json();
+    return result.data?.enhancedContent || result.enhancedContent;
+  },
 };
