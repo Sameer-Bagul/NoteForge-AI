@@ -306,14 +306,14 @@ function IndexPanel({
             <div className="space-y-4">
                 <div className="flex items-center justify-between gap-4">
                     <div>
-                        <h2 className="text-sm font-semibold tracking-tight text-foreground flex items-center gap-2">
-                            <span>Chapters Outline</span>
+                        <h2 className="text-sm font-bold tracking-tight text-foreground flex items-center gap-2">
+                            <span>Curriculum Index</span>
                             <span className="text-xs font-mono text-muted-foreground font-normal">
-                                ({filteredTopics.length})
+                                ({filteredTopics.length} {filteredTopics.length === 1 ? 'Chapter' : 'Chapters'})
                             </span>
                         </h2>
                         <p className="text-[11px] text-muted-foreground">
-                            All chapters organized in chronological curriculum order
+                            Structured syllabus with direct timestamps, subtopics, and comprehensive study notes
                         </p>
                     </div>
 
@@ -323,7 +323,7 @@ function IndexPanel({
                             type="text"
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            placeholder="Search chapters or subtopics..."
+                            placeholder="Search index..."
                             className="w-full bg-secondary/30 border border-border/40 rounded-xl pl-8 pr-7 py-1 text-xs text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-border/80 font-mono transition-colors"
                         />
                         {searchQuery && (
@@ -337,8 +337,8 @@ function IndexPanel({
                     </div>
                 </div>
 
-                {/* ── Clean Syllabus Cards ─────────────────────────────────────── */}
-                <div className="space-y-3">
+                {/* ── Clean Curriculum Index Rows (Table of Contents) ───────────── */}
+                <div className="rounded-xl border border-border/40 bg-card/30 overflow-hidden divide-y divide-border/20 shadow-xs">
                     {filteredTopics.map((t) => {
                         const originalIndex = topics.findIndex(item => item.id === t.id);
                         const noteForTopic = notes.notes.find(n => n.topicId === t.id);
@@ -352,81 +352,75 @@ function IndexPanel({
                             <div
                                 key={t.id}
                                 onClick={() => onSelectTopic?.(t.id)}
-                                className="group flex flex-col p-4 sm:p-5 rounded-xl border border-border/40 bg-card/25 hover:bg-card/75 hover:border-border/80 transition-all cursor-pointer gap-3 shadow-xs"
+                                className="group flex flex-col sm:flex-row sm:items-center justify-between p-4 sm:p-5 hover:bg-muted/30 transition-all cursor-pointer gap-3.5"
                             >
-                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                                    <div className="flex items-start sm:items-center gap-3.5 min-w-0">
-                                        <span className="w-8 h-8 rounded-lg bg-secondary/70 group-hover:bg-primary group-hover:text-primary-foreground text-muted-foreground font-mono font-bold text-xs flex items-center justify-center shrink-0 transition-colors">
-                                            {String(originalIndex + 1).padStart(2, '0')}
-                                        </span>
-                                        <div className="space-y-0.5 min-w-0">
-                                            <div className="text-[10px] font-mono uppercase tracking-wider text-primary font-semibold">
-                                                Chapter {originalIndex + 1}
-                                            </div>
-                                            <h3 className="font-semibold text-sm sm:text-base text-foreground group-hover:text-primary transition-colors line-clamp-1">
+                                <div className="flex items-start gap-4 min-w-0 flex-1">
+                                    <span className="font-mono font-bold text-xs text-primary/80 group-hover:text-primary shrink-0 mt-0.5 w-6">
+                                        {String(originalIndex + 1).padStart(2, '0')}.
+                                    </span>
+                                    <div className="space-y-1.5 min-w-0 flex-1">
+                                        <div className="flex items-center gap-2.5 flex-wrap">
+                                            <h3 className="font-semibold text-sm sm:text-base text-foreground group-hover:text-primary transition-colors tracking-tight">
                                                 {t.title}
                                             </h3>
+                                            {t.timeDisplay && (
+                                                <button
+                                                    type="button"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        if (t.startTime !== undefined && onSeek) {
+                                                            onSeek(t.startTime);
+                                                        }
+                                                        onSelectTopic?.(t.id);
+                                                    }}
+                                                    className="inline-flex items-center gap-1 text-[11px] font-mono px-2 py-0.5 rounded-md bg-secondary/70 hover:bg-primary/20 hover:text-primary text-muted-foreground transition-colors border border-border/30"
+                                                    title={`Jump video to ${t.timeDisplay}`}
+                                                >
+                                                    <Play className="w-2.5 h-2.5 fill-current text-primary" />
+                                                    <span>{t.timeDisplay}</span>
+                                                </button>
+                                            )}
                                         </div>
-                                    </div>
 
-                                    <div className="flex items-center gap-2.5 shrink-0 self-end sm:self-center">
-                                        {t.timeDisplay && (
-                                            <button
-                                                type="button"
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    if (t.startTime !== undefined && onSeek) {
-                                                        onSeek(t.startTime);
-                                                    }
-                                                    onSelectTopic?.(t.id);
-                                                }}
-                                                className="flex items-center gap-1.5 text-xs font-mono px-2.5 py-0.5 rounded-md bg-secondary/60 hover:bg-primary/20 hover:text-primary text-muted-foreground transition-colors border border-border/30"
-                                                title={`Play video from ${t.timeDisplay}`}
-                                            >
-                                                <Play className="w-2.5 h-2.5 fill-current text-primary" />
-                                                <span>{t.timeDisplay}</span>
-                                            </button>
+                                        {summary && summary !== t.title && (
+                                            <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2">
+                                                {summary}
+                                            </p>
                                         )}
 
-                                        <span className="text-xs font-mono text-muted-foreground/60 hidden sm:inline">
-                                            ~{topicReadingTime}m read
-                                        </span>
-
-                                        <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            className="h-7 text-xs px-2.5 gap-1 group-hover:bg-primary group-hover:text-primary-foreground transition-all"
-                                        >
-                                            <span>Read Notes</span>
-                                            <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
-                                        </Button>
+                                        {/* Subtopics Index taxonomy */}
+                                        {t.subtopics && t.subtopics.length > 0 && (
+                                            <div className="flex flex-wrap items-center gap-1.5 pt-0.5 text-xs text-muted-foreground/75 font-mono">
+                                                {t.subtopics.map((st, si) => (
+                                                    <span key={si} className="inline-flex items-center gap-1.5">
+                                                        <span className="text-[11px] bg-secondary/40 px-2 py-0.5 rounded text-foreground/80 hover:text-foreground">
+                                                            {st}
+                                                        </span>
+                                                        {si < (t.subtopics?.length || 0) - 1 && (
+                                                            <span className="text-muted-foreground/30 text-[10px]">·</span>
+                                                        )}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
 
-                                {summary && summary !== t.title && (
-                                    <p className="text-xs text-muted-foreground leading-relaxed pl-0 sm:pl-11 line-clamp-2">
-                                        {summary}
-                                    </p>
-                                )}
-
-                                {t.subtopics && t.subtopics.length > 0 && (
-                                    <div className="flex flex-wrap gap-1.5 pl-0 sm:pl-11 pt-1">
-                                        {t.subtopics.map((st, si) => (
-                                            <span
-                                                key={si}
-                                                className="text-[10px] font-mono text-muted-foreground/80 bg-secondary/50 border border-border/30 px-2 py-0.5 rounded-md"
-                                            >
-                                                {st}
-                                            </span>
-                                        ))}
+                                <div className="flex items-center gap-3 shrink-0 self-end sm:self-center pl-10 sm:pl-0">
+                                    <span className="text-xs font-mono text-muted-foreground/70 hidden sm:inline">
+                                        ~{topicReadingTime}m read
+                                    </span>
+                                    <div className="flex items-center gap-1 text-xs font-semibold text-muted-foreground group-hover:text-primary transition-colors">
+                                        <span>Read Notes</span>
+                                        <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
                                     </div>
-                                )}
+                                </div>
                             </div>
                         );
                     })}
 
                     {filteredTopics.length === 0 && (
-                        <div className="p-12 text-center text-xs text-muted-foreground font-mono rounded-xl border border-dashed border-border/40">
+                        <div className="p-12 text-center text-xs text-muted-foreground font-mono">
                             No chapters found matching &quot;{searchQuery}&quot;
                         </div>
                     )}
@@ -473,7 +467,6 @@ function DynamicIslandNavRail({
 }) {
     const navItems: { id: TabType; label: string; icon: any; count?: number }[] = [
         { id: 'index', label: 'Curriculum Index', icon: Layers, count: topicsCount },
-        { id: 'notes', label: 'Study Notes', icon: BookOpen },
         { id: 'mindmap', label: 'Concept Map', icon: GitBranch },
         { id: 'quiz', label: 'Self-Check Quiz', icon: HelpCircle, count: quizCount },
         { id: 'interview', label: 'Technical Q&A', icon: Briefcase, count: interviewCount },
@@ -941,7 +934,7 @@ export function NotebookShell({ notes, onReset }: NotebookShellProps) {
 
                         {/* TAB 3: VISUAL MIND MAP */}
                         {activeTab === 'mindmap' && (
-                            <div className="flex-1 overflow-hidden min-h-0">
+                            <div className="flex-1 overflow-hidden min-h-0 flex flex-col">
                                 <MindMapTab
                                     notebookId={currentNotes.notebookId || currentNotes.videoId}
                                     topics={mapTopics}

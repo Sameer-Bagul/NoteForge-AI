@@ -16,7 +16,8 @@ import {
 import '@xyflow/react/dist/style.css';
 import { api } from '@/services/api';
 import { Button } from '@/components/ui/button';
-import { GitBranch, Loader2, ChevronDown, ChevronRight, Brain } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { GitBranch, Loader2, Brain, RefreshCw, Layers } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface MindMapTabProps {
@@ -24,13 +25,14 @@ interface MindMapTabProps {
     topics: { id: string; title: string; subtopics: string[] }[];
     fullContent: string;
     existingMindMaps?: Record<string, any>; // Record<topicId, {nodes, edges}>
+    onUpdateNotes?: (updates: { mindMaps: Record<string, any> }) => void;
 }
 
 // ─── Custom Nodes ──────────────────────────────────────────────────────────────
 
 function CentralNode({ data }: { data: { label: string } }) {
     return (
-        <div className="px-5 py-3 rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-600 text-white font-bold text-center shadow-lg shadow-indigo-500/30 border-2 border-white/20 max-w-[200px]">
+        <div className="px-5 py-3 rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-600 text-white font-bold text-center shadow-lg shadow-indigo-500/25 border-2 border-white/20 min-w-[160px] max-w-[220px]">
             <Handle type="source" position={Position.Right} className="opacity-0" />
             <Handle type="target" position={Position.Left} className="opacity-0" />
             <span className="text-sm leading-snug">{data.label}</span>
@@ -41,7 +43,7 @@ function CentralNode({ data }: { data: { label: string } }) {
 function BranchNode({ data }: { data: { label: string; color?: string } }) {
     return (
         <div
-            className="px-4 py-2 rounded-xl text-white font-semibold text-center shadow-md max-w-[160px] border border-white/20"
+            className="px-4 py-2 rounded-xl text-white font-semibold text-center shadow-md min-w-[130px] max-w-[180px] border border-white/20"
             style={{ background: data.color || '#6366f1' }}
         >
             <Handle type="source" position={Position.Right} className="opacity-0" />
@@ -53,10 +55,10 @@ function BranchNode({ data }: { data: { label: string; color?: string } }) {
 
 function LeafNode({ data }: { data: { label: string } }) {
     return (
-        <div className="px-3 py-1.5 rounded-lg bg-card border border-border/70 text-foreground/80 text-center shadow-sm max-w-[140px]">
+        <div className="px-3.5 py-1.5 rounded-xl bg-card border border-border/70 text-foreground/90 text-center shadow-xs min-w-[120px] max-w-[180px]">
             <Handle type="source" position={Position.Right} className="opacity-0" />
             <Handle type="target" position={Position.Left} className="opacity-0" />
-            <span className="text-[11px] leading-snug">{data.label}</span>
+            <span className="text-[11px] font-mono leading-snug">{data.label}</span>
         </div>
     );
 }
@@ -69,6 +71,8 @@ const nodeTypes: NodeTypes = {
 
 // ─── Tree Layout Helper ────────────────────────────────────────────────────────
 
+const BRANCH_COLORS = ['#06b6d4', '#10b981', '#f59e0b', '#f43f5e', '#8b5cf6', '#3b82f6'];
+
 function layoutTree(rawNodes: any[], rawEdges: any[]): { nodes: Node[]; edges: Edge[] } {
     if (!rawNodes.length) return { nodes: [], edges: [] };
 
@@ -77,7 +81,7 @@ function layoutTree(rawNodes: any[], rawEdges: any[]): { nodes: Node[]; edges: E
     const leaves = rawNodes.filter(n => n.type === 'leaf');
 
     const branchCount = branches.length;
-    const branchSpacing = 120;
+    const branchSpacing = 110;
     const startY = -(branchCount * branchSpacing) / 2;
 
     const nodeMap = new Map<string, Node>();
@@ -95,8 +99,8 @@ function layoutTree(rawNodes: any[], rawEdges: any[]): { nodes: Node[]; edges: E
         nodeMap.set(b.id, {
             id: b.id,
             type: 'branch',
-            position: { x: 350, y: startY + i * branchSpacing },
-            data: { label: b.label, color: b.color },
+            position: { x: 320, y: startY + i * branchSpacing },
+            data: { label: b.label, color: b.color || BRANCH_COLORS[i % BRANCH_COLORS.length] },
         });
     });
 
@@ -115,12 +119,12 @@ function layoutTree(rawNodes: any[], rawEdges: any[]): { nodes: Node[]; edges: E
             const parentNode = nodeMap.get(e.source);
             const idx = branchChildIndex.get(e.source) || 0;
             const count = branchChildCount.get(e.source) || 1;
-            const leafStartY = (parentNode?.position.y || 0) - ((count - 1) * 60) / 2;
+            const leafStartY = (parentNode?.position.y || 0) - ((count - 1) * 55) / 2;
 
             nodeMap.set(leaf.id, {
                 id: leaf.id,
                 type: 'leaf',
-                position: { x: 680, y: leafStartY + idx * 60 },
+                position: { x: 640, y: leafStartY + idx * 55 },
                 data: { label: leaf.label },
             });
             branchChildIndex.set(e.source, idx + 1);
@@ -132,109 +136,199 @@ function layoutTree(rawNodes: any[], rawEdges: any[]): { nodes: Node[]; edges: E
         source: e.source,
         target: e.target,
         type: 'smoothstep',
-        style: { stroke: '#6366f1', strokeWidth: 1.5, opacity: 0.6 },
+        style: { stroke: '#6366f1', strokeWidth: 1.75, opacity: 0.65 },
         animated: false,
     }));
 
     return { nodes: Array.from(nodeMap.values()), edges };
 }
 
-// ─── Single Topic Mind Map ─────────────────────────────────────────────────────
+// ─── Mind Map Tab Component ───────────────────────────────────────────────────
 
-function TopicMindMap({
+export function MindMapTab({
     notebookId,
-    topic,
+    topics,
     fullContent,
-    existingData,
-    onSaveMindMap,
-}: {
-    notebookId?: string;
-    topic: { id: string; title: string; subtopics: string[] };
-    fullContent: string;
-    existingData?: { nodes: any[]; edges: any[] };
-    onSaveMindMap?: (topicId: string, mapData: any) => Promise<void>;
-}) {
-    const [nodes, setNodes, onNodesChange] = useNodesState(existingData?.nodes || []);
-    const [edges, setEdges, onEdgesChange] = useEdgesState(existingData?.edges || []);
+    existingMindMaps,
+    onUpdateNotes,
+}: MindMapTabProps) {
+    const [selectedTopicId, setSelectedTopicId] = useState<string>(topics[0]?.id || '');
+    const activeTopic = topics.find(t => t.id === selectedTopicId) || topics[0];
+
+    const currentMapData = existingMindMaps?.[activeTopic?.id || ''];
+
+    const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
+    const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
     const [loading, setLoading] = useState(false);
-    const [generated, setGenerated] = useState(!!existingData && (existingData.nodes?.length || 0) > 0);
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
-        if (existingData && existingData.nodes && existingData.nodes.length > 0) {
-            const hasPositions = existingData.nodes[0]?.position?.x !== undefined;
-            const formatted = hasPositions ? existingData : layoutTree(existingData.nodes, existingData.edges || []);
+        if (!activeTopic) return;
+        const topicData = existingMindMaps?.[activeTopic.id];
+        if (topicData && topicData.nodes && topicData.nodes.length > 0) {
+            const hasPositions = topicData.nodes[0]?.position?.x !== undefined;
+            const formatted = hasPositions ? topicData : layoutTree(topicData.nodes, topicData.edges || []);
             setNodes(formatted.nodes);
             setEdges(formatted.edges);
-            setGenerated(true);
+        } else {
+            setNodes([]);
+            setEdges([]);
         }
-    }, [existingData]);
+    }, [activeTopic?.id, existingMindMaps]);
 
-    const generate = useCallback(async () => {
+    const handleGenerate = useCallback(async () => {
+        if (!activeTopic) return;
         setLoading(true);
         setError(null);
+
         try {
             const data = await api.generateMindMap(
-                topic.title,
-                topic.subtopics,
+                activeTopic.title,
+                activeTopic.subtopics,
                 fullContent.slice(0, 3000),
             );
             const { nodes: lNodes, edges: lEdges } = layoutTree(data.nodes || [], data.edges || []);
             setNodes(lNodes);
             setEdges(lEdges);
-            setGenerated(true);
 
             const mapData = {
-                topicId: topic.id,
+                topicId: activeTopic.id,
                 nodes: lNodes,
-                edges: lEdges
+                edges: lEdges,
             };
 
-            if (onSaveMindMap) {
-                await onSaveMindMap(topic.id, mapData);
-            } else if (notebookId) {
+            const updatedMaps = {
+                ...(existingMindMaps || {}),
+                [activeTopic.id]: mapData,
+            };
+
+            if (notebookId) {
                 try {
-                    await api.updateNotebook(notebookId, {
-                        mindMaps: { [topic.id]: mapData }
-                    });
+                    await api.updateNotebook(notebookId, { mindMaps: updatedMaps });
                 } catch (persistErr) {
-                    console.error('Failed to persist mind map to SQLite:', persistErr);
+                    console.error('Failed to persist mind map in SQLite:', persistErr);
                 }
             }
-        } catch (err) {
-            setError('Failed to generate mind map. Please try again.');
+
+            onUpdateNotes?.({ mindMaps: updatedMaps });
+        } catch (err: any) {
+            console.error('Failed to generate mind map:', err);
+            setError(err?.message || 'Failed to generate concept map.');
         } finally {
             setLoading(false);
         }
-    }, [notebookId, topic, fullContent, onSaveMindMap]);
+    }, [activeTopic, fullContent, existingMindMaps, notebookId, onUpdateNotes]);
+
+    const hasGraph = nodes.length > 0;
 
     return (
-        <div className="rounded-xl border border-border/60 overflow-hidden bg-card/40">
-            {/* Topic header */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-border/40 bg-card/60">
-                <div className="flex items-center gap-2">
-                    <GitBranch className="w-4 h-4 text-primary" />
-                    <span className="font-medium text-sm">{topic.title}</span>
-                    <span className="text-xs text-muted-foreground">({topic.subtopics.length} subtopics)</span>
+        <div className="flex-1 h-full min-h-0 flex flex-col p-3 sm:p-3.5 gap-3">
+            {/* ── Studio Header Toolbar ────────────────────────────────────────── */}
+            <div className="px-4 py-2.5 rounded-xl border border-border/40 bg-card/40 backdrop-blur-xs flex flex-wrap items-center justify-between gap-3 shrink-0 select-none shadow-xs">
+                <div className="flex items-center gap-3 min-w-0">
+                    <div className="flex items-center gap-2">
+                        <GitBranch className="w-4 h-4 text-cyan-400 shrink-0" />
+                        <span className="font-semibold text-xs tracking-tight text-foreground">
+                            Concept Architecture Map
+                        </span>
+                    </div>
+
+                    {topics.length > 1 ? (
+                        <div className="flex items-center gap-1 bg-secondary/50 p-0.5 rounded-lg border border-border/30 overflow-x-auto max-w-sm">
+                            {topics.map(t => (
+                                <button
+                                    key={t.id}
+                                    onClick={() => setSelectedTopicId(t.id)}
+                                    className={cn(
+                                        "px-2.5 py-1 rounded-md text-xs font-mono transition-all whitespace-nowrap",
+                                        selectedTopicId === t.id
+                                            ? "bg-foreground text-background font-semibold shadow-xs"
+                                            : "text-muted-foreground hover:text-foreground hover:bg-muted/40"
+                                    )}
+                                >
+                                    {t.title}
+                                </button>
+                            ))}
+                        </div>
+                    ) : (
+                        <Badge variant="outline" className="text-[11px] font-mono border-primary/20 text-primary">
+                            {activeTopic?.title} · {activeTopic?.subtopics?.length || 0} Subtopics
+                        </Badge>
+                    )}
                 </div>
-                {!generated && (
-                    <Button variant="outline" size="sm" onClick={generate} disabled={loading} className="h-7 text-xs gap-1.5">
-                        {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Brain className="w-3.5 h-3.5" />}
-                        {loading ? 'Generating…' : 'Generate Map'}
+
+                {/* Right Actions */}
+                <div className="flex items-center gap-2 shrink-0">
+                    <Button
+                        variant={hasGraph ? "outline" : "default"}
+                        size="sm"
+                        onClick={handleGenerate}
+                        disabled={loading}
+                        className="h-7 text-xs rounded-lg px-2.5 gap-1.5 font-medium transition-all"
+                    >
+                        {loading ? (
+                            <>
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                <span>Generating…</span>
+                            </>
+                        ) : hasGraph ? (
+                            <>
+                                <RefreshCw className="w-3.5 h-3.5" />
+                                <span>Regenerate Map</span>
+                            </>
+                        ) : (
+                            <>
+                                <Brain className="w-3.5 h-3.5" />
+                                <span>Generate Map</span>
+                            </>
+                        )}
                     </Button>
-                )}
+                </div>
             </div>
 
-            {/* Canvas */}
-            <div className="h-[460px] w-full">
-                {!generated ? (
-                    <div className="h-full flex flex-col items-center justify-center gap-3 text-muted-foreground">
+            {/* ── Full Height ReactFlow Studio Canvas ─────────────────────────── */}
+            <div className="flex-1 h-full min-h-0 rounded-xl border border-border/40 bg-card/25 overflow-hidden relative shadow-xs">
+                {!hasGraph ? (
+                    <div className="h-full flex flex-col items-center justify-center p-8 text-center space-y-3">
                         {loading ? (
-                            <><Loader2 className="w-8 h-8 animate-spin text-primary" /><p className="text-sm">Generating mind map…</p></>
+                            <>
+                                <div className="w-12 h-12 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center">
+                                    <Loader2 className="w-6 h-6 animate-spin text-primary" />
+                                </div>
+                                <div className="space-y-1 max-w-sm">
+                                    <h4 className="text-sm font-semibold text-foreground">
+                                        Synthesizing Architecture Map...
+                                    </h4>
+                                    <p className="text-xs text-muted-foreground">
+                                        Decomposing topic concepts, dependencies, and execution hierarchy.
+                                    </p>
+                                </div>
+                            </>
                         ) : (
-                            <><GitBranch className="w-10 h-10 opacity-30" /><p className="text-sm">Click Generate Map to visualize this topic</p></>
+                            <>
+                                <div className="w-12 h-12 rounded-2xl bg-secondary/60 border border-border/40 flex items-center justify-center text-muted-foreground/60">
+                                    <GitBranch className="w-6 h-6" />
+                                </div>
+                                <div className="space-y-1 max-w-sm">
+                                    <h4 className="text-sm font-semibold text-foreground">
+                                        Visualize {activeTopic?.title || 'Topic'}
+                                    </h4>
+                                    <p className="text-xs text-muted-foreground">
+                                        Generate an interactive node graph illustrating key concepts, subtopics, and structural relationships.
+                                    </p>
+                                </div>
+                                <Button
+                                    onClick={handleGenerate}
+                                    className="rounded-xl h-8 px-4 text-xs font-semibold gap-1.5 mt-2 shadow-xs"
+                                >
+                                    <Brain className="w-3.5 h-3.5" />
+                                    <span>Generate Concept Map</span>
+                                </Button>
+                            </>
                         )}
-                        {error && <p className="text-xs text-destructive mt-1">{error}</p>}
+                        {error && (
+                            <p className="text-xs text-destructive font-mono pt-2">{error}</p>
+                        )}
                     </div>
                 ) : (
                     <ReactFlow
@@ -244,78 +338,33 @@ function TopicMindMap({
                         onEdgesChange={onEdgesChange}
                         nodeTypes={nodeTypes}
                         fitView
-                        fitViewOptions={{ padding: 0.3 }}
+                        fitViewOptions={{ padding: 0.25 }}
                         proOptions={{ hideAttribution: true }}
                     >
-                        <Controls className="!bg-card !border-border/60 !shadow-sm" />
-                        <MiniMap
-                            className="!bg-card !border-border/60"
-                            nodeColor={(node) => node.type === 'central' ? '#6366f1' : node.type === 'branch' ? '#8b5cf6' : '#444'}
+                        <Controls
+                            className="!bg-card/90 !border-border/50 !rounded-xl !overflow-hidden !shadow-md"
+                            showInteractive={false}
                         />
-                        <Background variant={BackgroundVariant.Dots} gap={24} size={1} color="rgba(255,255,255,0.05)" />
+                        <MiniMap
+                            className="!bg-card/90 !border-border/50 !rounded-xl !overflow-hidden !shadow-md"
+                            maskColor="rgba(0, 0, 0, 0.75)"
+                            nodeColor={(node) =>
+                                node.type === 'central'
+                                    ? '#6366f1'
+                                    : node.type === 'branch'
+                                    ? ((node.data as any)?.color || '#8b5cf6')
+                                    : '#3b4252'
+                            }
+                        />
+                        <Background
+                            variant={BackgroundVariant.Dots}
+                            gap={24}
+                            size={1}
+                            color="rgba(255, 255, 255, 0.07)"
+                        />
                     </ReactFlow>
                 )}
             </div>
-        </div>
-    );
-}
-
-// ─── Mind Map Tab ──────────────────────────────────────────────────────────────
-
-interface MindMapTabProps {
-    notebookId?: string;
-    topics: { id: string; title: string; subtopics: string[] }[];
-    fullContent: string;
-    existingMindMaps?: Record<string, any>;
-    onUpdateNotes?: (updates: { mindMaps: Record<string, any> }) => void;
-}
-
-export function MindMapTab({ notebookId, topics, fullContent, existingMindMaps, onUpdateNotes }: MindMapTabProps) {
-    const [expanded, setExpanded] = useState<string | null>(topics[0]?.id ?? null);
-
-    const handleSaveMindMap = useCallback(async (topicId: string, mapData: any) => {
-        const updatedMaps = {
-            ...(existingMindMaps || {}),
-            [topicId]: mapData
-        };
-        if (notebookId) {
-            try {
-                await api.updateNotebook(notebookId, { mindMaps: updatedMaps });
-            } catch (err) {
-                console.error('Failed to save mind map in SQLite:', err);
-            }
-        }
-        onUpdateNotes?.({ mindMaps: updatedMaps });
-    }, [notebookId, existingMindMaps, onUpdateNotes]);
-
-    return (
-        <div className="space-y-4">
-            <div className="flex items-center gap-2 mb-2">
-                <GitBranch className="w-5 h-5 text-primary" />
-                <h3 className="font-semibold text-foreground">Topic Mind Maps</h3>
-                <span className="text-xs text-muted-foreground">Click "Generate Map" on any topic to visualize it</span>
-            </div>
-
-            {topics.map(topic => (
-                <div key={topic.id}>
-                    <button
-                        className="w-full flex items-center justify-between px-4 py-3 rounded-xl border border-border/50 bg-card/60 hover:bg-card transition-colors text-left mb-2"
-                        onClick={() => setExpanded(e => e === topic.id ? null : topic.id)}
-                    >
-                        <span className="font-medium text-sm">{topic.title}</span>
-                        {expanded === topic.id ? <ChevronDown className="w-4 h-4 text-muted-foreground" /> : <ChevronRight className="w-4 h-4 text-muted-foreground" />}
-                    </button>
-                    {expanded === topic.id && (
-                        <TopicMindMap
-                            notebookId={notebookId}
-                            topic={topic}
-                            fullContent={fullContent}
-                            existingData={existingMindMaps?.[topic.id]}
-                            onSaveMindMap={handleSaveMindMap}
-                        />
-                    )}
-                </div>
-            ))}
         </div>
     );
 }
