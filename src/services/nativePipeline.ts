@@ -525,7 +525,7 @@ export const nativePipeline = {
       const aiConfig = getAIConfigForTask('indexing');
       notifyLog(session, `Connecting to ${aiConfig.provider} (${aiConfig.model})...`, 'info');
       const isPlaylist = transcripts.length > 1;
-      const isLectureMode = isPlaylist || options.generationMode === 'chronological';
+      const isLectureMode = isPlaylist || generationMode === 'chronological';
       const videoAnalyses = analyzeVideoSyllabus(transcripts);
       const combinedText = transcripts.map(t => t.full_text).join('\n\n');
 
