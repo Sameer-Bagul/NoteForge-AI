@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import {
     BookOpen, Layers, GitBranch, HelpCircle, Briefcase,
     ArrowLeft, ArrowRight, Download, Clock, FileText,
@@ -8,6 +8,7 @@ import {
 import { useSettings } from '@/context/SettingsContext';
 import { isTauri } from '@/services/tauri';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import {
     DropdownMenu,
@@ -21,7 +22,7 @@ import { RunningNotesViewer } from './RunningNotesViewer';
 import { MindMapTab } from './MindMapTab';
 import { QuizTab } from './QuizTab';
 import { InterviewTab } from './InterviewTab';
-import { VideoNotes } from '@/types';
+import { VideoNotes, Notebook } from '@/types';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { api } from '@/services/api';
@@ -59,8 +60,8 @@ function TopicSidebar({
 
     return (
         <nav className="h-full flex flex-col overflow-hidden bg-card/10 select-none">
-            <div className="p-3 border-b border-border/30 space-y-2 shrink-0">
-                <div className="flex items-center justify-between text-xs">
+            <div className="p-2.5 border-b border-border/30 space-y-2 shrink-0">
+                <div className="flex items-center justify-between text-xs px-0.5">
                     <span className="font-mono text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">
                         Chapters
                     </span>
@@ -88,7 +89,7 @@ function TopicSidebar({
                 </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto divide-y divide-border/15">
+            <div className="flex-1 overflow-y-auto p-1.5 space-y-0.5">
                 {filtered.map((t) => {
                     const originalIndex = topics.findIndex(item => item.id === t.id);
                     const isActive = activeId === t.id;
@@ -103,19 +104,16 @@ function TopicSidebar({
                                 }
                             }}
                             className={cn(
-                                'w-full text-left px-3.5 py-2.5 text-xs transition-colors group relative flex items-start justify-between gap-2',
+                                'w-full text-left px-3 py-2 rounded-lg text-xs transition-all group relative flex items-start justify-between gap-2',
                                 isActive
-                                    ? 'bg-secondary/70 text-foreground font-medium'
-                                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/30'
+                                    ? 'bg-secondary/90 text-foreground font-semibold shadow-xs'
+                                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/40'
                             )}
                         >
-                            {isActive && (
-                                <span className="absolute left-0 top-0 bottom-0 w-0.5 bg-primary rounded-r" />
-                            )}
                             <div className="flex items-start gap-2.5 min-w-0">
                                 <span className={cn(
                                     'text-[11px] font-mono shrink-0 mt-0.5',
-                                    isActive ? 'text-primary font-semibold' : 'text-muted-foreground/50'
+                                    isActive ? 'text-primary font-bold' : 'text-muted-foreground/50'
                                 )}>
                                     {String(originalIndex + 1).padStart(2, '0')}
                                 </span>
@@ -175,81 +173,149 @@ function IndexPanel({
     const chaptersCount = topics.length;
 
     return (
-        <div className="max-w-4xl mx-auto w-full px-6 sm:px-8 py-8 sm:py-12 space-y-10">
+        <div className="max-w-5xl mx-auto w-full px-6 sm:px-8 py-8 sm:py-10 space-y-8">
             {/* ── Editorial Hero Header (Un-slopped, Minimalist) ───────────────── */}
-            <div className="space-y-4 pb-8 border-b border-border/30">
-                <div className="flex items-center gap-2">
-                    <span className="text-[11px] font-mono tracking-widest text-muted-foreground uppercase font-semibold">
-                        Syllabus & Index · {chaptersCount} {chaptersCount === 1 ? 'Chapter' : 'Chapters'} · ~{readingTime} Min Read
-                    </span>
-                </div>
-
+            <div className="p-6 sm:p-8 rounded-2xl border border-border/40 bg-card/40 backdrop-blur-xs space-y-6 shadow-xs">
                 <div className="space-y-2">
-                    <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-foreground leading-tight">
+                    <div className="flex items-center gap-2">
+                        <span className="text-[11px] font-mono tracking-widest text-primary uppercase font-bold">
+                            Curriculum Syllabus & Index
+                        </span>
+                        <span className="text-muted-foreground/40">•</span>
+                        <span className="text-[11px] font-mono text-muted-foreground">
+                            {chaptersCount} {chaptersCount === 1 ? 'Chapter' : 'Chapters'}
+                        </span>
+                        <span className="text-muted-foreground/40">•</span>
+                        <span className="text-[11px] font-mono text-muted-foreground">
+                            ~{readingTime} Min Total Read
+                        </span>
+                    </div>
+
+                    <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-foreground leading-tight">
                         {notes.title}
                     </h1>
-                    <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed max-w-2xl">
-                        Comprehensive curriculum decomposed into {chaptersCount} {chaptersCount === 1 ? 'chapter' : 'chapters'} with video timestamps, structured study notes, architecture diagrams, and interactive self-checks.
+
+                    <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed max-w-3xl">
+                        Comprehensive curriculum decomposed into {chaptersCount} structured {chaptersCount === 1 ? 'chapter' : 'chapters'} with timestamped video markers, deep conceptual explanations, code implementations, and interactive knowledge checks.
                     </p>
                 </div>
 
-                {/* Minimal Action Controls */}
-                <div className="pt-2 flex flex-wrap items-center gap-2.5">
+                {/* Metrics bar */}
+                <div className="flex flex-wrap items-center gap-4 text-xs font-mono text-muted-foreground pt-1 border-t border-border/25">
+                    <span className="flex items-center gap-1.5">
+                        <Layers className="w-3.5 h-3.5 text-primary" />
+                        <span>{chaptersCount} Topics Decomposed</span>
+                    </span>
+                    <span>•</span>
+                    <span className="flex items-center gap-1.5">
+                        <FileText className="w-3.5 h-3.5 text-muted-foreground/70" />
+                        <span>{wordCount.toLocaleString()} Total Words</span>
+                    </span>
+                    <span>•</span>
+                    <span className="flex items-center gap-1.5">
+                        <Clock className="w-3.5 h-3.5 text-muted-foreground/70" />
+                        <span>~{readingTime} min Reading Time</span>
+                    </span>
+                </div>
+
+                {/* Primary Action Button */}
+                <div className="pt-2 flex flex-wrap items-center gap-3">
                     <Button
                         onClick={onStartReading}
-                        className="rounded-full px-5 h-8 sm:h-9 text-xs font-semibold bg-foreground text-background hover:bg-foreground/90 gap-2 shadow-sm transition-transform active:scale-95"
+                        className="rounded-xl px-5 h-9 text-xs font-semibold bg-foreground text-background hover:bg-foreground/90 gap-2 shadow-xs transition-transform active:scale-95"
                     >
                         <span>Start Reading from Chapter 1</span>
                         <ArrowRight className="w-3.5 h-3.5" />
                     </Button>
-
-                    {onOpenMindMap && notes.mindMaps && (
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={onOpenMindMap}
-                            className="rounded-full h-8 sm:h-9 px-3.5 text-xs gap-1.5 border-border/50 hover:bg-secondary/60 text-muted-foreground hover:text-foreground"
-                        >
-                            <GitBranch className="w-3.5 h-3.5 text-cyan-400" />
-                            <span>Mind Map</span>
-                        </Button>
-                    )}
-
-                    {onOpenQuiz && (
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={onOpenQuiz}
-                            className="rounded-full h-8 sm:h-9 px-3.5 text-xs gap-1.5 border-border/50 hover:bg-secondary/60 text-muted-foreground hover:text-foreground"
-                        >
-                            <HelpCircle className="w-3.5 h-3.5 text-amber-400" />
-                            <span>Quiz ({notes.quiz?.length || 0})</span>
-                        </Button>
-                    )}
-
-                    {onOpenInterview && (
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={onOpenInterview}
-                            className="rounded-full h-8 sm:h-9 px-3.5 text-xs gap-1.5 border-border/50 hover:bg-secondary/60 text-muted-foreground hover:text-foreground"
-                        >
-                            <Briefcase className="w-3.5 h-3.5 text-emerald-400" />
-                            <span>Interview Q&A ({notes.interviewQA?.length || 0})</span>
-                        </Button>
-                    )}
                 </div>
             </div>
 
-            {/* ── Chapters Outline Header & Compact Search ───────────────────────── */}
+            {/* ── Interactive Study Suite (Eliminating Empty Space) ─────────────── */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+                {/* Quiz Card */}
+                <div
+                    onClick={onOpenQuiz}
+                    className="p-4 rounded-xl border border-border/40 bg-card/30 hover:bg-card/70 hover:border-amber-500/40 transition-all cursor-pointer group space-y-2 shadow-xs"
+                >
+                    <div className="flex items-center justify-between">
+                        <div className="w-8 h-8 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 group-hover:scale-105 transition-transform">
+                            <HelpCircle className="w-4 h-4" />
+                        </div>
+                        <Badge variant="outline" className="text-[10px] font-mono border-amber-500/30 text-amber-400">
+                            {notes.quiz?.length || 0} Questions
+                        </Badge>
+                    </div>
+                    <div>
+                        <h3 className="text-xs font-semibold text-foreground group-hover:text-amber-400 transition-colors">
+                            Self-Check Quiz
+                        </h3>
+                        <p className="text-[11px] text-muted-foreground leading-relaxed">
+                            Active recall questions to test your conceptual and syntax retention.
+                        </p>
+                    </div>
+                </div>
+
+                {/* Mind Map Card */}
+                <div
+                    onClick={onOpenMindMap}
+                    className="p-4 rounded-xl border border-border/40 bg-card/30 hover:bg-card/70 hover:border-cyan-500/40 transition-all cursor-pointer group space-y-2 shadow-xs"
+                >
+                    <div className="flex items-center justify-between">
+                        <div className="w-8 h-8 rounded-lg bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 group-hover:scale-105 transition-transform">
+                            <GitBranch className="w-4 h-4" />
+                        </div>
+                        <Badge variant="outline" className="text-[10px] font-mono border-cyan-500/30 text-cyan-400">
+                            Interactive Graph
+                        </Badge>
+                    </div>
+                    <div>
+                        <h3 className="text-xs font-semibold text-foreground group-hover:text-cyan-400 transition-colors">
+                            Concept Mind Map
+                        </h3>
+                        <p className="text-[11px] text-muted-foreground leading-relaxed">
+                            Visual architecture graph illustrating key concepts and topic dependencies.
+                        </p>
+                    </div>
+                </div>
+
+                {/* Interview Prep Card */}
+                <div
+                    onClick={onOpenInterview}
+                    className="p-4 rounded-xl border border-border/40 bg-card/30 hover:bg-card/70 hover:border-emerald-500/40 transition-all cursor-pointer group space-y-2 shadow-xs"
+                >
+                    <div className="flex items-center justify-between">
+                        <div className="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 group-hover:scale-105 transition-transform">
+                            <Briefcase className="w-4 h-4" />
+                        </div>
+                        <Badge variant="outline" className="text-[10px] font-mono border-emerald-500/30 text-emerald-400">
+                            {notes.interviewQA?.length || 0} Questions
+                        </Badge>
+                    </div>
+                    <div>
+                        <h3 className="text-xs font-semibold text-foreground group-hover:text-emerald-400 transition-colors">
+                            Technical Q&A
+                        </h3>
+                        <p className="text-[11px] text-muted-foreground leading-relaxed">
+                            Interview preparation questions categorized by difficulty and domain.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            {/* ── Chapters Outline Header & Search ─────────────────────────────── */}
             <div className="space-y-4">
                 <div className="flex items-center justify-between gap-4">
-                    <h2 className="text-sm font-semibold tracking-tight text-foreground flex items-center gap-2">
-                        <span>Chapters</span>
-                        <span className="text-xs font-mono text-muted-foreground font-normal">
-                            ({filteredTopics.length})
-                        </span>
-                    </h2>
+                    <div>
+                        <h2 className="text-sm font-semibold tracking-tight text-foreground flex items-center gap-2">
+                            <span>Chapters Outline</span>
+                            <span className="text-xs font-mono text-muted-foreground font-normal">
+                                ({filteredTopics.length})
+                            </span>
+                        </h2>
+                        <p className="text-[11px] text-muted-foreground">
+                            All chapters organized in chronological curriculum order
+                        </p>
+                    </div>
 
                     <div className="relative w-56 sm:w-64">
                         <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/50" />
@@ -257,8 +323,8 @@ function IndexPanel({
                             type="text"
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            placeholder="Filter chapters..."
-                            className="w-full bg-secondary/30 border border-border/40 rounded-full pl-8 pr-7 py-1 text-xs text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-foreground/30 font-mono transition-colors"
+                            placeholder="Search chapters or subtopics..."
+                            className="w-full bg-secondary/30 border border-border/40 rounded-xl pl-8 pr-7 py-1 text-xs text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-border/80 font-mono transition-colors"
                         />
                         {searchQuery && (
                             <button
@@ -271,8 +337,8 @@ function IndexPanel({
                     </div>
                 </div>
 
-                {/* ── Clean Syllabus Rows ────────────────────────────────────────── */}
-                <div className="space-y-2">
+                {/* ── Clean Syllabus Cards ─────────────────────────────────────── */}
+                <div className="space-y-3">
                     {filteredTopics.map((t) => {
                         const originalIndex = topics.findIndex(item => item.id === t.id);
                         const noteForTopic = notes.notes.find(n => n.topicId === t.id);
@@ -280,72 +346,87 @@ function IndexPanel({
                             ? noteForTopic.content.split(/\s+/).filter(Boolean).length
                             : 0;
                         const topicReadingTime = Math.max(1, Math.ceil(topicWordCount / 200));
+                        const summary = noteForTopic?.summary || (noteForTopic as any)?.description;
 
                         return (
                             <div
                                 key={t.id}
                                 onClick={() => onSelectTopic?.(t.id)}
-                                className="group flex flex-col sm:flex-row sm:items-center justify-between p-3.5 sm:p-4 rounded-xl border border-border/40 bg-card/25 hover:bg-card/75 hover:border-border/80 transition-all cursor-pointer gap-3"
+                                className="group flex flex-col p-4 sm:p-5 rounded-xl border border-border/40 bg-card/25 hover:bg-card/75 hover:border-border/80 transition-all cursor-pointer gap-3 shadow-xs"
                             >
-                                <div className="flex items-start sm:items-center gap-3.5 min-w-0">
-                                    <span className="w-7 h-7 rounded-lg bg-secondary/70 group-hover:bg-foreground group-hover:text-background text-muted-foreground font-mono font-semibold text-xs flex items-center justify-center shrink-0 transition-colors">
-                                        {String(originalIndex + 1).padStart(2, '0')}
-                                    </span>
-                                    <div className="space-y-1 min-w-0">
-                                        <h3 className="font-semibold text-sm text-foreground group-hover:text-primary transition-colors line-clamp-1">
-                                            {t.title}
-                                        </h3>
-                                        {t.subtopics && t.subtopics.length > 0 && (
-                                            <div className="flex flex-wrap gap-1.5 pt-0.5">
-                                                {t.subtopics.slice(0, 5).map((st, si) => (
-                                                    <span
-                                                        key={si}
-                                                        className="text-[10px] font-mono text-muted-foreground/80 bg-secondary/50 px-2 py-0.5 rounded"
-                                                    >
-                                                        {st}
-                                                    </span>
-                                                ))}
-                                                {t.subtopics.length > 5 && (
-                                                    <span className="text-[10px] font-mono text-muted-foreground/60">
-                                                        +{t.subtopics.length - 5}
-                                                    </span>
-                                                )}
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                    <div className="flex items-start sm:items-center gap-3.5 min-w-0">
+                                        <span className="w-8 h-8 rounded-lg bg-secondary/70 group-hover:bg-primary group-hover:text-primary-foreground text-muted-foreground font-mono font-bold text-xs flex items-center justify-center shrink-0 transition-colors">
+                                            {String(originalIndex + 1).padStart(2, '0')}
+                                        </span>
+                                        <div className="space-y-0.5 min-w-0">
+                                            <div className="text-[10px] font-mono uppercase tracking-wider text-primary font-semibold">
+                                                Chapter {originalIndex + 1}
                                             </div>
+                                            <h3 className="font-semibold text-sm sm:text-base text-foreground group-hover:text-primary transition-colors line-clamp-1">
+                                                {t.title}
+                                            </h3>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex items-center gap-2.5 shrink-0 self-end sm:self-center">
+                                        {t.timeDisplay && (
+                                            <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    if (t.startTime !== undefined && onSeek) {
+                                                        onSeek(t.startTime);
+                                                    }
+                                                    onSelectTopic?.(t.id);
+                                                }}
+                                                className="flex items-center gap-1.5 text-xs font-mono px-2.5 py-0.5 rounded-md bg-secondary/60 hover:bg-primary/20 hover:text-primary text-muted-foreground transition-colors border border-border/30"
+                                                title={`Play video from ${t.timeDisplay}`}
+                                            >
+                                                <Play className="w-2.5 h-2.5 fill-current text-primary" />
+                                                <span>{t.timeDisplay}</span>
+                                            </button>
                                         )}
+
+                                        <span className="text-xs font-mono text-muted-foreground/60 hidden sm:inline">
+                                            ~{topicReadingTime}m read
+                                        </span>
+
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className="h-7 text-xs px-2.5 gap-1 group-hover:bg-primary group-hover:text-primary-foreground transition-all"
+                                        >
+                                            <span>Read Notes</span>
+                                            <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
+                                        </Button>
                                     </div>
                                 </div>
 
-                                <div className="flex items-center gap-3 shrink-0 sm:self-center self-end pt-2 sm:pt-0 border-t sm:border-t-0 border-border/20">
-                                    {t.timeDisplay && (
-                                        <button
-                                            type="button"
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                if (t.startTime !== undefined && onSeek) {
-                                                    onSeek(t.startTime);
-                                                }
-                                                onSelectTopic?.(t.id);
-                                            }}
-                                            className="flex items-center gap-1 text-[11px] font-mono px-2 py-0.5 rounded-full bg-secondary/60 hover:bg-primary/20 hover:text-primary text-muted-foreground transition-colors"
-                                            title={`Play from ${t.timeDisplay}`}
-                                        >
-                                            <Play className="w-2.5 h-2.5 fill-current text-primary" />
-                                            <span>{t.timeDisplay}</span>
-                                        </button>
-                                    )}
+                                {summary && summary !== t.title && (
+                                    <p className="text-xs text-muted-foreground leading-relaxed pl-0 sm:pl-11 line-clamp-2">
+                                        {summary}
+                                    </p>
+                                )}
 
-                                    <span className="text-xs font-mono text-muted-foreground/60 hidden sm:inline">
-                                        ~{topicReadingTime}m
-                                    </span>
-
-                                    <ArrowRight className="w-4 h-4 text-muted-foreground/40 group-hover:text-foreground group-hover:translate-x-0.5 transition-all" />
-                                </div>
+                                {t.subtopics && t.subtopics.length > 0 && (
+                                    <div className="flex flex-wrap gap-1.5 pl-0 sm:pl-11 pt-1">
+                                        {t.subtopics.map((st, si) => (
+                                            <span
+                                                key={si}
+                                                className="text-[10px] font-mono text-muted-foreground/80 bg-secondary/50 border border-border/30 px-2 py-0.5 rounded-md"
+                                            >
+                                                {st}
+                                            </span>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
                         );
                     })}
 
                     {filteredTopics.length === 0 && (
-                        <div className="p-8 text-center text-xs text-muted-foreground font-mono">
+                        <div className="p-12 text-center text-xs text-muted-foreground font-mono rounded-xl border border-dashed border-border/40">
                             No chapters found matching &quot;{searchQuery}&quot;
                         </div>
                     )}
@@ -710,7 +791,7 @@ export function NotebookShell({ notes, onReset }: NotebookShellProps) {
                 {/* ── Main Workspace Body (Fixed Header + Single Smooth Scroll Area) ── */}
                 <main className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
                     {/* Minimalist Top App Navigation Bar (Un-slopped, single title) */}
-                    <header className="h-13 border-b border-border/30 px-6 sm:px-8 flex items-center justify-between shrink-0 bg-background/50 backdrop-blur-md select-none">
+                    <header className="h-12 border-b border-border/30 px-4 sm:px-6 flex items-center justify-between shrink-0 bg-background/50 backdrop-blur-md select-none">
                         <div className="flex items-center gap-2 min-w-0">
                             <span className="text-xs text-muted-foreground/60 hover:text-muted-foreground cursor-pointer transition-colors" onClick={onReset}>
                                 Library
@@ -719,23 +800,31 @@ export function NotebookShell({ notes, onReset }: NotebookShellProps) {
                             <span className="text-xs font-semibold text-foreground truncate max-w-sm sm:max-w-md md:max-w-lg">
                                 {notes.title}
                             </span>
+                            {activeTab !== 'index' && (
+                                <Badge variant="secondary" className="ml-1.5 text-[10px] font-mono capitalize hidden sm:inline-flex">
+                                    {activeTab === 'notes' ? 'Study Notes' :
+                                     activeTab === 'mindmap' ? 'Concept Map' :
+                                     activeTab === 'quiz' ? 'Self-Check Quiz' : 'Interview Q&A'}
+                                </Badge>
+                            )}
                         </div>
 
                         {/* Top Right Controls */}
-                        <div className="flex items-center gap-3 shrink-0">
-                            <span className="text-[11px] font-mono text-muted-foreground/70 hidden sm:inline">
+                        <div className="flex items-center gap-2.5 shrink-0">
+                            <span className="text-[11px] font-mono text-muted-foreground/70 mr-1 hidden sm:inline">
                                 {notes.index.length} {notes.index.length === 1 ? 'Chapter' : 'Chapters'} · {wordCount.toLocaleString()} words · ~{readingTime}m read
                             </span>
 
-                            {videoId && (
+                            {videoId && activeTab === 'notes' && (
                                 <Button
-                                    variant={!isStudioMode ? "secondary" : "ghost"}
+                                    variant={!isStudioMode ? "default" : "outline"}
                                     size="sm"
                                     onClick={() => setIsStudioMode(!isStudioMode)}
-                                    className="h-7 text-xs rounded-full px-3 gap-1.5 transition-all"
+                                    className="h-7 text-xs rounded-lg px-2.5 gap-1.5 font-medium transition-all"
+                                    title={!isStudioMode ? "Show docked video player" : "Hide video player to focus on notes"}
                                 >
-                                    {!isStudioMode ? <Eye className="w-3.5 h-3.5 text-primary" /> : <Tv className="w-3.5 h-3.5 text-muted-foreground" />}
-                                    <span className="text-xs">{!isStudioMode ? "Focus Mode" : "Hide Video"}</span>
+                                    {!isStudioMode ? <Tv className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                                    <span>{!isStudioMode ? "Show Video" : "Focus Mode"}</span>
                                 </Button>
                             )}
 
@@ -744,7 +833,7 @@ export function NotebookShell({ notes, onReset }: NotebookShellProps) {
                                     variant="ghost"
                                     size="sm"
                                     onClick={() => setActiveTab('index')}
-                                    className="h-7 text-xs rounded-full px-2.5 gap-1.5 text-muted-foreground hover:text-foreground"
+                                    className="h-7 text-xs rounded-lg px-2.5 gap-1.5 text-muted-foreground hover:text-foreground"
                                 >
                                     <Layers className="w-3.5 h-3.5" />
                                     <span>Index</span>
@@ -785,43 +874,42 @@ export function NotebookShell({ notes, onReset }: NotebookShellProps) {
 
                         {/* TAB 2: STUDY NOTES (Running Notes Viewer) */}
                         {activeTab === 'notes' && (
-                            <div className="flex-1 overflow-hidden min-h-0 flex flex-row">
-                                {/* Left Column: Video & Topic Sidebar */}
-                                <div className={cn(
-                                    "h-full flex flex-col border-r border-border/30 overflow-hidden shrink-0 transition-all duration-200",
-                                    isStudioMode && videoId
-                                        ? "w-80 lg:w-96"
-                                        : "w-64 lg:w-72"
-                                )}>
-                                    {/* Video Player (when Studio Mode is on) */}
-                                    {isStudioMode && videoId && (
-                                        <div className="aspect-video w-full bg-black border-b border-border/30 shrink-0">
-                                            <iframe
-                                                key={seekTime !== null ? `yt-${seekTime}` : 'yt-initial'}
-                                                src={`https://www.youtube-nocookie.com/embed/${videoId}?enablejsapi=1${seekTime !== null ? `&start=${seekTime}&autoplay=1` : ''}`}
-                                                title="YouTube Video Player"
-                                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                                                allowFullScreen
-                                                className="w-full h-full border-0"
+                            <div className="flex-1 overflow-hidden min-h-0 flex flex-row p-3 gap-3">
+                                {/* Left Column: Video & Topic Sidebar (Docked Studio Pane) */}
+                                {isStudioMode && (
+                                    <div className={cn(
+                                        "h-full flex flex-col rounded-xl border border-border/40 bg-card/30 overflow-hidden shrink-0 transition-all duration-200 shadow-xs",
+                                        videoId ? "w-80 lg:w-96" : "w-64 lg:w-72"
+                                    )}>
+                                        {/* Video Player */}
+                                        {videoId && (
+                                            <div className="aspect-video w-full bg-black shrink-0 relative overflow-hidden border-b border-border/30">
+                                                <iframe
+                                                    key={seekTime !== null ? `yt-${seekTime}` : 'yt-initial'}
+                                                    src={`https://www.youtube-nocookie.com/embed/${videoId}?enablejsapi=1${seekTime !== null ? `&start=${seekTime}&autoplay=1` : ''}`}
+                                                    title="YouTube Video Player"
+                                                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                                    allowFullScreen
+                                                    className="w-full h-full border-0"
+                                                />
+                                            </div>
+                                        )}
+
+                                        {/* Chapters Sidebar */}
+                                        <div className="flex-1 overflow-hidden flex flex-col min-h-0">
+                                            <TopicSidebar
+                                                topics={notes.index}
+                                                activeId={activeTopicId}
+                                                onSelect={(id) => setActiveTopicId(id)}
+                                                onSeek={(secs) => {
+                                                    setSeekTime(secs);
+                                                }}
                                             />
                                         </div>
-                                    )}
-
-                                    {/* Chapters Sidebar */}
-                                    <div className="flex-1 overflow-hidden">
-                                        <TopicSidebar
-                                            topics={notes.index}
-                                            activeId={activeTopicId}
-                                            onSelect={(id) => setActiveTopicId(id)}
-                                            onSeek={(secs) => {
-                                                setSeekTime(secs);
-                                                if (!isStudioMode) setIsStudioMode(true);
-                                            }}
-                                        />
                                     </div>
-                                </div>
+                                )}
 
-                                {/* Right Column: Notebook Reader (Smooth Centered Scrolling Canvas) */}
+                                {/* Right Column: Notebook Reader */}
                                 <div className="flex-1 overflow-hidden h-full flex flex-col min-w-0">
                                     {activeNote ? (
                                         <RunningNotesViewer
@@ -836,8 +924,6 @@ export function NotebookShell({ notes, onReset }: NotebookShellProps) {
                                             nextChapterTitle={nextTopic?.title}
                                             onPrevChapter={prevTopic ? () => setActiveTopicId(prevTopic.id) : undefined}
                                             onNextChapter={nextTopic ? () => setActiveTopicId(nextTopic.id) : undefined}
-                                            isFocusMode={!isStudioMode}
-                                            onToggleFocusMode={videoId ? () => setIsStudioMode(!isStudioMode) : undefined}
                                             onSeek={(secs) => {
                                                 setSeekTime(secs);
                                                 if (!isStudioMode) setIsStudioMode(true);

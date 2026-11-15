@@ -115,5 +115,22 @@ describe('Live Streaming Notebook Architecture', () => {
     expect(wordCount).toBe(600);
     expect(readingTime).toBe(3); // 600 words / 200 wpm = 3 minutes
   });
+
+  it('normalizes nested, spaced, and raw HTML timestamp badges into clean [mm:ss]', () => {
+    function normalizeTimestamps(input: string): string {
+      return input
+        .replace(/<span[^>]*style="[^"]*monospace[^"]*"[^>]*>(\d{1,2}:\d{2}(?::\d{2})?)<\/span>/gi, '$1')
+        .replace(/<span[^>]*>(\d{1,2}:\d{2}(?::\d{2})?)<\/span>/gi, '$1')
+        .replace(/\[+[\s\[]*(\d{1,2}:\d{2}(?::\d{2})?)[\s\]]*\]+/g, '[$1]');
+    }
+
+    expect(normalizeTimestamps('Cargo & Basic Syntax [ 1:28 ]')).toBe('Cargo & Basic Syntax [1:28]');
+    expect(normalizeTimestamps('Borrow Checker [[1:21]]')).toBe('Borrow Checker [1:21]');
+    expect(normalizeTimestamps('Borrow Checker [ [1:21] ]')).toBe('Borrow Checker [1:21]');
+    expect(normalizeTimestamps('crates [ 1:29 ].')).toBe('crates [1:29].');
+    expect(normalizeTimestamps('[<span style="font-family: monospace;">0:06</span>]')).toBe('[0:06]');
+    expect(normalizeTimestamps('[ [<span style="font-family: monospace;">0:06</span>] ]')).toBe('[0:06]');
+    expect(normalizeTimestamps('Outro [ 2:08 ]')).toBe('Outro [2:08]');
+  });
 });
 

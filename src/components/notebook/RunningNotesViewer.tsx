@@ -44,11 +44,11 @@ function CodeBlock({ code, language }: { code: string; language: string }) {
     const lang = (language || 'text').toLowerCase();
 
     return (
-        <div className="relative my-4 rounded-xl overflow-hidden border border-border/50 bg-[#12131a] shadow-xs">
+        <div className="relative my-4 rounded-xl overflow-hidden border border-border/40 bg-[#0e1017] shadow-xs">
             {/* Minimalist Code Block Header */}
             <div className="flex items-center justify-between px-3.5 py-1.5 bg-black/40 border-b border-white/5 select-none">
                 <div className="flex items-center gap-2">
-                    <Terminal className="w-3.5 h-3.5 text-muted-foreground/50" />
+                    <Terminal className="w-3.5 h-3.5 text-muted-foreground/60" />
                     <span className="text-[11px] font-mono text-muted-foreground/80 lowercase">
                         {lang !== 'text' ? lang : 'code'}
                     </span>
@@ -77,13 +77,26 @@ function CodeBlock({ code, language }: { code: string; language: string }) {
                 customStyle={{
                     margin: 0,
                     borderRadius: 0,
-                    fontSize: '0.8rem',
+                    fontSize: '0.825rem',
                     background: 'transparent',
                     padding: '1rem 1.25rem',
-                    lineHeight: '1.6',
+                    lineHeight: '1.65',
+                    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
                 }}
-                showLineNumbers={code.split('\n').length > 3}
-                wrapLines
+                codeTagProps={{
+                    style: {
+                        background: 'transparent',
+                        fontFamily: 'inherit',
+                    },
+                }}
+                lineNumberStyle={{
+                    minWidth: '2.5em',
+                    paddingRight: '1em',
+                    color: 'rgba(255, 255, 255, 0.25)',
+                    userSelect: 'none',
+                    textAlign: 'right',
+                }}
+                showLineNumbers={code.trim().split('\n').length > 3}
             >
                 {code.trim()}
             </SyntaxHighlighter>
@@ -103,9 +116,9 @@ function Callout({ text, raw, onSeek }: { text: string; raw: string; onSeek?: (s
         return (
             <div className="my-4 flex items-start gap-3 p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
                 <Lightbulb className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-                <div className="space-y-0.5 text-xs text-foreground/90 leading-relaxed">
+                <div className="space-y-0.5 text-xs text-foreground/90 leading-relaxed min-w-0">
                     <span className="font-mono font-semibold uppercase text-[10px] tracking-wider text-emerald-400 block">Tip</span>
-                    <p>{text.replace(/\*\*(💡 Tip:|Tip:?)\*\*/i, '').trim()}</p>
+                    <p><InlineText text={text.replace(/\*\*(💡 Tip:|Tip:?)\*\*/i, '').trim()} onSeek={onSeek} /></p>
                 </div>
             </div>
         );
@@ -114,9 +127,9 @@ function Callout({ text, raw, onSeek }: { text: string; raw: string; onSeek?: (s
         return (
             <div className="my-4 flex items-start gap-3 p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/20">
                 <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-                <div className="space-y-0.5 text-xs text-foreground/90 leading-relaxed">
+                <div className="space-y-0.5 text-xs text-foreground/90 leading-relaxed min-w-0">
                     <span className="font-mono font-semibold uppercase text-[10px] tracking-wider text-amber-400 block">Warning</span>
-                    <p>{text.replace(/\*\*(⚠️ Warning:|Warning:?)\*\*/i, '').trim()}</p>
+                    <p><InlineText text={text.replace(/\*\*(⚠️ Warning:|Warning:?)\*\*/i, '').trim()} onSeek={onSeek} /></p>
                 </div>
             </div>
         );
@@ -125,9 +138,9 @@ function Callout({ text, raw, onSeek }: { text: string; raw: string; onSeek?: (s
         return (
             <div className="my-4 flex items-start gap-3 p-3.5 rounded-xl bg-blue-500/10 border border-blue-500/20">
                 <Info className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" />
-                <div className="space-y-0.5 text-xs text-foreground/90 leading-relaxed">
+                <div className="space-y-0.5 text-xs text-foreground/90 leading-relaxed min-w-0">
                     <span className="font-mono font-semibold uppercase text-[10px] tracking-wider text-blue-400 block">Note</span>
-                    <p>{text.replace(/\*\*(📌 Important:|Important:|📌 Note:|Note:?)\*\*/i, '').trim()}</p>
+                    <p><InlineText text={text.replace(/\*\*(📌 Important:|Important:|📌 Note:|Note:?)\*\*/i, '').trim()} onSeek={onSeek} /></p>
                 </div>
             </div>
         );
@@ -155,11 +168,14 @@ function parseTimestampToSeconds(ts: string): number {
 }
 
 function InlineText({ text, onSeek }: { text: string; onSeek?: (seconds: number) => void }) {
-    // Normalize raw HTML timestamp spans like [<span...>0:06</span>] or <span...>0:06</span> -> [0:06]
-    const normalized = text
-        .replace(/\[?\s*<span[^>]*style="[^"]*monospace[^"]*"[^>]*>(\d{1,2}:\d{2}(?::\d{2})?)<\/span>\s*\]?/gi, '[$1]')
-        .replace(/\[?\s*<span[^>]*>(\d{1,2}:\d{2}(?::\d{2})?)<\/span>\s*\]?/gi, '[$1]')
+    // 1. Strip raw HTML span tags wrapping timestamps
+    let normalized = text
+        .replace(/<span[^>]*style="[^"]*monospace[^"]*"[^>]*>(\d{1,2}:\d{2}(?::\d{2})?)<\/span>/gi, '$1')
+        .replace(/<span[^>]*>(\d{1,2}:\d{2}(?::\d{2})?)<\/span>/gi, '$1')
         .replace(/&nbsp;/g, ' ');
+
+    // 2. Normalize all bracketed timestamps: [[01:28]], [ [01:28] ], [ 01:28 ], [01:28] -> [01:28]
+    normalized = normalized.replace(/\[+[\s\[]*(\d{1,2}:\d{2}(?::\d{2})?)[\s\]]*\]+/g, '[$1]');
 
     const parts = normalized.split(/(`[^`]+`|\*\*[^*]+\*\*|_[^_]+_|\*[^*]+\*|\[\d{1,2}:\d{2}(?::\d{2})?\])/g);
 
@@ -186,7 +202,7 @@ function InlineText({ text, onSeek }: { text: string; onSeek?: (seconds: number)
                             key={i}
                             type="button"
                             onClick={() => onSeek?.(secs)}
-                            className="inline-flex items-center gap-1 px-1.5 py-0.5 mx-0.5 rounded bg-primary/10 hover:bg-primary/20 text-primary text-[11px] font-mono font-medium border border-primary/25 hover:border-primary/50 transition-all cursor-pointer align-baseline"
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 mx-0.5 rounded-md bg-primary/10 hover:bg-primary/20 text-primary text-[11px] font-mono font-medium border border-primary/25 hover:border-primary/50 transition-all cursor-pointer align-baseline"
                             title={`Jump video to ${part.slice(1, -1)}`}
                         >
                             <Play className="w-2.5 h-2.5 fill-current opacity-80" />
@@ -210,8 +226,10 @@ function renderNotebook(
 ): React.ReactNode[] {
     // 1. Sanitize raw HTML timestamp spans: [<span...>0:06</span>] or <span...>0:06</span> -> [0:06]
     let cleanMd = md
-        .replace(/\[?\s*<span[^>]*style="[^"]*monospace[^"]*"[^>]*>(\d{1,2}:\d{2}(?::\d{2})?)<\/span>\s*\]?/gi, '[$1]')
-        .replace(/\[?\s*<span[^>]*>(\d{1,2}:\d{2}(?::\d{2})?)<\/span>\s*\]?/gi, '[$1]');
+        .replace(/<span[^>]*style="[^"]*monospace[^"]*"[^>]*>(\d{1,2}:\d{2}(?::\d{2})?)<\/span>/gi, '$1')
+        .replace(/<span[^>]*>(\d{1,2}:\d{2}(?::\d{2})?)<\/span>/gi, '$1')
+        // Normalize any bracket variations: [[01:28]], [ [01:28] ], [ 01:28 ] -> [01:28]
+        .replace(/\[+[\s\[]*(\d{1,2}:\d{2}(?::\d{2})?)[\s\]]*\]+/g, '[$1]');
 
     // 2. Convert single-line code blocks like ```bash cargo new my_project``` -> \n```bash\ncargo new my_project\n```\n
     cleanMd = cleanMd.replace(/```([a-zA-Z0-9_-]+)\s+([^\n`]+)```/g, '\n```$1\n$2\n```\n');
@@ -326,11 +344,11 @@ function renderNotebook(
             continue;
         } else if (inTable) { flushTable(); }
 
-        // Headings
+        // Headings (Clean Editorial Hierarchy, No Competing Vertical Bars)
         if (line.startsWith('# ')) {
             flushList(); flushTable();
             elements.push(
-                <h1 key={key()} className="text-2xl font-bold mt-10 mb-4 text-foreground tracking-tight border-b-2 border-primary/30 pb-3">
+                <h1 key={key()} className="text-2xl sm:text-3xl font-extrabold mt-8 mb-4 text-foreground tracking-tight border-b border-border/40 pb-3">
                     <InlineText text={line.slice(2)} onSeek={onSeek} />
                 </h1>
             );
@@ -339,8 +357,7 @@ function renderNotebook(
         if (line.startsWith('## ')) {
             flushList(); flushTable();
             elements.push(
-                <h2 key={key()} className="text-xl font-semibold mt-8 mb-3 text-foreground flex items-center gap-2">
-                    <span className="w-1 h-6 bg-primary rounded-full shrink-0 inline-block" />
+                <h2 key={key()} className="text-lg sm:text-xl font-bold mt-8 mb-3 text-foreground tracking-tight flex items-center flex-wrap gap-2">
                     <InlineText text={line.slice(3)} onSeek={onSeek} />
                 </h2>
             );
@@ -349,7 +366,7 @@ function renderNotebook(
         if (line.startsWith('### ')) {
             flushList(); flushTable();
             elements.push(
-                <h3 key={key()} className="text-base font-semibold mt-6 mb-2 text-foreground/90">
+                <h3 key={key()} className="text-base font-semibold mt-6 mb-2 text-foreground/95 tracking-tight">
                     <InlineText text={line.slice(4)} onSeek={onSeek} />
                 </h3>
             );
@@ -358,7 +375,7 @@ function renderNotebook(
         if (line.startsWith('#### ')) {
             flushList(); flushTable();
             elements.push(
-                <h4 key={key()} className="text-sm font-semibold mt-4 mb-1 text-muted-foreground uppercase tracking-wide">
+                <h4 key={key()} className="text-xs font-mono font-semibold mt-5 mb-1.5 text-muted-foreground uppercase tracking-wider">
                     <InlineText text={line.slice(5)} onSeek={onSeek} />
                 </h4>
             );
@@ -406,7 +423,7 @@ function renderNotebook(
         // Paragraph
         flushList(); flushTable();
         elements.push(
-            <p key={key()} className="my-2.5 text-foreground/85 leading-[1.85] text-[0.97rem]">
+            <p key={key()} className="my-2.5 text-foreground/85 leading-relaxed text-[0.95rem]">
                 <InlineText text={line} onSeek={onSeek} />
             </p>
         );
@@ -518,12 +535,12 @@ export function RunningNotesViewer({
     return (
         <div className={cn('flex flex-col h-full relative', className)}>
             {/* ── Outer Notebook Paper Container ─────────────────────────────────── */}
-            <div className="flex-1 flex flex-col overflow-hidden rounded-2xl border border-border/70 bg-card/95 shadow-sm">
-                {/* ── Notebook Page Top Header Bar ───────────────────────────────── */}
-                <div className="px-5 py-3 border-b border-border/50 bg-muted/20 flex flex-wrap items-center justify-between gap-3 shrink-0">
+            <div className="flex-1 flex flex-col overflow-hidden rounded-xl border border-border/40 bg-card/40 backdrop-blur-xs shadow-xs">
+                {/* ── Notebook Page Top Header Bar (Un-slopped Chapter Status) ───── */}
+                <div className="px-5 py-2.5 border-b border-border/40 bg-muted/15 flex items-center justify-between gap-3 shrink-0 select-none">
                     <div className="flex items-center flex-wrap gap-2.5 min-w-0">
                         {chapterNumber !== undefined && (
-                            <span className="px-2.5 py-0.5 rounded-md bg-primary/10 border border-primary/20 text-primary font-mono font-bold text-xs">
+                            <span className="px-2.5 py-0.5 rounded-md bg-primary/10 border border-primary/20 text-primary font-mono font-bold text-xs tracking-tight">
                                 CHAPTER {String(chapterNumber).padStart(2, '0')}
                                 {totalChapters ? ` / ${String(totalChapters).padStart(2, '0')}` : ''}
                             </span>
@@ -533,78 +550,68 @@ export function RunningNotesViewer({
                             <button
                                 type="button"
                                 onClick={() => startTime !== undefined && onSeek?.(startTime)}
-                                className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md bg-secondary/80 hover:bg-primary/20 hover:text-primary text-muted-foreground font-mono text-xs transition-colors border border-border/40"
+                                className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md bg-secondary/60 hover:bg-primary/15 hover:text-primary text-muted-foreground font-mono text-xs transition-colors border border-border/30"
                                 title={`Jump to video timestamp ${timeDisplay}`}
                             >
-                                <Play className="w-3 h-3 fill-current text-primary" />
+                                <Play className="w-2.5 h-2.5 fill-current text-primary" />
                                 <span>{timeDisplay}</span>
                             </button>
                         )}
 
                         {isStreaming && (
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-xs font-mono font-semibold animate-pulse">
-                                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
-                                Live Streaming Tokens
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-xs font-mono font-medium animate-pulse">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
+                                Streaming
                             </span>
                         )}
-
-                        <div className="flex items-center gap-2 text-xs font-mono text-muted-foreground">
-                            <span className="flex items-center gap-1">
-                                <Clock className="w-3 h-3 text-muted-foreground/70" />
-                                ~{readingTime}m read
-                            </span>
-                            <span>•</span>
-                            <span className="flex items-center gap-1">
-                                <FileText className="w-3 h-3 text-muted-foreground/70" />
-                                {wordCount.toLocaleString()} words
-                            </span>
-                        </div>
                     </div>
 
-                    {/* Right action controls */}
-                    {showToolbar && (
-                        <div className="flex items-center gap-1 shrink-0">
-                            {onToggleFocusMode && (
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={onToggleFocusMode}
-                                    className="h-7 text-xs px-2 text-muted-foreground hover:text-foreground"
-                                    title={isFocusMode ? "Show Video Player" : "Distraction-Free Focus Mode"}
-                                >
-                                    <span>{isFocusMode ? "Show Video" : "Focus Mode"}</span>
-                                </Button>
+                    {/* Right chapter reading stats & copy */}
+                    <div className="flex items-center gap-2 shrink-0">
+                        <span className="text-[11px] font-mono text-muted-foreground/60 hidden sm:inline">
+                            ~{readingTime}m · {wordCount.toLocaleString()} words
+                        </span>
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={handleCopy}
+                            className="h-7 text-xs px-2.5 gap-1.5 text-muted-foreground hover:text-foreground"
+                            title="Copy this chapter notes"
+                        >
+                            {copied ? (
+                                <>
+                                    <Check className="w-3.5 h-3.5 text-emerald-400" />
+                                    <span className="text-emerald-400 font-mono text-[11px]">Copied</span>
+                                </>
+                            ) : (
+                                <>
+                                    <Copy className="w-3.5 h-3.5" />
+                                    <span className="text-[11px]">Copy Chapter</span>
+                                </>
                             )}
-                            <Button variant="ghost" size="sm" onClick={handleCopy} className="h-7 text-xs px-2 gap-1 text-muted-foreground hover:text-foreground">
-                                {copied ? <><Check className="w-3.5 h-3.5 text-emerald-400" /><span>Copied</span></> : <><Copy className="w-3.5 h-3.5" /><span>Copy</span></>}
-                            </Button>
-                            <Button variant="ghost" size="sm" onClick={handleDownload} className="h-7 text-xs px-2 gap-1 text-muted-foreground hover:text-foreground">
-                                <Download className="w-3.5 h-3.5" />
-                                <span>Export</span>
-                            </Button>
-                        </div>
-                    )}
+                        </Button>
+                    </div>
                 </div>
 
                 {/* ── Scrollable Notebook Paper Canvas ───────────────────────────── */}
                 <div
                     ref={scrollContainerRef}
                     onScroll={handleScroll}
-                    className="flex-1 overflow-y-auto scroll-smooth relative p-6 sm:p-8"
+                    className="flex-1 overflow-y-auto scroll-smooth relative px-6 py-6 sm:px-10 sm:py-8"
                 >
-                    {/* Notebook Margined Page Body */}
-                    <div className="max-w-4xl mx-auto">
+                    {/* Notebook Margined Page Body (Optimized Typographical Reading Measure) */}
+                    <div className="max-w-3xl mx-auto space-y-6">
                         {/* Title Header */}
                         {title && (
-                            <div className="mb-6 pb-4 border-b border-border/40">
-                                <h1 className="text-xl sm:text-2xl font-bold text-foreground tracking-tight leading-snug">
+                            <div className="pb-4 border-b border-border/30">
+                                <h1 className="text-2xl sm:text-3xl font-extrabold text-foreground tracking-tight leading-tight">
                                     {title}
                                 </h1>
                             </div>
                         )}
 
-                        {/* Article with laboratory notebook margin rule */}
-                        <article className="relative border-l-2 border-primary/20 pl-4 sm:pl-6 space-y-1">
+                        {/* Article Content */}
+                        <article className="space-y-4">
                             {renderNotebook(content, title, onSeek, isStreaming)}
                         </article>
 

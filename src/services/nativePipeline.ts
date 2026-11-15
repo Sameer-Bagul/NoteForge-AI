@@ -37,6 +37,7 @@ FORMATTING RULES:
 - Where beneficial for understanding architecture or data flow, include an interactive Mermaid diagram.
 - STRICT NO EMOJIS: Do NOT use emojis anywhere in your output (no emojis in headings, callouts, lists, code comments, or diagram labels). Maintain a clean, academic textbook tone.
 - STRICT CLEAN MARKDOWN: NEVER output raw HTML tags (e.g. <span>, <font>, <div>).
+- STRICT TIMESTAMP SYNTAX: Never wrap timestamps in extra brackets or spaces. Always write exactly [mm:ss] (e.g. [01:23]), NEVER [[01:23]], NEVER [ 01:23 ], and NEVER [ [01:23] ].
 - STRICT CODE FENCE FORMATTING: Always place code fences (\`\`\`) on their own separate line. Never prefix or suffix text or timestamps on the same line as a code fence.
 `;
 
