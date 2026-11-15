@@ -244,7 +244,7 @@ export interface PipelineCallbacks {
   onStatusChange?: (status: ProcessingStatus) => void;
   onLog?: (message: string, type: 'info' | 'success' | 'error' | 'ai') => void;
   onAwaitingApproval?: (index: UnifiedIndex) => void;
-  onNoteDelta?: (topicId: string, delta: string) => void;
+  onNoteDelta?: (topicId: string, delta: string, topicTitle?: string) => void;
   onComplete?: (notebook: Notebook) => void;
   onError?: (err: string) => void;
 }
@@ -339,11 +339,11 @@ function notifyAwaitingApproval(session: ActivePipelineSession, index: UnifiedIn
   }
 }
 
-function notifyNoteDelta(session: ActivePipelineSession, topicId: string, delta: string) {
+function notifyNoteDelta(session: ActivePipelineSession, topicId: string, delta: string, topicTitle?: string) {
   const set = listeners.get(session.jobId);
   if (set) {
     for (const cb of set) {
-      cb.onNoteDelta?.(topicId, delta);
+      cb.onNoteDelta?.(topicId, delta, topicTitle);
     }
   }
 }
@@ -799,7 +799,7 @@ Begin directly with the topic notes in structured Markdown.`;
           aiConfig.baseUrl,
           (delta) => {
             topicContent += delta;
-            notifyNoteDelta(session, topic.id, delta);
+            notifyNoteDelta(session, topic.id, delta, topic.title);
           },
           aiConfig.apiKey
         );

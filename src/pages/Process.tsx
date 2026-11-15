@@ -4,6 +4,7 @@ import { useProcessing } from '@/hooks/useProcessing';
 import ProcessingView from '@/components/ProcessingView';
 import { IndexReview } from '@/components/IndexReview';
 import ResultsView from '@/components/ResultsView';
+import { LiveStreamingNotebook } from '@/components/notebook/LiveStreamingNotebook';
 import { ActivityStream } from '@/components/ActivityStream';
 import { SourceVideoCard } from '@/components/SourceVideoCard';
 import { StudyBlueprintCard } from '@/components/StudyBlueprintCard';
@@ -46,13 +47,9 @@ const Process = () => {
 
             case 'extracting':
             case 'indexing':
-            case 'generating':
-            case 'assembling':
             case 'extracting-transcripts':
             case 'analyzing-content':
             case 'generating-index':
-            case 'generating-notes':
-            case 'assembling-notebook':
                 return (
                     <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 max-w-[1720px] mx-auto w-full">
                         {/* Left Main Column: Video & Pipeline Stepper */}
@@ -99,6 +96,33 @@ const Process = () => {
                                 onApprove={approveIndex}
                             />
                         )}
+                    </motion.div>
+                );
+
+            case 'generating':
+            case 'assembling':
+            case 'generating-notes':
+            case 'assembling-notebook':
+                return (
+                    <motion.div
+                        initial={{ opacity: 0, scale: 0.99 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        transition={{ duration: 0.2 }}
+                        className="w-full max-w-[1720px] mx-auto flex-1 flex flex-col"
+                    >
+                        <LiveStreamingNotebook
+                            jobId={jobId}
+                            videoInfo={state.videoInfo}
+                            videoCount={state.videoCount}
+                            processedVideos={state.processedVideos}
+                            index={state.index}
+                            notes={state.notes}
+                            steps={state.steps}
+                            currentStep={state.currentStep}
+                            status={state.status}
+                            logs={logs}
+                            onReset={handleReset}
+                        />
                     </motion.div>
                 );
 

@@ -1,7 +1,7 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import { Copy, Check, Download, Play } from 'lucide-react';
+import { Copy, Check, Download, Play, ArrowDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
@@ -13,6 +13,7 @@ interface RunningNotesViewerProps {
     className?: string;
     showToolbar?: boolean;
     onSeek?: (seconds: number) => void;
+    isStreaming?: boolean;
 }
 
 // ─── Code Block Component ──────────────────────────────────────────────────────
@@ -172,7 +173,12 @@ function InlineText({ text, onSeek }: { text: string; onSeek?: (seconds: number)
 
 // ─── Main Markdown Renderer ────────────────────────────────────────────────────
 
-function renderNotebook(md: string, topicTitle?: string, onSeek?: (seconds: number) => void): React.ReactNode[] {
+function renderNotebook(
+    md: string,
+    topicTitle?: string,
+    onSeek?: (seconds: number) => void,
+    isStreaming?: boolean
+): React.ReactNode[] {
     const lines = md.split('\n');
     const elements: React.ReactNode[] = [];
     let inCode = false;
@@ -367,13 +373,73 @@ function renderNotebook(md: string, topicTitle?: string, onSeek?: (seconds: numb
 
     flushList();
     flushTable();
+
+    // Flush any unclosed code block during active streaming
+    if (inCode && codeLines.length > 0) {
+        elements.push(
+            <CodeBlock key={key()} code={codeLines.join('\n')} language={codeLang} />
+        );
+    }
+
+    // Flush any unclosed Mermaid diagram during active streaming
+    if (inMermaid && mermaidLines.length > 0) {
+        elements.push(
+            <div key={key()} className="my-4 p-4 rounded-xl border border-primary/20 bg-muted/20 font-mono text-xs">
+                <div className="flex items-center gap-2 text-primary text-xs mb-2">
+                    <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+                    <span>Streaming Architecture Diagram...</span>
+                </div>
+                <pre className="text-muted-foreground whitespace-pre-wrap">{mermaidLines.join('\n')}</pre>
+            </div>
+        );
+    }
+
+    // Add glowing streaming cursor indicator if actively generating
+    if (isStreaming) {
+        elements.push(
+            <span
+                key="live-streaming-cursor"
+                className="inline-block w-2.5 h-5 bg-primary ml-1.5 animate-pulse align-middle rounded-xs shadow-[0_0_8px_rgba(var(--primary),0.8)]"
+                title="AI is generating..."
+            />
+        );
+    }
+
     return elements;
 }
 
 // ─── Export Component ──────────────────────────────────────────────────────────
 
-export function RunningNotesViewer({ content, title, className, showToolbar = true, onSeek }: RunningNotesViewerProps) {
+export function RunningNotesViewer({
+    content,
+    title,
+    className,
+    showToolbar = true,
+    onSeek,
+    isStreaming = false,
+}: RunningNotesViewerProps) {
     const [copied, setCopied] = useState(false);
+    const scrollContainerRef = useRef<HTMLDivElement>(null);
+    const [userScrolledUp, setUserScrolledUp] = useState(false);
+
+    useEffect(() => {
+        if (isStreaming && !userScrolledUp && scrollContainerRef.current) {
+            scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
+        }
+    }, [content, isStreaming, userScrolledUp]);
+
+    const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+        const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
+        const isNearBottom = scrollHeight - scrollTop - clientHeight < 120;
+        setUserScrolledUp(!isNearBottom);
+    };
+
+    const scrollToBottom = () => {
+        if (scrollContainerRef.current) {
+            scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
+            setUserScrolledUp(false);
+        }
+    };
 
     const handleCopy = useCallback(async () => {
         await navigator.clipboard.writeText(content);
@@ -396,7 +462,7 @@ export function RunningNotesViewer({ content, title, className, showToolbar = tr
     }, [content, title]);
 
     return (
-        <div className={cn('flex flex-col h-full', className)}>
+        <div className={cn('flex flex-col h-full relative', className)}>
             {showToolbar && (
                 <div className="flex items-center justify-end gap-1 mb-3 shrink-0">
                     <Button variant="ghost" size="sm" onClick={handleCopy} className="h-8 gap-1.5 text-xs">
@@ -409,14 +475,29 @@ export function RunningNotesViewer({ content, title, className, showToolbar = tr
             )}
 
             {/* Notebook body */}
-            <div className={cn(
-                'flex-1 overflow-auto rounded-xl border border-border/60 bg-card shadow-sm scroll-smooth',
-                'relative',
-            )}>
+            <div
+                ref={scrollContainerRef}
+                onScroll={handleScroll}
+                className={cn(
+                    'flex-1 overflow-auto rounded-xl border border-border/60 bg-card shadow-sm scroll-smooth',
+                    'relative',
+                )}
+            >
                 <article className="relative px-6 py-6 md:px-8 md:py-8 max-w-none">
-                    {renderNotebook(content, title, onSeek)}
+                    {renderNotebook(content, title, onSeek, isStreaming)}
                 </article>
             </div>
+
+            {/* Follow Live Stream floating pill button */}
+            {isStreaming && userScrolledUp && (
+                <button
+                    onClick={scrollToBottom}
+                    className="absolute bottom-4 right-6 px-3.5 py-1.5 rounded-full bg-primary text-primary-foreground text-xs font-medium shadow-xl hover:shadow-2xl transition-all flex items-center gap-1.5 animate-bounce z-30"
+                >
+                    <ArrowDown className="w-3.5 h-3.5" />
+                    <span>Follow Live Stream</span>
+                </button>
+            )}
         </div>
     );
 }
