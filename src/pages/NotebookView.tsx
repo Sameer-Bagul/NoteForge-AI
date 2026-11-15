@@ -77,7 +77,7 @@ const NotebookViewContent = () => {
   };
 
   return (
-    <div className="w-full max-w-[1720px] mx-auto px-1 md:px-3 py-2 flex-1 flex flex-col">
+    <div className="w-full h-full flex-1 flex flex-col overflow-hidden">
       <NotebookShell
         notes={videoNotes}
         onReset={() => navigate('/library')}

@@ -175,7 +175,7 @@ const Library = () => {
   const totalReadTime = Math.max(1, Math.round(totalWords / 200));
 
   return (
-    <div className="flex-1 flex flex-col max-w-6xl w-full mx-auto py-2">
+    <div className="flex-1 overflow-y-auto flex flex-col max-w-6xl w-full mx-auto px-6 py-6">
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-border/50 gap-3 shrink-0">
         <div>
