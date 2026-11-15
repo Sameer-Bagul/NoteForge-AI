@@ -114,6 +114,71 @@ export function analyzeVideoSyllabus(transcripts: ExtractedTranscript[]): VideoA
   });
 }
 
+export function buildLectureWiseOutline(videoAnalyses: VideoAnalysis[]): Array<{
+  videoId: string;
+  title: string;
+  description: string;
+  subtopics: string[];
+  startTime: number;
+  endTime?: number;
+  timeDisplay: string;
+}> {
+  const topics: Array<{
+    videoId: string;
+    title: string;
+    description: string;
+    subtopics: string[];
+    startTime: number;
+    endTime?: number;
+    timeDisplay: string;
+  }> = [];
+
+  const isMultiVideo = videoAnalyses.length > 1;
+
+  videoAnalyses.forEach((va, vIdx) => {
+    const lectureNum = vIdx + 1;
+    const baseTitle = va.transcript.video_info.title.trim();
+    // Clean redundant episode/lecture markers from the title to prevent "Lecture 1: Ep 1 ..."
+    const cleanTitle = baseTitle
+      .replace(/^(?:episode|ep\.?|lecture|lesson|session|#)\s*\d+[\s:\-–—|]*/i, '')
+      .replace(/^\[(?:ep\.?|episode|lecture|lesson)\s*\d+\][\s:\-–—|]*/i, '')
+      .trim() || baseTitle;
+
+    if (!va.isLongOrCompound || va.chapters.length === 0) {
+      // Standard small/single lecture (e.g. 9 out of 10 videos)
+      topics.push({
+        videoId: va.transcript.video_info.id,
+        title: isMultiVideo ? `Lecture ${lectureNum}: ${cleanTitle}` : cleanTitle,
+        description: `Comprehensive study notes for ${cleanTitle}`,
+        subtopics: ['Core Principles', 'Detailed Breakdown', 'Code & Practical Examples', 'Key Takeaways'],
+        startTime: 0,
+        endTime: va.durationSeconds > 0 ? va.durationSeconds : undefined,
+        timeDisplay: '0:00',
+      });
+    } else {
+      // Big/long lecture with sub-chapters -> Lecture 10.1, Lecture 10.2, etc.
+      va.chapters.forEach((ch, chIdx) => {
+        const subLectureNum = isMultiVideo ? `Lecture ${lectureNum}.${chIdx + 1}` : `Chapter ${chIdx + 1}`;
+        const chCleanTitle = ch.title
+          .replace(/^(?:part|ch|chapter|section|#)\s*\d+[\s:\-–—|]*/i, '')
+          .trim() || ch.title;
+
+        topics.push({
+          videoId: va.transcript.video_info.id,
+          title: `${subLectureNum}: ${chCleanTitle} (${cleanTitle})`,
+          description: `Detailed chapter analysis for ${chCleanTitle} [${ch.time_display}]`,
+          subtopics: ['Concept Analysis', 'Implementation Details', 'Practical Implications', 'Key Takeaways'],
+          startTime: ch.start_seconds,
+          endTime: ch.end_seconds,
+          timeDisplay: ch.time_display,
+        });
+      });
+    }
+  });
+
+  return topics;
+}
+
 export function getAIConfigForTask(task: 'notes' | 'indexing' | 'features'): { provider: string; model: string; baseUrl?: string; apiKey?: string } {
   try {
     const raw = localStorage.getItem('noteforge_ai_settings');
@@ -460,52 +525,45 @@ export const nativePipeline = {
       const aiConfig = getAIConfigForTask('indexing');
       notifyLog(session, `Connecting to ${aiConfig.provider} (${aiConfig.model})...`, 'info');
       const isPlaylist = transcripts.length > 1;
+      const isLectureMode = isPlaylist || options.generationMode === 'chronological';
       const videoAnalyses = analyzeVideoSyllabus(transcripts);
       const combinedText = transcripts.map(t => t.full_text).join('\n\n');
 
-      let syllabusSummary = '';
-      if (isPlaylist) {
-        syllabusSummary = `Playlist Lessons (${transcripts.length} videos):\n` +
-          videoAnalyses.map((va, idx) => {
-            const durStr = formatTimeDisplay(va.durationSeconds);
-            if (!va.isLongOrCompound) {
-              return `${idx + 1}. [Video ID: ${va.transcript.video_info.id}] "${va.transcript.video_info.title}" (${durStr}) - Single Lesson`;
-            }
-            const chList = va.chapters.map(c => `     - [${c.time_display}] ${c.title}`).join('\n');
-            return `${idx + 1}. [Video ID: ${va.transcript.video_info.id}] "${va.transcript.video_info.title}" (${durStr}) - Multi-Chapter Deep Dive (${va.chapters.length} chapters):\n${chList}`;
-          }).join('\n\n');
+      let parsedTopics: Array<{
+        videoId?: string;
+        title: string;
+        description: string;
+        subtopics: string[];
+        startTime?: number;
+        endTime?: number;
+        timeDisplay?: string;
+      }> = [];
+
+      if (isLectureMode) {
+        // Lecture-wise Mode: Deterministic 1:1 mapping for small videos (Lecture 1, Lecture 2...)
+        // and granular chapter decomposition for big videos (Lecture 10.1, Lecture 10.2...)
+        notifyStepChange(session, 1, 'active', `Assembling lecture outline for ${transcripts.length} lessons...`);
+        notifyLog(session, `Building lecture-wise outline (${transcripts.length} lessons, decomposing multi-hour lectures)...`, 'ai');
+        parsedTopics = buildLectureWiseOutline(videoAnalyses);
+        notifyLog(session, `Generated ${parsedTopics.length} lecture topics across ${transcripts.length} video lessons`, 'success');
       } else {
-        const va = videoAnalyses[0];
-        if (va && va.chapters.length > 0) {
-          syllabusSummary = `YouTube Creator Timeline Chapters (${va.chapters.length} markers found on timeline):\n` +
-            va.chapters.map(c => `- [${c.time_display}] ${c.title}`).join('\n');
-        }
-      }
+        // Synthesis Mode: AI groups concepts thematically for a single lecture
+        notifyLog(session, `Connecting to ${aiConfig.provider} (${aiConfig.model})...`, 'info');
+        const firstVideoId = videoAnalyses[0]?.transcript.video_info.id || 'video_id';
+        const maxSample = aiConfig.provider === 'ollama' ? 5000 : 16000;
+        const textSample = combinedText.slice(0, maxSample);
 
-      const maxSample = aiConfig.provider === 'ollama' ? 5000 : 16000;
-      const textSample = isPlaylist
-        ? syllabusSummary
-        : (syllabusSummary
-            ? `${syllabusSummary}\n\nTranscript Excerpt:\n${combinedText.slice(0, maxSample)}`
-            : combinedText.slice(0, maxSample));
-
-      const firstVideoId = videoAnalyses[0]?.transcript.video_info.id || 'video_id';
-
-      const indexPrompt = `Analyze this video curriculum and generate a structured topic outline for study notes.
+        const indexPrompt = `Analyze this video transcript and generate a structured topic outline for study notes.
 Title: "${overallTitle}"
 
-${syllabusSummary}
-
-Source Content Structure:
+Source Content:
 """
 ${textSample}
 """
 
 Instructions:
-${isPlaylist ? `1. For single lessons, produce 1 study topic for that video with its matching "videoId", "startTime": 0, and "timeDisplay": "0:00".
-2. For multi-chapter deep dives, expand into 1 topic per chapter, preserving the matching "videoId", "startTime", and "timeDisplay".` : (videoAnalyses[0]?.chapters.length > 0 ? `1. Create a topic for each creator timeline chapter (or group tightly-spaced ones if >16 chapters).
-2. For each topic, assign matching "videoId" ("${firstVideoId}"), "startTime", and "timeDisplay".` : `1. Extract 4 to 8 clear, progressive study topics with "videoId": "${firstVideoId}", "startTime", and "timeDisplay".`)}
-3. Return ONLY a valid JSON array of topics matching this schema:
+1. Extract 4 to 8 clear, progressive study topics with "videoId": "${firstVideoId}", "startTime", and "timeDisplay".
+2. Return ONLY a valid JSON array of topics matching this schema:
 [
   {
     "videoId": "${firstVideoId}",
@@ -518,73 +576,38 @@ ${isPlaylist ? `1. For single lessons, produce 1 study topic for that video with
   }
 ]`;
 
-      const systemPrompt = "You are an expert curriculum designer. Output ONLY valid JSON array with no conversational filler or markdown fences.";
+        const systemPrompt = "You are an expert curriculum designer. Output ONLY valid JSON array with no conversational filler or markdown fences.";
 
-      let streamedChars = 0;
-      const rawIndexResponse = await tauriApi.streamLLM(
-        indexPrompt,
-        systemPrompt,
-        aiConfig.provider,
-        aiConfig.model,
-        aiConfig.baseUrl,
-        (token) => {
-          streamedChars += token.length;
-          notifyStepChange(
-            session,
-            1,
-            'active',
-            `Streaming curriculum outline (${Math.round(streamedChars / 4)} tokens)...`
-          );
-        },
-        aiConfig.apiKey
-      );
+        let streamedChars = 0;
+        const rawIndexResponse = await tauriApi.streamLLM(
+          indexPrompt,
+          systemPrompt,
+          aiConfig.provider,
+          aiConfig.model,
+          aiConfig.baseUrl,
+          (token) => {
+            streamedChars += token.length;
+            notifyStepChange(
+              session,
+              1,
+              'active',
+              `Streaming curriculum outline (${Math.round(streamedChars / 4)} tokens)...`
+            );
+          },
+          aiConfig.apiKey
+        );
 
-      // Clean JSON
-      let cleanedJson = rawIndexResponse.trim();
-      if (cleanedJson.startsWith('```json')) cleanedJson = cleanedJson.slice(7);
-      if (cleanedJson.startsWith('```')) cleanedJson = cleanedJson.slice(3);
-      if (cleanedJson.endsWith('```')) cleanedJson = cleanedJson.slice(0, -3);
-      cleanedJson = cleanedJson.trim();
+        let cleanedJson = rawIndexResponse.trim();
+        if (cleanedJson.startsWith('```json')) cleanedJson = cleanedJson.slice(7);
+        if (cleanedJson.startsWith('```')) cleanedJson = cleanedJson.slice(3);
+        if (cleanedJson.endsWith('```')) cleanedJson = cleanedJson.slice(0, -3);
+        cleanedJson = cleanedJson.trim();
 
-      let parsedTopics: Array<{
-        videoId?: string;
-        title: string;
-        description: string;
-        subtopics: string[];
-        startTime?: number;
-        endTime?: number;
-        timeDisplay?: string;
-      }> = [];
-
-      try {
-        parsedTopics = JSON.parse(cleanedJson);
-      } catch {
-        notifyLog(session, 'Using robust hybrid outline fallback structure', 'info');
-        parsedTopics = [];
-        for (const va of videoAnalyses) {
-          if (va.isLongOrCompound && va.chapters.length > 0) {
-            for (const c of va.chapters) {
-              parsedTopics.push({
-                videoId: va.transcript.video_info.id,
-                title: c.title,
-                description: `Core analysis and takeaways for ${c.title} [${c.time_display}]`,
-                subtopics: ['Key Concepts', 'Detailed Breakdown', 'Practical Implications'],
-                startTime: c.start_seconds,
-                endTime: c.end_seconds,
-                timeDisplay: c.time_display,
-              });
-            }
-          } else {
-            parsedTopics.push({
-              videoId: va.transcript.video_info.id,
-              title: va.transcript.video_info.title,
-              description: `In-depth analysis and takeaways for ${va.transcript.video_info.title}`,
-              subtopics: ['Core Principles', 'Code Walkthrough', 'Key Takeaways'],
-              startTime: 0,
-              endTime: va.durationSeconds > 0 ? va.durationSeconds : undefined,
-              timeDisplay: '0:00',
-            });
-          }
+        try {
+          parsedTopics = JSON.parse(cleanedJson);
+        } catch {
+          notifyLog(session, 'Using robust outline fallback structure', 'info');
+          parsedTopics = buildLectureWiseOutline(videoAnalyses);
         }
       }
 

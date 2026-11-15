@@ -3,6 +3,7 @@ import {
   formatTimeDisplay,
   getTranscriptDuration,
   analyzeVideoSyllabus,
+  buildLectureWiseOutline,
 } from '../nativePipeline';
 import type { ExtractedTranscript } from '../tauri';
 
@@ -104,4 +105,66 @@ describe('Hybrid Playlist Chaptering & Adaptive Slicing', () => {
     expect(analyses[2].chapters[1].title).toContain('Part 2');
     expect(analyses[2].chapters[1].start_seconds).toBe(900);
   });
+
+  it('builds lecture-wise outline dividing big videos into 10.1, 10.2 sub-notes', () => {
+    // 9 small videos + 1 big video with 3 chapters
+    const smallVideos: ExtractedTranscript[] = Array.from({ length: 9 }, (_, i) => ({
+      video_id: `vid-${i + 1}`,
+      video_info: {
+        id: `vid-${i + 1}`,
+        title: `Episode ${i + 1}: Lesson ${i + 1} Overview`,
+        thumbnail: '',
+      },
+      segments: [
+        { start: 0, duration: 10, text: 'Start' },
+        { start: 600, duration: 10, text: 'End' },
+      ],
+      full_text: `Lesson ${i + 1} content`,
+    }));
+
+    const bigVideo10: ExtractedTranscript = {
+      video_id: 'vid-10',
+      video_info: {
+        id: 'vid-10',
+        title: 'Lecture 10: Complete Advanced JavaScript Masterclass',
+        thumbnail: '',
+        chapters: [
+          { title: 'Asynchronous Architecture', start_seconds: 0, end_seconds: 3600, time_display: '0:00' },
+          { title: 'Promises & Microtask Queue', start_seconds: 3600, end_seconds: 7200, time_display: '1:00:00' },
+          { title: 'V8 Engine Internals', start_seconds: 7200, end_seconds: 14400, time_display: '2:00:00' },
+        ],
+      },
+      segments: [
+        { start: 0, duration: 10, text: 'Masterclass Start' },
+        { start: 14390, duration: 10, text: 'Masterclass End' },
+      ],
+      full_text: 'Complete Masterclass transcript',
+    };
+
+    const allAnalyses = analyzeVideoSyllabus([...smallVideos, bigVideo10]);
+    const outline = buildLectureWiseOutline(allAnalyses);
+
+    // 9 small videos + 3 chapters for big video 10 = 12 total topics
+    expect(outline).toHaveLength(12);
+
+    // Lectures 1 through 9:
+    expect(outline[0].title).toBe('Lecture 1: Lesson 1 Overview');
+    expect(outline[0].videoId).toBe('vid-1');
+    expect(outline[8].title).toBe('Lecture 9: Lesson 9 Overview');
+    expect(outline[8].videoId).toBe('vid-9');
+
+    // Lecture 10 is broken down into 10.1, 10.2, 10.3:
+    expect(outline[9].title).toContain('Lecture 10.1: Asynchronous Architecture');
+    expect(outline[9].videoId).toBe('vid-10');
+    expect(outline[9].startTime).toBe(0);
+
+    expect(outline[10].title).toContain('Lecture 10.2: Promises & Microtask Queue');
+    expect(outline[10].videoId).toBe('vid-10');
+    expect(outline[10].startTime).toBe(3600);
+
+    expect(outline[11].title).toContain('Lecture 10.3: V8 Engine Internals');
+    expect(outline[11].videoId).toBe('vid-10');
+    expect(outline[11].startTime).toBe(7200);
+  });
 });
+

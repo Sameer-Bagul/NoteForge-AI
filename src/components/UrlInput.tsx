@@ -45,13 +45,14 @@ const UrlInput = ({ onSubmit, isLoading }: UrlInputProps) => {
   const [url, setUrl] = useState('');
   const [userNotes, setUserNotes] = useState('');
   const [creativityLevel, setCreativityLevel] = useState<CreativityLevel>(2);
-  const [generationMode, setGenerationMode] = useState<'topical' | 'chronological'>('topical');
+  const [generationMode, setGenerationMode] = useState<'topical' | 'chronological'>('chronological');
   const [inputType, setInputType] = useState<'video' | 'playlist' | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   const detectInputType = (value: string) => {
     if (value.includes('playlist') || value.includes('list=')) {
       setInputType('playlist');
+      setGenerationMode('chronological');
     } else if (value.includes('youtube.com') || value.includes('youtu.be')) {
       setInputType('video');
     } else {
