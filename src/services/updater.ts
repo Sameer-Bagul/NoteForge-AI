@@ -9,8 +9,13 @@ export interface UpdateStatus {
   error?: string;
 }
 
+export interface CheckUpdateOptions {
+  silent?: boolean;
+}
+
 export async function checkForAppUpdates(
-  onStatusChange?: (status: UpdateStatus) => void
+  onStatusChange?: (status: UpdateStatus) => void,
+  options?: CheckUpdateOptions
 ): Promise<Update | null> {
   try {
     onStatusChange?.({ state: 'checking' });
@@ -29,8 +34,14 @@ export async function checkForAppUpdates(
     return update;
   } catch (err: any) {
     const errorMsg = err?.message || String(err);
-    onStatusChange?.({ state: 'error', error: errorMsg });
-    return null;
+    console.debug('[Updater] Check error:', errorMsg);
+    if (!options?.silent) {
+      onStatusChange?.({ state: 'error', error: errorMsg });
+      throw err;
+    } else {
+      onStatusChange?.({ state: 'idle' });
+      return null;
+    }
   }
 }
 

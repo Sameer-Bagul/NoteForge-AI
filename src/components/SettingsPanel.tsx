@@ -381,7 +381,7 @@ export function SettingsPanel() {
     const handleManualUpdateCheck = async () => {
         setIsCheckingUpdate(true);
         try {
-            const update = await checkForAppUpdates();
+            const update = await checkForAppUpdates(undefined, { silent: false });
             if (update && update.available) {
                 toast({
                     title: `Update v${update.version} Available`,
@@ -396,7 +396,7 @@ export function SettingsPanel() {
         } catch (e: any) {
             toast({
                 title: 'Update check failed',
-                description: e?.message || 'Could not reach update server.',
+                description: e?.message || 'Could not reach update server. Check your connection or wait until a release is published.',
                 variant: 'destructive',
             });
         } finally {
