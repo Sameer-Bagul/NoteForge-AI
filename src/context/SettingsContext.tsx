@@ -72,6 +72,40 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
 
     // Initial mount: load keychain keys in Tauri mode & sync to backend if available
     useEffect(() => {
+        // Auto-detect installed local models from Ollama to ensure UI matches reality
+        (async () => {
+            try {
+                const ollamaProvider = settings.providers.find(p => p.provider === 'ollama');
+                const baseUrl = ollamaProvider?.baseUrl || 'http://localhost:11434';
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 2000);
+                const res = await fetch(`${baseUrl}/api/tags`, { signal: controller.signal });
+                clearTimeout(timeoutId);
+                if (res.ok) {
+                    const data = await res.json();
+                    if (Array.isArray(data.models) && data.models.length > 0) {
+                        const installedNames = data.models.map((m: any) => m.name);
+                        // If configured model is not in installed models, sync to primary installed model
+                        if (ollamaProvider && !installedNames.includes(ollamaProvider.model)) {
+                            const activeModel = installedNames[0];
+                            setSettings(prev => {
+                                const nextProviders = prev.providers.map(p =>
+                                    p.provider === 'ollama'
+                                        ? { ...p, model: activeModel, indexingModel: activeModel }
+                                        : p
+                                );
+                                const updated = { ...prev, providers: nextProviders };
+                                saveToStorage(updated);
+                                return updated;
+                            });
+                        }
+                    }
+                }
+            } catch {
+                // Ollama offline, keep defaults
+            }
+        })();
+
         if (isTauri()) {
             (async () => {
                 try {

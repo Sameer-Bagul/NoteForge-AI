@@ -234,7 +234,7 @@ export function getAIConfigForTask(task: 'notes' | 'indexing' | 'features'): { p
 
   return {
     provider: 'ollama',
-    model: 'qwen2.5:7b',
+    model: 'llama3.2:1b',
     baseUrl: 'http://localhost:11434',
   };
 }

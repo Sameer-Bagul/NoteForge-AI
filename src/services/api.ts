@@ -62,7 +62,7 @@ function getAIForTask(task: 'notes' | 'indexing' | 'features'): { provider: stri
       }
     }
   } catch {}
-  return { provider: 'ollama', model: 'qwen2.5:7b', baseUrl: 'http://localhost:11434' };
+  return { provider: 'ollama', model: 'llama3.2:1b', baseUrl: 'http://localhost:11434' };
 }
 
 export const api = {
