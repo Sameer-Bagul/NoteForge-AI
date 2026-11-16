@@ -106,7 +106,7 @@ describe('Hybrid Playlist Chaptering & Adaptive Slicing', () => {
     expect(analyses[2].chapters[1].start_seconds).toBe(900);
   });
 
-  it('builds lecture-wise outline dividing big videos into 10.1, 10.2 sub-notes', () => {
+  it('builds lecture-wise outline preserving 1:1 chapter per lecture with nested sub-chapters', () => {
     // 9 small videos + 1 big video with 3 chapters
     const smallVideos: ExtractedTranscript[] = Array.from({ length: 9 }, (_, i) => ({
       video_id: `vid-${i + 1}`,
@@ -144,8 +144,8 @@ describe('Hybrid Playlist Chaptering & Adaptive Slicing', () => {
     const allAnalyses = analyzeVideoSyllabus([...smallVideos, bigVideo10]);
     const outline = buildLectureWiseOutline(allAnalyses);
 
-    // 9 small videos + 3 chapters for big video 10 = 12 total topics
-    expect(outline).toHaveLength(12);
+    // 10 videos in playlist = EXACTLY 10 chapters
+    expect(outline).toHaveLength(10);
 
     // Lectures 1 through 9:
     expect(outline[0].title).toBe('Lecture 1: Lesson 1 Overview');
@@ -153,18 +153,13 @@ describe('Hybrid Playlist Chaptering & Adaptive Slicing', () => {
     expect(outline[8].title).toBe('Lecture 9: Lesson 9 Overview');
     expect(outline[8].videoId).toBe('vid-9');
 
-    // Lecture 10 is broken down into 10.1, 10.2, 10.3:
-    expect(outline[9].title).toContain('Lecture 10.1: Asynchronous Architecture');
+    // Lecture 10 is 1 cohesive chapter with its 3 sub-chapters nested under subtopics:
+    expect(outline[9].title).toBe('Lecture 10: Complete Advanced JavaScript Masterclass');
     expect(outline[9].videoId).toBe('vid-10');
-    expect(outline[9].startTime).toBe(0);
-
-    expect(outline[10].title).toContain('Lecture 10.2: Promises & Microtask Queue');
-    expect(outline[10].videoId).toBe('vid-10');
-    expect(outline[10].startTime).toBe(3600);
-
-    expect(outline[11].title).toContain('Lecture 10.3: V8 Engine Internals');
-    expect(outline[11].videoId).toBe('vid-10');
-    expect(outline[11].startTime).toBe(7200);
+    expect(outline[9].subtopics).toHaveLength(3);
+    expect(outline[9].subtopics[0]).toContain('10.1: Asynchronous Architecture [0:00]');
+    expect(outline[9].subtopics[1]).toContain('10.2: Promises & Microtask Queue [1:00:00]');
+    expect(outline[9].subtopics[2]).toContain('10.3: V8 Engine Internals [2:00:00]');
   });
 });
 

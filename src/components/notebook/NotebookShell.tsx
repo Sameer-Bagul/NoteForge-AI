@@ -38,6 +38,17 @@ type TabType = 'index' | 'notes' | 'mindmap' | 'quiz' | 'interview';
 
 // ─── Compact Minimalist Topic Sidebar ──────────────────────────────────────────
 
+function parseTimestampToSeconds(ts: string): number {
+    const clean = ts.replace(/[[\]]/g, '').trim();
+    const parts = clean.split(':').map(Number);
+    if (parts.length === 2) {
+        return parts[0] * 60 + parts[1];
+    } else if (parts.length === 3) {
+        return parts[0] * 3600 + parts[1] * 60 + parts[2];
+    }
+    return 0;
+}
+
 function TopicSidebar({
     topics,
     activeId,
@@ -91,45 +102,80 @@ function TopicSidebar({
                 </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-1.5 space-y-0.5">
+            <div className="flex-1 overflow-y-auto p-1.5 space-y-1">
                 {filtered.map((t) => {
                     const originalIndex = topics.findIndex(item => item.id === t.id);
                     const isActive = activeId === t.id;
 
                     return (
-                        <button
-                            key={t.id}
-                            onClick={() => {
-                                onSelect(t.id);
-                                if (t.startTime !== undefined && onSeek) {
-                                    onSeek(t.startTime);
-                                }
-                            }}
-                            className={cn(
-                                'w-full text-left px-3 py-2 rounded-lg text-xs transition-all group relative flex items-start justify-between gap-2',
-                                isActive
-                                    ? 'bg-secondary/90 text-foreground font-semibold shadow-xs'
-                                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/40'
+                        <div key={t.id} className="space-y-0.5">
+                            <button
+                                onClick={() => {
+                                    onSelect(t.id);
+                                    if (t.startTime !== undefined && onSeek) {
+                                        onSeek(t.startTime);
+                                    }
+                                }}
+                                className={cn(
+                                    'w-full text-left px-3 py-2 rounded-lg text-xs transition-all group relative flex items-start justify-between gap-2',
+                                    isActive
+                                        ? 'bg-secondary/90 text-foreground font-semibold shadow-xs'
+                                        : 'text-muted-foreground hover:text-foreground hover:bg-muted/40'
+                                )}
+                            >
+                                <div className="flex items-start gap-2.5 min-w-0">
+                                    <span className={cn(
+                                        'text-[11px] font-mono shrink-0 mt-0.5',
+                                        isActive ? 'text-primary font-bold' : 'text-muted-foreground/50'
+                                    )}>
+                                        {String(originalIndex + 1).padStart(2, '0')}
+                                    </span>
+                                    <span className="line-clamp-2 leading-snug text-xs">{t.title}</span>
+                                </div>
+                                {t.timeDisplay && (
+                                    <span className={cn(
+                                        "text-[10px] font-mono px-1.5 py-0.5 rounded shrink-0",
+                                        isActive ? "bg-primary/20 text-primary font-semibold" : "text-muted-foreground/60"
+                                    )}>
+                                        {t.timeDisplay}
+                                    </span>
+                                )}
+                            </button>
+
+                            {/* Nested Sub-chapters when chapter is active and has multiple parts */}
+                            {isActive && t.subtopics && t.subtopics.length > 1 && (
+                                <div className="pl-6 pr-1 py-1 space-y-0.5 border-l border-border/50 ml-3.5 my-0.5">
+                                    {t.subtopics.map((st, sIdx) => {
+                                        const timeMatch = st.match(/\[(\d{1,2}:\d{2}(?::\d{2})?)\]/);
+                                        const secs = timeMatch ? parseTimestampToSeconds(timeMatch[1]) : undefined;
+                                        const displayTitle = st.replace(/\s*\[\d{1,2}:\d{2}(?::\d{2})?\]/, '');
+
+                                        return (
+                                            <button
+                                                key={sIdx}
+                                                type="button"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    if (secs !== undefined && onSeek) {
+                                                        onSeek(secs);
+                                                    }
+                                                }}
+                                                className="w-full text-left px-2 py-1 rounded-md text-[11px] font-mono text-muted-foreground hover:text-foreground hover:bg-muted/30 transition-colors flex items-center justify-between gap-1 group/sub"
+                                            >
+                                                <span className="truncate group-hover/sub:text-foreground transition-colors">
+                                                    {displayTitle}
+                                                </span>
+                                                {timeMatch && (
+                                                    <span className="text-[10px] text-muted-foreground/60 shrink-0">
+                                                        {timeMatch[1]}
+                                                    </span>
+                                                )}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
                             )}
-                        >
-                            <div className="flex items-start gap-2.5 min-w-0">
-                                <span className={cn(
-                                    'text-[11px] font-mono shrink-0 mt-0.5',
-                                    isActive ? 'text-primary font-bold' : 'text-muted-foreground/50'
-                                )}>
-                                    {String(originalIndex + 1).padStart(2, '0')}
-                                </span>
-                                <span className="line-clamp-2 leading-snug text-xs">{t.title}</span>
-                            </div>
-                            {t.timeDisplay && (
-                                <span className={cn(
-                                    "text-[10px] font-mono px-1.5 py-0.5 rounded shrink-0",
-                                    isActive ? "bg-primary/20 text-primary font-semibold" : "text-muted-foreground/60"
-                                )}>
-                                    {t.timeDisplay}
-                                </span>
-                            )}
-                        </button>
+                        </div>
                     );
                 })}
             </div>
@@ -401,19 +447,35 @@ function IndexPanel({
                                             </p>
                                         )}
 
-                                        {/* Subtopics Index taxonomy */}
+                                        {/* Subtopics Index taxonomy & nested sub-chapters */}
                                         {t.subtopics && t.subtopics.length > 0 && (
                                             <div className="flex flex-wrap items-center gap-1.5 pt-0.5 text-xs text-muted-foreground/75 font-mono">
-                                                {t.subtopics.map((st, si) => (
-                                                    <span key={si} className="inline-flex items-center gap-1.5">
-                                                        <span className="text-[11px] bg-secondary/40 px-2 py-0.5 rounded text-foreground/80 hover:text-foreground">
-                                                            {st}
+                                                {t.subtopics.map((st, si) => {
+                                                    const timeMatch = st.match(/\[(\d{1,2}:\d{2}(?::\d{2})?)\]/);
+                                                    const secs = timeMatch ? parseTimestampToSeconds(timeMatch[1]) : undefined;
+
+                                                    return (
+                                                        <span key={si} className="inline-flex items-center gap-1.5">
+                                                            <button
+                                                                type="button"
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    if (secs !== undefined && onSeek) {
+                                                                        onSeek(secs);
+                                                                    }
+                                                                    onSelectTopic?.(t.id);
+                                                                }}
+                                                                className="text-[11px] bg-secondary/40 hover:bg-secondary/80 px-2 py-0.5 rounded text-foreground/80 hover:text-foreground transition-colors cursor-pointer border border-transparent hover:border-border/40"
+                                                                title={timeMatch ? `Jump to ${timeMatch[1]}` : undefined}
+                                                            >
+                                                                {st}
+                                                            </button>
+                                                            {si < (t.subtopics?.length || 0) - 1 && (
+                                                                <span className="text-muted-foreground/30 text-[10px]">·</span>
+                                                            )}
                                                         </span>
-                                                        {si < (t.subtopics?.length || 0) - 1 && (
-                                                            <span className="text-muted-foreground/30 text-[10px]">·</span>
-                                                        )}
-                                                    </span>
-                                                ))}
+                                                    );
+                                                })}
                                             </div>
                                         )}
                                     </div>

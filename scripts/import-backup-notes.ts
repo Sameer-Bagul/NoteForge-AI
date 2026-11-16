@@ -4,7 +4,6 @@ import { execSync } from 'child_process';
 import { repairMermaidDeterministic } from '../src/services/mermaid/repair';
 import type {
   Notebook,
-  Chapter,
   TopicNode,
   TopicNotes,
   QuizQuestion,
@@ -26,12 +25,22 @@ function parseTime(t: string | undefined): number {
   return 0;
 }
 
-interface ParsedLecture {
-  number: string;
+interface ParsedRawSection {
+  numberStr: string;
+  mainNumber: number;
+  subNumber?: number;
   title: string;
   timeDisplay: string;
   startTime: number;
   content: string;
+}
+
+function cleanLectureTitle(rawTitle: string): string {
+  return rawTitle
+    .replace(/^##\s*Lecture\s+[\d.]+:\s*/i, '')
+    .replace(/^Lecture\s+[\d.]+:\s*/i, '')
+    .replace(/\s*\(Part\s*\d+\).*$/i, '')
+    .trim();
 }
 
 function parseMarkdownFile(filePath: string): {
@@ -39,7 +48,7 @@ function parseMarkdownFile(filePath: string): {
   jobId: string;
   playlistUrl: string;
   wordCount: number;
-  lecturesCount: number;
+  chapterCount: number;
   diagramsRepaired: number;
 } {
   const raw = fs.readFileSync(filePath, 'utf8').replace(/\r\n/g, '\n');
@@ -81,10 +90,10 @@ function parseMarkdownFile(filePath: string): {
   if (!notebookId) notebookId = `nb-${Date.now()}`;
   if (!jobId) jobId = notebookId.replace('nb-', 'job-');
 
-  // 2. Parse lectures
+  // 2. Parse raw sections
   const lectureRegex = /^## Lecture\s+([\d.]+):\s*(.+?)(?:\s*\[(\d{1,2}:\d{2}(?::\d{2})?)\])?$/;
-  const rawLectures: ParsedLecture[] = [];
-  let cur: Omit<ParsedLecture, 'content'> | null = null;
+  const rawSections: ParsedRawSection[] = [];
+  let cur: Omit<ParsedRawSection, 'content'> | null = null;
   let curLines: string[] = [];
 
   for (let i = 0; i < lines.length; i++) {
@@ -93,13 +102,17 @@ function parseMarkdownFile(filePath: string): {
 
     if (match && (i <= 15 || lines[i - 1]?.trim() === '---' || lines[i - 2]?.trim() === '---')) {
       if (cur) {
-        rawLectures.push({
+        rawSections.push({
           ...cur,
           content: curLines.join('\n').trim(),
         });
       }
+      const numberStr = match[1];
+      const numParts = numberStr.split('.').map(Number);
       cur = {
-        number: match[1],
+        numberStr,
+        mainNumber: numParts[0],
+        subNumber: numParts[1],
         title: match[2].trim(),
         timeDisplay: match[3] || '0:00',
         startTime: parseTime(match[3] || '0:00'),
@@ -110,94 +123,195 @@ function parseMarkdownFile(filePath: string): {
     }
   }
   if (cur) {
-    rawLectures.push({
+    rawSections.push({
       ...cur,
       content: curLines.join('\n').trim(),
     });
   }
 
-  // 3. Clean up content and repair Mermaid diagrams
+  // 3. Group sections strictly by Main Lecture Number (1:1 with Videos/Lectures)
+  const grouped = new Map<number, ParsedRawSection[]>();
+  rawSections.forEach((sec) => {
+    if (!grouped.has(sec.mainNumber)) {
+      grouped.set(sec.mainNumber, []);
+    }
+    grouped.get(sec.mainNumber)!.push(sec);
+  });
+
   let diagramsRepaired = 0;
   const mermaidRegex = /```mermaid([\s\S]*?)```/g;
 
   const topicNodes: TopicNode[] = [];
   const topicNotes: TopicNotes[] = [];
 
-  rawLectures.forEach((lec, idx) => {
-    const topicId = `topic-${idx + 1}-${Math.random().toString(36).slice(2, 6)}`;
+  const isSeason1 = filePath.includes('Season_01');
+  const expectedLectureCount = isSeason1 ? 23 : 8;
 
-    // Repair Mermaid diagrams in lecture content
-    let cleanedContent = lec.content.replace(mermaidRegex, (match, code) => {
-      const rawCode = code.trim();
-      const repaired = repairMermaidDeterministic(rawCode);
-      if (repaired !== rawCode) {
-        diagramsRepaired++;
+  for (let lectureIdx = 1; lectureIdx <= expectedLectureCount; lectureIdx++) {
+    const secs = grouped.get(lectureIdx) || [];
+    if (secs.length === 0) continue;
+
+    const topicId = `topic-${lectureIdx}-${Math.random().toString(36).slice(2, 6)}`;
+
+    // Clean and repair Mermaid diagrams in each section
+    const repairedSections = secs.map((sec) => {
+      let cleaned = sec.content.replace(mermaidRegex, (match, code) => {
+        const rawCode = code.trim();
+        const repaired = repairMermaidDeterministic(rawCode);
+        if (repaired !== rawCode) {
+          diagramsRepaired++;
+        }
+        return `\`\`\`mermaid\n${repaired}\n\`\`\``;
+      });
+
+      cleaned = cleaned
+        .replace(/<span[^>]*style="[^"]*monospace[^"]*"[^>]*>(\d{1,2}:\d{2}(?::\d{2})?)<\/span>/gi, '$1')
+        .replace(/<span[^>]*>(\d{1,2}:\d{2}(?::\d{2})?)<\/span>/gi, '$1');
+
+      return {
+        ...sec,
+        content: cleaned,
+      };
+    });
+
+    if (repairedSections.length === 1) {
+      // ── Standard single lecture ──────────────────────────────────────────────
+      const sec = repairedSections[0];
+      const title = `Lecture ${lectureIdx}: ${cleanLectureTitle(sec.title)}`;
+
+      // Extract subtopics from headings
+      const headingMatches = sec.content.match(/^###?\s+([^[\n]+)/gm) || [];
+      const subtopics = headingMatches
+        .map((h) => h.replace(/^###?\s+/, '').trim())
+        .filter((h) => !h.startsWith('Lecture') && !h.startsWith('Comprehensive') && h !== sec.title)
+        .slice(0, 8)
+        .map((stTitle, sIdx) => ({
+          id: `sub-${lectureIdx}-${sIdx}`,
+          title: stTitle,
+          videoSources: [title],
+        }));
+
+      const summaryMatch = sec.content.match(/(?:### Summary|## Introduction[^\n]*)\n+([^#>\n][^\n]+)/);
+      const summary = summaryMatch ? summaryMatch[1].trim() : `Master study notes for ${title}`;
+
+      topicNodes.push({
+        id: topicId,
+        title,
+        description: summary,
+        subtopics:
+          subtopics.length > 0
+            ? subtopics
+            : [{ id: `sub-${lectureIdx}-0`, title: 'Core Principles', videoSources: [title] }],
+        videoSources: [title],
+        order: lectureIdx,
+        startTime: sec.startTime,
+        timeDisplay: sec.timeDisplay,
+      });
+
+      topicNotes.push({
+        topicId,
+        topicTitle: title,
+        title,
+        summary,
+        sections: [],
+        keyTakeaways: [],
+        videoSources: [
+          {
+            videoId: title,
+            videoTitle: title,
+            timestamps: [sec.startTime],
+          },
+        ],
+        generatedAt: createdAt,
+        content: sec.content,
+        startTime: sec.startTime,
+        timeDisplay: sec.timeDisplay,
+      });
+    } else {
+      // ── Multi-part compound lecture: Unified single cohesive chapter ───────────
+      let parentTitle = '';
+      if (isSeason1 && lectureIdx === 18) {
+        parentTitle = 'Lecture 18: Asynchronous JavaScript & EVENT LOOP from scratch 🔥 | Namaste JavaScript Ep.15';
+      } else if (!isSeason1 && lectureIdx === 5) {
+        parentTitle = 'Lecture 5: Promise APIs + Interview Questions 🔥 | S.02 Ep.05 (all, allSettled, race, any)';
+      } else if (!isSeason1 && lectureIdx === 6) {
+        parentTitle = 'Lecture 6: async await | Namaste JavaScript - Season 02 - Ep 04';
+      } else if (!isSeason1 && lectureIdx === 8) {
+        parentTitle = 'Lecture 8: this keyword in JavaScript 🔥 | Ep.06 - Namaste JavaScript Season 2 🙏';
+      } else {
+        const firstTitle = repairedSections[0].title;
+        const epMatch = firstTitle.match(/\((.+?)\)/);
+        parentTitle = `Lecture ${lectureIdx}: ${epMatch ? epMatch[1] : cleanLectureTitle(firstTitle)}`;
       }
-      return `\`\`\`mermaid\n${repaired}\n\`\`\``;
-    });
 
-    // Strip any raw HTML span tags wrapping timestamps
-    cleanedContent = cleanedContent
-      .replace(/<span[^>]*style="[^"]*monospace[^"]*"[^>]*>(\d{1,2}:\d{2}(?::\d{2})?)<\/span>/gi, '$1')
-      .replace(/<span[^>]*>(\d{1,2}:\d{2}(?::\d{2})?)<\/span>/gi, '$1');
+      // Nested subtopics corresponding to each sub-chapter
+      const subtopics = repairedSections.map((sec, sIdx) => {
+        let cleanSubTitle = sec.title
+          .replace(/^Lecture\s+[\d.]+:\s*/i, '')
+          .replace(/\s*\([^)]*\)\s*$/g, '')
+          .trim();
+        if (!cleanSubTitle) cleanSubTitle = `Part ${sIdx + 1}`;
 
-    // Extract subtopic titles from headings
-    const headingMatches = cleanedContent.match(/^###?\s+([^[\n]+)/gm) || [];
-    const subtopics = headingMatches
-      .map((h) => h.replace(/^###?\s+/, '').trim())
-      .filter((h) => !h.startsWith('Lecture') && !h.startsWith('Comprehensive') && h !== lec.title)
-      .slice(0, 6)
-      .map((stTitle, sIdx) => ({
-        id: `sub-${idx}-${sIdx}`,
-        title: stTitle,
-        videoSources: [lec.title],
-      }));
+        return {
+          id: `sub-${lectureIdx}-${sIdx}`,
+          title: `${lectureIdx}.${sIdx + 1} ${cleanSubTitle} [${sec.timeDisplay}]`,
+          videoSources: [parentTitle],
+        };
+      });
 
-    // Extract summary snippet
-    const summaryMatch = cleanedContent.match(/(?:### Summary|## Introduction[^\n]*)\n+([^#>\n][^\n]+)/);
-    const summary = summaryMatch ? summaryMatch[1].trim() : `Master study notes for ${lec.title}`;
+      // Combine all sub-lecture contents into one comprehensive master chapter
+      const unifiedContent = repairedSections
+        .map((sec, sIdx) => {
+          let cleanSubTitle = sec.title
+            .replace(/^Lecture\s+[\d.]+:\s*/i, '')
+            .replace(/\s*\([^)]*\)\s*$/g, '')
+            .trim();
+          if (!cleanSubTitle) cleanSubTitle = `Part ${sIdx + 1}`;
 
-    topicNodes.push({
-      id: topicId,
-      title: lec.title,
-      description: summary,
-      subtopics:
-        subtopics.length > 0
-          ? subtopics
-          : [{ id: `sub-${idx}-0`, title: 'Core Concepts', videoSources: [lec.title] }],
-      videoSources: [lec.title],
-      order: idx + 1,
-      startTime: lec.startTime,
-      timeDisplay: lec.timeDisplay,
-    });
+          return `## ${lectureIdx}.${sIdx + 1}: ${cleanSubTitle} [${sec.timeDisplay}]\n\n${sec.content}`;
+        })
+        .join('\n\n---\n\n');
 
-    topicNotes.push({
-      topicId,
-      topicTitle: lec.title,
-      title: lec.title,
-      summary,
-      sections: [],
-      keyTakeaways: [],
-      videoSources: [
-        {
-          videoId: lec.title,
-          videoTitle: lec.title,
-          timestamps: [lec.startTime],
-        },
-      ],
-      generatedAt: createdAt,
-      content: cleanedContent,
-      startTime: lec.startTime,
-      timeDisplay: lec.timeDisplay,
-    });
-  });
+      const summary = `In-depth masterclass comprising ${repairedSections.length} sub-topics with live architectural diagrams, runtime traces, and code examples.`;
 
-  const fullContent = rawLectures.map((l) => `## ${l.title}\n\n${l.content}`).join('\n\n---\n\n');
+      topicNodes.push({
+        id: topicId,
+        title: parentTitle,
+        description: summary,
+        subtopics,
+        videoSources: [parentTitle],
+        order: lectureIdx,
+        startTime: 0,
+        timeDisplay: '0:00',
+      });
+
+      topicNotes.push({
+        topicId,
+        topicTitle: parentTitle,
+        title: parentTitle,
+        summary,
+        sections: [],
+        keyTakeaways: [],
+        videoSources: [
+          {
+            videoId: parentTitle,
+            videoTitle: parentTitle,
+            timestamps: repairedSections.map((s) => s.startTime),
+          },
+        ],
+        generatedAt: createdAt,
+        content: unifiedContent,
+        startTime: 0,
+        timeDisplay: '0:00',
+      });
+    }
+  }
+
+  const fullContent = topicNotes.map((l) => `## ${l.title}\n\n${l.content}`).join('\n\n---\n\n');
   const wordCount = fullContent.split(/\s+/).filter(Boolean).length;
   const estimatedReadTime = Math.max(1, Math.round(wordCount / 200));
 
   // 4. Quizzes and Interview QA
-  const isSeason1 = filePath.includes('Season_01');
   const quiz: QuizQuestion[] = isSeason1
     ? [
         {
@@ -386,7 +500,7 @@ function parseMarkdownFile(filePath: string): {
 
   // 5. Concept Map for Topic 1
   const primaryTopic = topicNodes[0];
-  const primarySubtopics = primaryTopic.subtopics || [];
+  const primarySubtopics = primaryTopic?.subtopics || [];
   const mindMaps: Record<string, MindMapData> = {};
 
   if (primaryTopic) {
@@ -416,7 +530,6 @@ function parseMarkdownFile(filePath: string): {
         target: bId,
       });
 
-      // Sample leaf nodes
       const lId = `leaf-${sIdx}-1`;
       mmNodes.push({
         id: lId,
@@ -465,7 +578,7 @@ function parseMarkdownFile(filePath: string): {
       totalWords: wordCount,
       estimatedReadTime,
       sourcePlaylistId: playlistUrl.split('list=')[1] || '',
-      sourceVideos: rawLectures.map((l, i) => ({
+      sourceVideos: topicNodes.map((l, i) => ({
         id: `lec-${i + 1}`,
         title: l.title,
         chapters: [{ title: l.title, start_seconds: l.startTime, time_display: l.timeDisplay }],
@@ -483,7 +596,7 @@ function parseMarkdownFile(filePath: string): {
     jobId,
     playlistUrl,
     wordCount,
-    lecturesCount: topicNodes.length,
+    chapterCount: topicNodes.length,
     diagramsRepaired,
   };
 }
@@ -491,7 +604,7 @@ function parseMarkdownFile(filePath: string): {
 // ── Main Ingestion Runner ───────────────────────────────────────────────────────
 
 async function run() {
-  console.log('Starting NoteForge Backup Ingestion Pipeline...\n');
+  console.log('Starting NoteForge Backup Ingestion Pipeline (1:1 Lecture-to-Chapter Mapping)...\n');
 
   const files = [
     '/home/sameer/Projects/NoteForge-AI/Playlist_1_Namaste_JavaScript_Season_01_Complete_Notes.md',
@@ -506,12 +619,12 @@ async function run() {
 
     console.log(`Parsing backup file: ${path.basename(filePath)}...`);
     const parsed = parseMarkdownFile(filePath);
-    const { notebook, jobId, playlistUrl, wordCount, lecturesCount, diagramsRepaired } = parsed;
+    const { notebook, jobId, playlistUrl, wordCount, chapterCount, diagramsRepaired } = parsed;
 
     console.log(`  Title: ${notebook.title}`);
     console.log(`  Notebook ID: ${notebook.id}`);
     console.log(`  Job ID: ${jobId}`);
-    console.log(`  Lectures / Topics: ${lecturesCount}`);
+    console.log(`  Exact Chapters (1 per Lecture): ${chapterCount}`);
     console.log(`  Total Word Count: ${wordCount.toLocaleString()} words (~${notebook.metadata.estimatedReadTime}m read)`);
     console.log(`  Diagrams repaired: ${diagramsRepaired}`);
     console.log(`  Quiz questions: ${notebook.quiz?.length || 0}`);
@@ -548,7 +661,7 @@ async function run() {
       const upsertJobCmd = `sqlite3 "${dbPath}" "INSERT OR REPLACE INTO jobs (id, url, status, current_step, options_json, created_at, updated_at) VALUES ('${jobId}', '${playlistUrl}', 'complete', 3, CAST(readfile('${tempOptsPath}') AS TEXT), '${notebook.createdAt}', '${notebook.updatedAt}');"`;
       execSync(upsertJobCmd);
 
-      console.log(`  Successfully archived "${notebook.title}" to ${dbPath}`);
+      console.log(`  Successfully archived "${notebook.title}" (${chapterCount} chapters) to ${dbPath}`);
     }
 
     // Cleanup temp files
@@ -563,7 +676,7 @@ async function run() {
   for (const dbPath of DB_PATHS) {
     if (!fs.existsSync(dbPath)) continue;
     console.log(`\nDatabase: ${dbPath}`);
-    const checkCmd = `sqlite3 "${dbPath}" "SELECT id, title, created_at FROM notebooks;"`;
+    const checkCmd = `sqlite3 "${dbPath}" "SELECT id, title, json_extract(content_json, '$.metadata.totalTopics') as chapters, created_at FROM notebooks;"`;
     const output = execSync(checkCmd, { encoding: 'utf8' });
     console.log(output);
   }

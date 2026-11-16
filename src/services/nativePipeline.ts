@@ -151,9 +151,9 @@ export function buildLectureWiseOutline(videoAnalyses: VideoAnalysis[]): Array<{
       .trim() || baseTitle;
 
     if (!va.isLongOrCompound || va.chapters.length === 0) {
-      // Standard small/single lecture (e.g. 9 out of 10 videos)
+      // Standard lecture: 1 video = 1 chapter
       const subtopics = va.chapters.length > 0
-        ? va.chapters.slice(0, 6).map(c => c.title)
+        ? va.chapters.slice(0, 8).map(c => c.title)
         : ['Core Principles', 'Detailed Breakdown', 'Code & Practical Examples', 'Key Takeaways'];
 
       topics.push({
@@ -166,22 +166,23 @@ export function buildLectureWiseOutline(videoAnalyses: VideoAnalysis[]): Array<{
         timeDisplay: '0:00',
       });
     } else {
-      // Big/long lecture with sub-chapters -> Lecture 10.1, Lecture 10.2, etc.
-      va.chapters.forEach((ch, chIdx) => {
-        const subLectureNum = isMultiVideo ? `Lecture ${lectureNum}.${chIdx + 1}` : `Chapter ${chIdx + 1}`;
+      // Long/compound lecture: ALWAYS maintains exactly 1 chapter per lecture.
+      // Sub-chapters are nested as subtopics under this chapter.
+      const subtopics = va.chapters.map((ch, chIdx) => {
         const chCleanTitle = ch.title
           .replace(/^(?:part|ch|chapter|section|#)\s*\d+[\s:\-–—|]*/i, '')
           .trim() || ch.title;
+        return `${lectureNum}.${chIdx + 1}: ${chCleanTitle} [${ch.time_display}]`;
+      });
 
-        topics.push({
-          videoId: va.transcript.video_info.id,
-          title: `${subLectureNum}: ${chCleanTitle} (${cleanTitle})`,
-          description: `Detailed chapter analysis for ${chCleanTitle} [${ch.time_display}]`,
-          subtopics: ['Concept Analysis', 'Implementation Details', 'Practical Implications', 'Key Takeaways'],
-          startTime: ch.start_seconds,
-          endTime: ch.end_seconds,
-          timeDisplay: ch.time_display,
-        });
+      topics.push({
+        videoId: va.transcript.video_info.id,
+        title: isMultiVideo ? `Lecture ${lectureNum}: ${cleanTitle}` : cleanTitle,
+        description: `In-depth masterclass comprising ${va.chapters.length} topics across ${formatTimeDisplay(va.durationSeconds)}`,
+        subtopics,
+        startTime: 0,
+        endTime: va.durationSeconds > 0 ? va.durationSeconds : undefined,
+        timeDisplay: '0:00',
       });
     }
   });
