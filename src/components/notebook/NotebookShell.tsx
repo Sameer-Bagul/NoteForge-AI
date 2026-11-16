@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import {
     BookOpen, Layers, GitBranch, HelpCircle, Briefcase,
     ArrowLeft, ArrowRight, Download, Clock, FileText,
