@@ -17,7 +17,9 @@ import '@xyflow/react/dist/style.css';
 import { api } from '@/services/api';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { GitBranch, Loader2, Brain, RefreshCw, Layers } from 'lucide-react';
+import { useTheme } from '@/context/ThemeContext';
+import { layoutTree } from '@/services/mindmap/layout';
+import { GitBranch, Loader2, Brain, RefreshCw, Spline, Route } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface MindMapTabProps {
@@ -32,45 +34,58 @@ interface MindMapTabProps {
 
 function CentralNode({ data }: { data: { label: string } }) {
     return (
-        <div className="relative px-5 py-2.5 rounded-xl bg-card border border-border/80 text-foreground font-semibold text-center shadow-xs min-w-[160px] max-w-[240px] select-none">
+        <div className="relative group px-5 py-3 rounded-2xl bg-card border-2 border-primary/35 text-foreground font-semibold text-center shadow-lg shadow-primary/5 min-w-[180px] max-w-[260px] select-none backdrop-blur-xs transition-all duration-150 hover:border-primary/60 hover:shadow-xl hover:shadow-primary/10">
             <Handle
                 type="target"
                 position={Position.Left}
-                className="!w-2 !h-2 !bg-muted-foreground !border-0"
+                className="!w-2.5 !h-2.5 !bg-primary !border-2 !border-background shadow-xs"
             />
-            <span className="text-xs sm:text-sm font-semibold tracking-tight leading-snug">
+            <div className="flex items-center justify-center gap-1.5 mb-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+                <span className="text-[10px] uppercase font-mono tracking-widest text-muted-foreground font-medium">
+                    Core topic
+                </span>
+            </div>
+            <span className="text-xs sm:text-sm font-semibold tracking-tight leading-snug block text-foreground">
                 {data.label}
             </span>
             <Handle
                 type="source"
                 position={Position.Right}
-                className="!w-2 !h-2 !bg-muted-foreground !border-0"
+                className="!w-2.5 !h-2.5 !bg-primary !border-2 !border-background shadow-xs"
             />
         </div>
     );
 }
 
 function BranchNode({ data }: { data: { label: string; color?: string } }) {
-    const bgColor = data.color || '#6366f1';
+    const color = data.color || '#6366f1';
     return (
         <div
-            className="relative px-3.5 py-1.5 rounded-lg text-white font-medium text-center min-w-[120px] max-w-[180px] border border-white/20 select-none shadow-xs"
+            className="relative group px-4 py-2.5 rounded-xl bg-card border text-foreground font-medium text-center min-w-[130px] max-w-[200px] select-none shadow-xs transition-all duration-150 hover:shadow-md hover:scale-[1.02] flex items-center justify-center gap-2"
             style={{
-                backgroundColor: bgColor,
+                borderColor: `${color}66`,
+                boxShadow: `0 2px 10px -2px ${color}25`,
             }}
         >
             <Handle
                 type="target"
                 position={Position.Left}
-                className="!w-2 !h-2 !bg-white/80 !border-0"
+                className="!w-2.5 !h-2.5 !border-2 !border-background transition-colors"
+                style={{ backgroundColor: color }}
             />
-            <span className="text-xs font-medium leading-snug">
+            <div
+                className="w-2 h-2 rounded-full shrink-0 shadow-xs"
+                style={{ backgroundColor: color, boxShadow: `0 0 6px ${color}88` }}
+            />
+            <span className="text-xs font-semibold tracking-tight leading-snug truncate">
                 {data.label}
             </span>
             <Handle
                 type="source"
                 position={Position.Right}
-                className="!w-2 !h-2 !bg-white/80 !border-0"
+                className="!w-2.5 !h-2.5 !border-2 !border-background transition-colors"
+                style={{ backgroundColor: color }}
             />
         </div>
     );
@@ -79,15 +94,17 @@ function BranchNode({ data }: { data: { label: string; color?: string } }) {
 function LeafNode({ data }: { data: { label: string; color?: string } }) {
     const dotColor = data.color || '#6366f1';
     return (
-        <div className="group relative px-3 py-2 rounded-lg bg-card/90 border border-border/60 hover:border-border text-foreground transition-colors shadow-xs min-w-[160px] max-w-[250px] flex items-center gap-2">
+        <div
+            className="group relative px-3.5 py-2.5 rounded-xl bg-card/95 border border-border/70 hover:border-foreground/25 text-foreground transition-all duration-150 shadow-xs hover:shadow-sm min-w-[170px] max-w-[270px] flex items-center gap-2.5"
+            style={{
+                borderLeftColor: dotColor,
+                borderLeftWidth: '3.5px',
+            }}
+        >
             <Handle
                 type="target"
                 position={Position.Left}
-                className="!w-2 !h-2 !bg-border group-hover:!bg-muted-foreground !border-0 transition-colors"
-            />
-            <div
-                className="w-1.5 h-1.5 rounded-full shrink-0"
-                style={{ backgroundColor: dotColor }}
+                className="!w-2 !h-2 !bg-muted-foreground/50 group-hover:!bg-foreground !border-2 !border-background transition-colors"
             />
             <span className="text-xs font-normal leading-snug text-foreground/90 select-none">
                 {data.label}
@@ -95,7 +112,7 @@ function LeafNode({ data }: { data: { label: string; color?: string } }) {
             <Handle
                 type="source"
                 position={Position.Right}
-                className="!w-2 !h-2 !bg-border group-hover:!bg-muted-foreground !border-0 transition-colors"
+                className="!w-2 !h-2 !bg-muted-foreground/50 group-hover:!bg-foreground !border-2 !border-background transition-colors"
             />
         </div>
     );
@@ -107,166 +124,6 @@ const nodeTypes: NodeTypes = {
     leaf: LeafNode,
 };
 
-// ─── Tree Layout Helper (Collision-Free Hierarchical Algorithm) ────────────────
-
-const BRANCH_COLORS = ['#8b5cf6', '#06b6d4', '#10b981', '#f59e0b', '#ef4444', '#ec4899', '#3b82f6', '#14b8a6'];
-
-function layoutTree(rawNodes: any[], rawEdges: any[]): { nodes: Node[]; edges: Edge[] } {
-    if (!rawNodes || !rawNodes.length) return { nodes: [], edges: [] };
-
-    // 1. Build adjacency graph & lookup maps
-    const childrenMap = new Map<string, string[]>();
-    const parentMap = new Map<string, string>();
-    const nodeById = new Map<string, any>();
-
-    rawNodes.forEach(n => {
-        childrenMap.set(n.id, []);
-        nodeById.set(n.id, n);
-    });
-
-    rawEdges.forEach(e => {
-        if (childrenMap.has(e.source)) {
-            childrenMap.get(e.source)!.push(e.target);
-        }
-        parentMap.set(e.target, e.source);
-    });
-
-    // 2. Identify root node
-    let root = rawNodes.find(n => n.id === 'root' || n.type === 'central');
-    if (!root) {
-        root = rawNodes.find(n => !parentMap.has(n.id)) || rawNodes[0];
-    }
-
-    // 3. Connect any orphan nodes to root to prevent disconnected / floating nodes
-    rawNodes.forEach(n => {
-        if (n.id !== root.id && !parentMap.has(n.id)) {
-            childrenMap.get(root.id)?.push(n.id);
-            parentMap.set(n.id, root.id);
-        }
-    });
-
-    // 4. Assign colors to branches and propagate down to all descendant leaf nodes
-    const rootChildren = childrenMap.get(root.id) || [];
-    const nodeColorMap = new Map<string, string>();
-
-    rootChildren.forEach((bId, idx) => {
-        const branchColor =
-            nodeById.get(bId)?.data?.color ||
-            nodeById.get(bId)?.color ||
-            BRANCH_COLORS[idx % BRANCH_COLORS.length];
-        nodeColorMap.set(bId, branchColor);
-
-        // Breadth-first propagation to all descendants of this branch
-        const queue = [bId];
-        while (queue.length > 0) {
-            const curr = queue.shift()!;
-            const kids = childrenMap.get(curr) || [];
-            kids.forEach(kidId => {
-                nodeColorMap.set(kidId, branchColor);
-                queue.push(kidId);
-            });
-        }
-    });
-
-    // 5. Post-order subtree bounding height calculation (guarantees zero collisions)
-    const ROW_PITCH = 64; // leaf card height + vertical spacing gap
-    const subtreeHeight = new Map<string, number>();
-    const visited = new Set<string>();
-
-    function calcSubtreeHeight(id: string): number {
-        if (visited.has(id)) return ROW_PITCH;
-        visited.add(id);
-
-        const children = (childrenMap.get(id) || []).filter(c => c !== id);
-        if (children.length === 0) {
-            subtreeHeight.set(id, ROW_PITCH);
-            return ROW_PITCH;
-        }
-
-        let total = 0;
-        for (const childId of children) {
-            total += calcSubtreeHeight(childId);
-        }
-        const height = Math.max(ROW_PITCH, total);
-        subtreeHeight.set(id, height);
-        return height;
-    }
-
-    const totalHeight = calcSubtreeHeight(root.id);
-    visited.clear();
-
-    // 6. Pre-order position assignment in non-overlapping vertical slices
-    const positions = new Map<string, { x: number; y: number }>();
-    const X_GAP = 280;
-
-    function assignPositions(id: string, depth: number, topY: number) {
-        if (visited.has(id)) return;
-        visited.add(id);
-
-        const children = (childrenMap.get(id) || []).filter(c => c !== id);
-        const h = subtreeHeight.get(id) || ROW_PITCH;
-        const x = depth * X_GAP;
-
-        if (children.length === 0) {
-            positions.set(id, { x, y: Math.round(topY + h / 2) });
-            return;
-        }
-
-        let currY = topY;
-        const childYPositions: number[] = [];
-        for (const childId of children) {
-            const childH = subtreeHeight.get(childId) || ROW_PITCH;
-            assignPositions(childId, depth + 1, currY);
-            childYPositions.push(positions.get(childId)?.y ?? (currY + childH / 2));
-            currY += childH;
-        }
-
-        // Center parent vertically at the midpoint of its children
-        const y = Math.round((childYPositions[0] + childYPositions[childYPositions.length - 1]) / 2);
-        positions.set(id, { x, y });
-    }
-
-    // Center root around y = 0
-    assignPositions(root.id, 0, -totalHeight / 2);
-
-    // 7. Format output ReactFlow nodes
-    const formattedNodes: Node[] = rawNodes.map(n => {
-        const pos = positions.get(n.id) || { x: 0, y: 0 };
-        const color = nodeColorMap.get(n.id) || n.color || n.data?.color;
-        const label = n.label || n.data?.label || n.id;
-        const type = n.id === root.id ? 'central' : rootChildren.includes(n.id) ? 'branch' : 'leaf';
-
-        return {
-            id: n.id,
-            type,
-            position: pos,
-            data: { label, color },
-        };
-    });
-
-    // 8. Format edges with matching branch colors and smoothstep curvature
-    const formattedEdges: Edge[] = rawEdges.map(e => {
-        const sourceColor = nodeColorMap.get(e.source);
-        const targetColor = nodeColorMap.get(e.target);
-        const edgeColor = targetColor || sourceColor || '#6366f1';
-
-        return {
-            id: `${e.source}-${e.target}`,
-            source: e.source,
-            target: e.target,
-            type: 'smoothstep',
-            style: {
-                stroke: edgeColor,
-                strokeWidth: 1.75,
-                opacity: 0.7,
-            },
-            animated: false,
-        };
-    });
-
-    return { nodes: formattedNodes, edges: formattedEdges };
-}
-
 // ─── Mind Map Tab Component ───────────────────────────────────────────────────
 
 export function MindMapTab({
@@ -276,10 +133,10 @@ export function MindMapTab({
     existingMindMaps,
     onUpdateNotes,
 }: MindMapTabProps) {
+    const { theme } = useTheme();
     const [selectedTopicId, setSelectedTopicId] = useState<string>(topics[0]?.id || '');
     const activeTopic = topics.find(t => t.id === selectedTopicId) || topics[0];
-
-    const currentMapData = existingMindMaps?.[activeTopic?.id || ''];
+    const [edgeCurve, setEdgeCurve] = useState<'smoothstep' | 'bezier'>('smoothstep');
 
     const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
     const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
@@ -290,14 +147,14 @@ export function MindMapTab({
         if (!activeTopic) return;
         const topicData = existingMindMaps?.[activeTopic.id];
         if (topicData && topicData.nodes && topicData.nodes.length > 0) {
-            const formatted = layoutTree(topicData.nodes, topicData.edges || []);
+            const formatted = layoutTree(topicData.nodes, topicData.edges || [], edgeCurve);
             setNodes(formatted.nodes);
             setEdges(formatted.edges);
         } else {
             setNodes([]);
             setEdges([]);
         }
-    }, [activeTopic, existingMindMaps, setNodes, setEdges]);
+    }, [activeTopic, existingMindMaps, edgeCurve, setNodes, setEdges]);
 
     const handleGenerate = useCallback(async () => {
         if (!activeTopic) return;
@@ -310,7 +167,7 @@ export function MindMapTab({
                 activeTopic.subtopics,
                 fullContent.slice(0, 3000),
             );
-            const { nodes: lNodes, edges: lEdges } = layoutTree(data.nodes || [], data.edges || []);
+            const { nodes: lNodes, edges: lEdges } = layoutTree(data.nodes || [], data.edges || [], edgeCurve);
             setNodes(lNodes);
             setEdges(lEdges);
 
@@ -340,9 +197,11 @@ export function MindMapTab({
         } finally {
             setLoading(false);
         }
-    }, [activeTopic, fullContent, existingMindMaps, notebookId, onUpdateNotes, setNodes, setEdges]);
+    }, [activeTopic, fullContent, existingMindMaps, notebookId, onUpdateNotes, edgeCurve, setNodes, setEdges]);
 
     const hasGraph = nodes.length > 0;
+    const dotColor = theme === 'dark' ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)';
+    const minimapMaskColor = theme === 'dark' ? 'rgba(15, 23, 42, 0.75)' : 'rgba(241, 245, 249, 0.8)';
 
     return (
         <div className="flex-1 h-full min-h-0 flex flex-col p-3 sm:p-3.5 gap-3">
@@ -382,6 +241,37 @@ export function MindMapTab({
 
                 {/* Right Actions */}
                 <div className="flex items-center gap-2 shrink-0">
+                    {hasGraph && (
+                        <div className="flex items-center rounded-lg border border-border/40 bg-secondary/40 p-0.5">
+                            <button
+                                onClick={() => setEdgeCurve('smoothstep')}
+                                className={cn(
+                                    "px-2 py-1 rounded-md text-[11px] font-medium flex items-center gap-1 transition-colors",
+                                    edgeCurve === 'smoothstep'
+                                        ? "bg-foreground text-background shadow-xs font-medium"
+                                        : "text-muted-foreground hover:text-foreground"
+                                )}
+                                title="Orthogonal stepped connectors"
+                            >
+                                <Route className="w-3 h-3" />
+                                <span className="hidden sm:inline">Stepped</span>
+                            </button>
+                            <button
+                                onClick={() => setEdgeCurve('bezier')}
+                                className={cn(
+                                    "px-2 py-1 rounded-md text-[11px] font-medium flex items-center gap-1 transition-colors",
+                                    edgeCurve === 'bezier'
+                                        ? "bg-foreground text-background shadow-xs font-medium"
+                                        : "text-muted-foreground hover:text-foreground"
+                                )}
+                                title="Smooth curved connectors"
+                            >
+                                <Spline className="w-3 h-3" />
+                                <span className="hidden sm:inline">Curved</span>
+                            </button>
+                        </div>
+                    )}
+
                     <Button
                         variant={hasGraph ? "outline" : "default"}
                         size="sm"
@@ -455,12 +345,13 @@ export function MindMapTab({
                     </div>
                 ) : (
                     <ReactFlow
-                        key={`${activeTopic?.id}-${nodes.length}`}
+                        key={`${activeTopic?.id}-${nodes.length}-${edgeCurve}`}
                         nodes={nodes}
                         edges={edges}
                         onNodesChange={onNodesChange}
                         onEdgesChange={onEdgesChange}
                         nodeTypes={nodeTypes}
+                        nodeOrigin={[0, 0.5]}
                         fitView
                         fitViewOptions={{ padding: 0.25 }}
                         proOptions={{ hideAttribution: true }}
@@ -471,7 +362,7 @@ export function MindMapTab({
                         />
                         <MiniMap
                             className="!bg-card/90 !border-border/50 !rounded-xl !overflow-hidden !shadow-md"
-                            maskColor="rgba(0, 0, 0, 0.75)"
+                            maskColor={minimapMaskColor}
                             nodeColor={(node) => {
                                 if (node.type === 'central') return '#6366f1';
                                 return (node.data as any)?.color || '#3b4252';
@@ -479,9 +370,9 @@ export function MindMapTab({
                         />
                         <Background
                             variant={BackgroundVariant.Dots}
-                            gap={24}
-                            size={1}
-                            color="rgba(255, 255, 255, 0.07)"
+                            gap={22}
+                            size={1.2}
+                            color={dotColor}
                         />
                     </ReactFlow>
                 )}
