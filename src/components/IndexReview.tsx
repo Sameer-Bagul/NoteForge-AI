@@ -12,7 +12,8 @@ import {
   Plus,
   GripVertical,
   ArrowUp,
-  ArrowDown
+  ArrowDown,
+  Play
 } from 'lucide-react';
 
 interface SubTopic {
@@ -206,8 +207,9 @@ export function IndexReview({ index, onApprove, onCancel }: IndexReviewProps) {
                         <Badge variant="secondary">{idx + 1}</Badge>
                         <CardTitle className="text-lg">{topic.title}</CardTitle>
                         {topic.timeDisplay && (
-                          <Badge variant="outline" className="font-mono text-xs text-primary border-primary/40 bg-primary/5">
-                            ▶ {topic.timeDisplay}
+                          <Badge variant="outline" className="font-mono text-xs text-primary border-primary/40 bg-primary/5 inline-flex items-center gap-1">
+                            <Play className="w-2.5 h-2.5 fill-current" />
+                            <span>{topic.timeDisplay}</span>
                           </Badge>
                         )}
                       </div>

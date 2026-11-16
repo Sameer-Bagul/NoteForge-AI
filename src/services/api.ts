@@ -47,12 +47,9 @@ function getAIForTask(task: 'notes' | 'indexing' | 'features'): { provider: stri
       }
 
       if (providerConfig) {
-        let model = (task === 'indexing' && providerConfig.indexingModel && providerConfig.indexingModel !== 'llama3.2:1b')
+        let model = (task === 'indexing' && providerConfig.indexingModel)
           ? providerConfig.indexingModel
-          : (providerConfig.model || (providerConfig.provider === 'ollama' ? 'qwen2.5:7b' : 'gemini-flash-lite-latest'));
-        if (model === 'llama3.2:1b') {
-          model = 'qwen2.5:7b';
-        }
+          : (providerConfig.model || (providerConfig.provider === 'ollama' ? 'llama3.2:1b' : 'gemini-flash-lite-latest'));
         if (model === 'gemini-flash-latest' || model === 'gemini-2.5-flash' || model === 'gemini-1.5-flash') {
           model = 'gemini-flash-lite-latest';
         }
@@ -65,7 +62,7 @@ function getAIForTask(task: 'notes' | 'indexing' | 'features'): { provider: stri
       }
     }
   } catch {}
-  return { provider: 'ollama', model: 'qwen2.5:7b', baseUrl: 'http://localhost:11434' };
+  return { provider: 'ollama', model: 'llama3.2:1b', baseUrl: 'http://localhost:11434' };
 }
 
 export const api = {
@@ -333,7 +330,11 @@ export const api = {
 
   async getNotebook(notebookId: string): Promise<Notebook> {
     if (isTauri()) {
-      const record = await tauriApi.getNotebook(notebookId).catch(() => null);
+      let record = await tauriApi.getNotebook(notebookId).catch(() => null);
+      if (!record) {
+        const list = await tauriApi.listNotebooks().catch(() => []);
+        record = list.find(n => n.id === notebookId || n.job_id === notebookId) || null;
+      }
       if (record && record.content_json) {
         return JSON.parse(record.content_json);
       }
@@ -351,12 +352,35 @@ export const api = {
 
   async updateNotebook(notebookId: string, updates: Partial<Notebook>): Promise<Notebook> {
     if (isTauri()) {
-      const existing = await tauriApi.getNotebook(notebookId).catch(() => null);
+      let existing = await tauriApi.getNotebook(notebookId).catch(() => null);
+      if (!existing) {
+        const list = await tauriApi.listNotebooks().catch(() => []);
+        existing = list.find(n => n.id === notebookId || n.job_id === notebookId) || null;
+      }
       if (existing) {
-        const parsed = JSON.parse(existing.content_json);
-        const updated = { ...parsed, ...updates, updatedAt: new Date().toISOString() };
+        let parsed: any = {};
+        try {
+          parsed = JSON.parse(existing.content_json);
+        } catch (e) {
+          console.error('Failed to parse existing notebook JSON:', e);
+        }
+
+        // Deep merge updates: preserve all topic mind maps and existing assets
+        const mergedMindMaps = (parsed.mindMaps || updates.mindMaps)
+          ? { ...(parsed.mindMaps || {}), ...(updates.mindMaps || {}) }
+          : undefined;
+
+        const updated = {
+          ...parsed,
+          ...updates,
+          ...(mergedMindMaps ? { mindMaps: mergedMindMaps } : {}),
+          quiz: updates.quiz || parsed.quiz,
+          interviewQA: updates.interviewQA || parsed.interviewQA,
+          updatedAt: new Date().toISOString(),
+        };
+
         await tauriApi.saveNotebook({
-          id: notebookId,
+          id: existing.id,
           job_id: existing.job_id,
           title: updated.title || existing.title,
           content_json: JSON.stringify(updated),
@@ -469,7 +493,7 @@ export const api = {
     if (isTauri()) {
       const ai = getAIForTask('features');
       const systemPrompt = `You are a mind-map data generator. Produce a structured JSON mind map.
-The output MUST be valid JSON only — no markdown, no commentary.
+The output MUST be valid JSON only — no markdown, no commentary. Do NOT use emojis anywhere in node labels.
 Schema:
 {
   "nodes": [
@@ -484,6 +508,7 @@ Rules:
 - Central node id = "root"
 - Branch nodes = main subtopics (max 8)
 - Leaf nodes = key points under each branch (max 4 per branch)
+- Do NOT use emojis in labels
 - colors: central="#6366f1", branch="#8b5cf6","#06b6d4","#10b981","#f59e0b","#ef4444","#ec4899","#14b8a6"`;
 
       const prompt = `Create a mind map for topic: "${topicTitle}"
@@ -514,7 +539,7 @@ ${notesContent.slice(0, 3000)}
   async generateQuiz(topicTitles: string[], fullContent: string): Promise<any[]> {
     if (isTauri()) {
       const ai = getAIForTask('features');
-      const systemPrompt = `You are an expert quiz generator. Return ONLY valid JSON array — no markdown fences.
+      const systemPrompt = `You are an expert quiz generator. Return ONLY valid JSON array — no markdown fences. Do NOT use emojis anywhere in questions, options, answers, or explanations.
 Schema:
 [
   {
@@ -556,7 +581,7 @@ ${fullContent.slice(0, 4000)}
   async generateInterview(topicTitles: string[], fullContent: string): Promise<any[]> {
     if (isTauri()) {
       const ai = getAIForTask('features');
-      const systemPrompt = `You are an expert technical interviewer. Return ONLY valid JSON array — no markdown fences.
+      const systemPrompt = `You are an expert technical interviewer. Return ONLY valid JSON array — no markdown fences. Do NOT use emojis anywhere in questions, answers, or follow-ups.
 Schema:
 [
   {
@@ -592,5 +617,59 @@ ${fullContent.slice(0, 4000)}
     if (!response.ok) throw new Error('Interview Q&A generation failed');
     const result = await response.json();
     return result.data;
+  },
+
+  async enhanceTopicNotes(
+    topicTitle: string,
+    subtopics: string[],
+    currentContent: string,
+    provider: string,
+    model: string,
+    apiKey?: string,
+    baseUrl?: string,
+    onToken?: (token: string) => void
+  ): Promise<string> {
+    const systemPrompt = `You are a world-class principal computer scientist, systems engineer, and technical author.
+Your task is to significantly elevate, expand, and upgrade the technical rigor, depth, and clarity of the provided study notes.
+
+CRITICAL INSTRUCTIONS:
+1. Preserve all existing video timestamps [mm:ss] and chronological structure precisely.
+2. Upgrade conceptual depth: explain the "why", runtime characteristics, memory implications, compiler checks, or architectural tradeoffs.
+3. Replace brief pseudo-code or minimal snippets with robust, production-grade, typed, well-commented code implementations.
+4. Keep all Mermaid diagrams valid or enhance them into clear architectural flowcharts.
+5. Use clean GitHub-flavored markdown with bold taxonomy, callout quotes, and tables where appropriate.
+6. Do NOT use emojis anywhere in the output.
+7. Return ONLY the enhanced markdown content — no greetings, commentary, or meta text.`;
+
+    const prompt = `Elevate and enhance the following study notes for the topic "${topicTitle}".
+Subtopics covered: ${subtopics.join(', ')}
+
+CURRENT NOTES:
+"""
+${currentContent}
+"""
+
+Produce an elevated, deeply technical, and production-grade upgraded version:`;
+
+    if (isTauri()) {
+      return tauriApi.streamLLM(
+        prompt,
+        systemPrompt,
+        provider,
+        model,
+        baseUrl,
+        onToken || (() => {}),
+        apiKey
+      );
+    }
+
+    const response = await fetch(`${API_BASE}/generate/enhance`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ topicTitle, subtopics, currentContent, provider, model, apiKey }),
+    });
+    if (!response.ok) throw new Error('Failed to enhance notes');
+    const result = await response.json();
+    return result.data?.enhancedContent || result.enhancedContent;
   },
 };

@@ -1,4 +1,4 @@
-import { BookOpen, Plus, Library, Settings2, Moon, Sun } from 'lucide-react';
+import { Plus, Library, Settings2, Moon, Sun } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 import { Button } from './ui/button';
 import { useSettings } from '@/context/SettingsContext';
@@ -25,9 +25,11 @@ const Header = () => {
       {/* Brand / Logo */}
       <div className="flex items-center gap-6">
         <Link to="/" className="flex items-center gap-2.5 group">
-          <div className="w-7 h-7 rounded-lg bg-primary flex items-center justify-center text-primary-foreground shadow-sm">
-            <BookOpen className="w-4 h-4" />
-          </div>
+          <img
+            src="/icon.png"
+            alt="NoteForge Logo"
+            className="w-7 h-7 rounded-lg object-contain shadow-xs border border-border/40 group-hover:scale-105 transition-transform"
+          />
           <div className="flex items-baseline gap-2">
             <span className="text-sm font-semibold tracking-tight text-foreground group-hover:text-primary transition-colors">
               NoteForge

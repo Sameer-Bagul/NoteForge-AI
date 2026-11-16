@@ -74,11 +74,11 @@ export function repairMermaidDeterministic(code: string): string {
     const lines = sanitized.split('\n');
     const repairedLines: string[] = [];
 
-    for (let line of lines) {
+    for (const line of lines) {
       let l = line;
 
       // Fix invalid single-dash arrow in flowcharts: A -> B to A --> B
-      l = l.replace(/([a-zA-Z0-9_\)\]\}])\s*->\s*([a-zA-Z0-9_\(\[\{])/g, '$1 --> $2');
+      l = l.replace(/([a-zA-Z0-9_\])}])\s*->\s*([a-zA-Z0-9_([{])/g, '$1 --> $2');
 
       // Fix edge syntax: A -- label --> B or A -- "label" --> B to A -->|"label"| B
       l = l.replace(
@@ -104,7 +104,7 @@ export function repairMermaidDeterministic(code: string): string {
 
       // Pattern: id([text (with parens)]) -> id(["text (with parens)"])
       l = l.replace(
-        /\b([a-zA-Z0-9_]+)\(\[([^"\)\]\n]*\([^"\)\]\n]*\)[^"\)\]\n]*)\]\)/g,
+        /\b([a-zA-Z0-9_]+)\(\[([^"\]\n]*\([^"\]\n]*\)[^"\]\n]*)\]\)/g,
         '$1(["$2"])'
       );
 
@@ -116,7 +116,7 @@ export function repairMermaidDeterministic(code: string): string {
 
       // Pattern: id{text (with parens)} -> id{"text (with parens)"}
       l = l.replace(
-        /\b([a-zA-Z0-9_]+)\{([^"\}\n]*\([^"\}\n]*\)[^"\}\n]*)\}/g,
+        /\b([a-zA-Z0-9_]+)\{([^"}\n]*\([^"}\n]*\)[^"}\n]*)\}/g,
         '$1{"$2"}'
       );
 

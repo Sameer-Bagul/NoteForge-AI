@@ -323,3 +323,37 @@
     color: #374151 !important;
   }
 }
+
+/* ── ReactFlow Theme Overrides (Dark & Light Mode Integration) ──────────────── */
+.react-flow__controls {
+  border-radius: 0.75rem !important;
+  overflow: hidden !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25) !important;
+}
+
+.dark .react-flow__controls {
+  background: hsl(var(--card)) !important;
+  border: 1px solid hsl(var(--border)) !important;
+}
+
+.dark .react-flow__controls-button {
+  background: hsl(var(--card)) !important;
+  border-bottom: 1px solid hsl(var(--border) / 0.5) !important;
+  fill: hsl(var(--foreground)) !important;
+  color: hsl(var(--foreground)) !important;
+}
+
+.dark .react-flow__controls-button:hover {
+  background: hsl(var(--muted)) !important;
+}
+
+.dark .react-flow__controls-button svg {
+  fill: hsl(var(--foreground)) !important;
+}
+
+.dark .react-flow__minimap {
+  background: hsl(var(--card)) !important;
+  border: 1px solid hsl(var(--border)) !important;
+  border-radius: 0.75rem !important;
+  overflow: hidden !important;
+}

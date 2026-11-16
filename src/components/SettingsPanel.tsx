@@ -1,8 +1,9 @@
 import { useState, useCallback, useEffect, useMemo } from 'react';
 import {
     Plus, Eye, EyeOff, ChevronUp, ChevronDown, Zap, Save,
-    CheckCircle2, Cpu, Settings2, Loader2, ShieldCheck, Database, Sliders
+    CheckCircle2, Cpu, Settings2, Loader2, ShieldCheck, Database, Sliders, RefreshCw, X
 } from 'lucide-react';
+import { checkForAppUpdates } from '@/services/updater';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
@@ -266,10 +267,10 @@ function ProviderCard({
                                         <button
                                             type="button"
                                             onClick={() => update({ apiKey: '' })}
-                                            className="text-muted-foreground/60 hover:text-foreground p-1 transition-colors text-[10px]"
+                                            className="text-muted-foreground/60 hover:text-foreground p-1 transition-colors"
                                             title="Clear API key"
                                         >
-                                            ✕
+                                            <X className="w-3 h-3" />
                                         </button>
                                     ) : null}
                                     <button
@@ -373,6 +374,34 @@ export function SettingsPanel() {
             title: 'Settings saved',
             description: 'AI configuration and OS Keychain credentials updated successfully.',
         });
+    };
+
+    const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
+
+    const handleManualUpdateCheck = async () => {
+        setIsCheckingUpdate(true);
+        try {
+            const update = await checkForAppUpdates(undefined, { silent: false });
+            if (update && update.available) {
+                toast({
+                    title: `Update v${update.version} Available`,
+                    description: update.body || 'A new update is available to download.',
+                });
+            } else {
+                toast({
+                    title: 'NoteForge is up to date',
+                    description: 'You are running the latest version.',
+                });
+            }
+        } catch (e: any) {
+            toast({
+                title: 'Update check failed',
+                description: e?.message || 'Could not reach update server. Check your connection or wait until a release is published.',
+                variant: 'destructive',
+            });
+        } finally {
+            setIsCheckingUpdate(false);
+        }
     };
 
     // Auto-detect models from local Ollama if running (standalone, no state dependencies)
@@ -558,6 +587,16 @@ export function SettingsPanel() {
                             <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
                             OS Keychain
                         </span>
+                        <span>•</span>
+                        <button
+                            onClick={handleManualUpdateCheck}
+                            disabled={isCheckingUpdate}
+                            className="flex items-center gap-1 hover:text-foreground transition-colors disabled:opacity-50 text-[11px] cursor-pointer"
+                            title="Check for Over-The-Air app updates"
+                        >
+                            <RefreshCw className={cn("w-3 h-3 text-primary", isCheckingUpdate && "animate-spin")} />
+                            {isCheckingUpdate ? 'Checking…' : 'Check for Updates'}
+                        </button>
                     </div>
 
                     <div className="flex items-center gap-2.5">

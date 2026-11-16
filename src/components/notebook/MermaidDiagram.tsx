@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import mermaid from 'mermaid';
-import { Copy, Check, ZoomIn, ZoomOut, RotateCcw, Wrench, Code2 } from 'lucide-react';
+import { Copy, Check, ZoomIn, ZoomOut, RotateCcw, Wrench, Code2, AlertTriangle } from 'lucide-react';
 import { useTheme } from '@/context/ThemeContext';
 import { validateMermaid, repairMermaidDeterministic, createSafeFallbackDiagram } from '@/services/mermaid';
 
@@ -115,8 +115,9 @@ export const MermaidDiagram: React.FC<MermaidDiagramProps> = ({ chart, id, title
   if (error) {
     return (
       <div className="my-5 rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-xs font-mono">
-        <div className="flex items-center justify-between text-destructive mb-2 font-sans font-semibold">
-          <span>⚠️ Diagram Syntax Warning</span>
+        <div className="flex items-center gap-1.5 text-destructive mb-2 font-sans font-semibold">
+          <AlertTriangle className="w-4 h-4 shrink-0" />
+          <span>Diagram Syntax Notice</span>
         </div>
         <p className="text-muted-foreground mb-3">{error}</p>
         <pre className="p-3 rounded-lg bg-background/50 text-foreground overflow-x-auto text-[11px]">

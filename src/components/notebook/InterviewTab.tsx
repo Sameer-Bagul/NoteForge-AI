@@ -1,8 +1,8 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { api } from '@/services/api';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Briefcase, Loader2, ChevronDown, ChevronUp, Brain } from 'lucide-react';
+import { Briefcase, Loader2, ChevronDown, ChevronUp, Brain, BookOpen, Code2, Wrench, CornerDownRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface InterviewTabProps {
@@ -21,9 +21,9 @@ interface IQuestion {
 }
 
 const CATEGORY_CONFIG = {
-    conceptual: { label: 'Conceptual', color: 'bg-blue-500/15 text-blue-400 border-blue-500/30', icon: '🧠' },
-    technical: { label: 'Technical', color: 'bg-violet-500/15 text-violet-400 border-violet-500/30', icon: '⚙️' },
-    practical: { label: 'Practical', color: 'bg-amber-500/15 text-amber-400 border-amber-500/30', icon: '🛠️' },
+    conceptual: { label: 'Conceptual', color: 'bg-blue-500/15 text-blue-400 border-blue-500/30', icon: BookOpen },
+    technical: { label: 'Technical', color: 'bg-violet-500/15 text-violet-400 border-violet-500/30', icon: Code2 },
+    practical: { label: 'Practical', color: 'bg-amber-500/15 text-amber-400 border-amber-500/30', icon: Wrench },
 };
 
 const LEVEL_COLOR = {
@@ -35,6 +35,7 @@ const LEVEL_COLOR = {
 function IQCard({ q, index }: { q: IQuestion; index: number }) {
     const [open, setOpen] = useState(false);
     const cat = CATEGORY_CONFIG[q.category] || CATEGORY_CONFIG.conceptual;
+    const CategoryIcon = cat.icon;
 
     return (
         <div className="rounded-xl border border-border/50 bg-card/60 overflow-hidden">
@@ -42,7 +43,9 @@ function IQCard({ q, index }: { q: IQuestion; index: number }) {
                 onClick={() => setOpen(v => !v)}
                 className="w-full flex items-start gap-3 p-4 text-left hover:bg-card/80 transition-colors"
             >
-                <span className="text-lg shrink-0 mt-0.5">{cat.icon}</span>
+                <div className="w-7 h-7 rounded-lg bg-secondary/80 flex items-center justify-center shrink-0 mt-0.5 text-muted-foreground">
+                    <CategoryIcon className="w-3.5 h-3.5" />
+                </div>
                 <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap mb-1.5">
                         <Badge variant="outline" className={cn('text-[10px] px-1.5 py-0 border', cat.color)}>
@@ -66,8 +69,8 @@ function IQCard({ q, index }: { q: IQuestion; index: number }) {
                         {q.answer}
                     </div>
                     {q.followUp && (
-                        <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
-                            <span className="text-sm shrink-0">↩</span>
+                        <div className="flex items-start gap-2.5 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                            <CornerDownRight className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
                             <div>
                                 <p className="text-[10px] font-semibold text-amber-400 mb-0.5 uppercase tracking-wide">Follow-up</p>
                                 <p className="text-xs text-amber-100/80 leading-relaxed">{q.followUp}</p>
@@ -85,14 +88,22 @@ interface InterviewTabProps {
     topicTitles: string[];
     fullContent: string;
     existingQuestions?: IQuestion[];
+    onUpdateNotes?: (updates: { interviewQA: IQuestion[] }) => void;
 }
 
-export function InterviewTab({ notebookId, topicTitles, fullContent, existingQuestions }: InterviewTabProps) {
+export function InterviewTab({ notebookId, topicTitles, fullContent, existingQuestions, onUpdateNotes }: InterviewTabProps) {
     const [questions, setQuestions] = useState<IQuestion[]>(existingQuestions || []);
     const [loading, setLoading] = useState(false);
     const [generated, setGenerated] = useState(!!existingQuestions && existingQuestions.length > 0);
     const [error, setError] = useState<string | null>(null);
     const [filter, setFilter] = useState<'all' | 'conceptual' | 'technical' | 'practical'>('all');
+
+    useEffect(() => {
+        if (existingQuestions && existingQuestions.length > 0) {
+            setQuestions(existingQuestions);
+            setGenerated(true);
+        }
+    }, [existingQuestions]);
 
     const generate = useCallback(async () => {
         setLoading(true); setError(null);
@@ -104,14 +115,19 @@ export function InterviewTab({ notebookId, topicTitles, fullContent, existingQue
 
             // Persist to backend if we have a notebookId
             if (notebookId && interviewData.length > 0) {
-                await api.updateNotebook(notebookId, { interviewQA: interviewData });
+                try {
+                    await api.updateNotebook(notebookId, { interviewQA: interviewData });
+                } catch (persistErr) {
+                    console.error('Failed to persist interview Q&A to SQLite:', persistErr);
+                }
+                onUpdateNotes?.({ interviewQA: interviewData });
             }
         } catch {
             setError('Failed to generate interview Q&A. Please try again.');
         } finally {
             setLoading(false);
         }
-    }, [notebookId, topicTitles, fullContent]);
+    }, [notebookId, topicTitles, fullContent, onUpdateNotes]);
 
     const categories = ['all', 'conceptual', 'technical', 'practical'] as const;
     const filtered = filter === 'all' ? questions : questions.filter(q => q.category === filter);

@@ -32,7 +32,7 @@ const Create = () => {
         />
       </Helmet>
 
-      <div className="flex-1 flex flex-col justify-center items-center w-full min-h-full py-8">
+      <div className="flex-1 overflow-y-auto flex flex-col justify-center items-center w-full min-h-full py-8 px-6">
         <div className="w-full max-w-xl my-auto space-y-8 pb-8">
           {/* Focused Headline */}
           <div className="text-center space-y-2">

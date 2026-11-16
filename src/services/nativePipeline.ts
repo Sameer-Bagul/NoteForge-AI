@@ -32,9 +32,13 @@ FORMATTING RULES:
 - Write in rich, educational Markdown.
 - Use headings (##, ###) for major sections.
 - When key concepts are explained, insert clickable timestamp badges in format [mm:ss] or [hh:mm:ss] based on the video context.
-- Use blockquotes (> **💡 Tip:** ... or > **⚠️ Warning:** ...) for critical callouts.
+- Use blockquotes (> **Tip:** ... or > **Warning:** ... or > **Note:** ...) for critical callouts.
 - Include tables for comparisons and syntax-highlighted code blocks where applicable.
 - Where beneficial for understanding architecture or data flow, include an interactive Mermaid diagram.
+- STRICT NO EMOJIS: Do NOT use emojis anywhere in your output (no emojis in headings, callouts, lists, code comments, or diagram labels). Maintain a clean, academic textbook tone.
+- STRICT CLEAN MARKDOWN: NEVER output raw HTML tags (e.g. <span>, <font>, <div>).
+- STRICT TIMESTAMP SYNTAX: Never wrap timestamps in extra brackets or spaces. Always write exactly [mm:ss] (e.g. [01:23]), NEVER [[01:23]], NEVER [ 01:23 ], and NEVER [ [01:23] ].
+- STRICT CODE FENCE FORMATTING: Always place code fences (\`\`\`) on their own separate line. Never prefix or suffix text or timestamps on the same line as a code fence.
 `;
 
 export const PIPELINE_STEPS: ProcessingStep[] = [
@@ -213,13 +217,9 @@ export function getAIConfigForTask(task: 'notes' | 'indexing' | 'features'): { p
       }
 
       if (providerConfig) {
-        let model = (task === 'indexing' && providerConfig.indexingModel && providerConfig.indexingModel !== 'llama3.2:1b')
+        let model = (task === 'indexing' && providerConfig.indexingModel)
           ? providerConfig.indexingModel
-          : (providerConfig.model || (providerConfig.provider === 'ollama' ? 'qwen2.5:7b' : 'gemini-flash-lite-latest'));
-
-        if (model === 'llama3.2:1b') {
-          model = 'qwen2.5:7b';
-        }
+          : (providerConfig.model || (providerConfig.provider === 'ollama' ? 'llama3.2:1b' : 'gemini-flash-lite-latest'));
 
         // Migrate away from models experiencing high-demand outages or deprecations
         if (model === 'gemini-flash-latest' || model === 'gemini-2.5-flash' || model === 'gemini-1.5-flash') {
@@ -238,7 +238,7 @@ export function getAIConfigForTask(task: 'notes' | 'indexing' | 'features'): { p
 
   return {
     provider: 'ollama',
-    model: 'qwen2.5:7b',
+    model: 'llama3.2:1b',
     baseUrl: 'http://localhost:11434',
   };
 }
@@ -248,7 +248,7 @@ export interface PipelineCallbacks {
   onStatusChange?: (status: ProcessingStatus) => void;
   onLog?: (message: string, type: 'info' | 'success' | 'error' | 'ai') => void;
   onAwaitingApproval?: (index: UnifiedIndex) => void;
-  onNoteDelta?: (topicId: string, delta: string) => void;
+  onNoteDelta?: (topicId: string, delta: string, topicTitle?: string) => void;
   onComplete?: (notebook: Notebook) => void;
   onError?: (err: string) => void;
 }
@@ -343,11 +343,11 @@ function notifyAwaitingApproval(session: ActivePipelineSession, index: UnifiedIn
   }
 }
 
-function notifyNoteDelta(session: ActivePipelineSession, topicId: string, delta: string) {
+function notifyNoteDelta(session: ActivePipelineSession, topicId: string, delta: string, topicTitle?: string) {
   const set = listeners.get(session.jobId);
   if (set) {
     for (const cb of set) {
-      cb.onNoteDelta?.(topicId, delta);
+      cb.onNoteDelta?.(topicId, delta, topicTitle);
     }
   }
 }
@@ -582,7 +582,7 @@ Instructions:
   }
 ]`;
 
-        const systemPrompt = "You are an expert curriculum designer. Output ONLY valid JSON array with no conversational filler or markdown fences.";
+        const systemPrompt = "You are an expert curriculum designer. Output ONLY valid JSON array with no conversational filler or markdown fences. Do NOT use emojis anywhere in titles or descriptions.";
 
         let streamedChars = 0;
         const rawIndexResponse = await tauriApi.streamLLM(
@@ -792,7 +792,7 @@ ${MERMAID_PROMPT}
 
 Begin directly with the topic notes in structured Markdown.`;
 
-        const systemPrompt = "You are an expert academic tutor and technical note author. Write thoroughly, formatting with rich markdown, clickable timestamps [mm:ss], and valid Mermaid diagrams where useful.";
+        const systemPrompt = "You are an expert academic tutor and technical note author. Write thoroughly, formatting with rich markdown, clickable timestamps [mm:ss], and valid Mermaid diagrams where useful. Strictly avoid emojis and do NOT output raw HTML tags.";
 
         let topicContent = '';
         await tauriApi.streamLLM(
@@ -803,7 +803,7 @@ Begin directly with the topic notes in structured Markdown.`;
           aiConfig.baseUrl,
           (delta) => {
             topicContent += delta;
-            notifyNoteDelta(session, topic.id, delta);
+            notifyNoteDelta(session, topic.id, delta, topic.title);
           },
           aiConfig.apiKey
         );
@@ -840,8 +840,8 @@ Begin directly with the topic notes in structured Markdown.`;
 
       // ── Step 3: Assembling Notebook & Saving to SQLite Vault ──────────────
       notifyStatusChange(session, 'assembling');
-      notifyStepChange(session, 3, 'active', 'Compiling study guide and archiving to SQLite vault...');
-      notifyLog(session, 'Archiving notebook in SQLite database...', 'info');
+      notifyStepChange(session, 3, 'active', 'Synthesizing quizzes, concept diagrams & archiving to SQLite...');
+      notifyLog(session, 'Generating self-check quiz and concept flow diagrams...', 'info');
 
       const notebookId = `nb-${Date.now()}`;
       const fullMarkdown = allTopicNotes
@@ -850,6 +850,43 @@ Begin directly with the topic notes in structured Markdown.`;
 
       const wordCount = fullMarkdown.split(/\s+/).length;
       const readTime = Math.max(1, Math.round(wordCount / 200));
+
+      // Synthesize Quiz Questions automatically
+      let generatedQuiz: any[] = [];
+      try {
+        const topicNames = approvedIndex.topics.map(t => t.title);
+        const quizRes = await api.generateQuiz(topicNames, fullMarkdown.slice(0, 4000));
+        if (Array.isArray(quizRes) && quizRes.length > 0) {
+          generatedQuiz = quizRes;
+          notifyLog(session, `Synthesized ${quizRes.length} interactive self-check questions`, 'success');
+        }
+      } catch (qErr) {
+        console.warn('Pipeline automatic quiz generation skipped:', qErr);
+      }
+
+      // Synthesize Visual Concept Flow Diagram (Mind Map) for first topic
+      const generatedMindMaps: Record<string, any> = {};
+      try {
+        const primaryTopic = approvedIndex.topics[0];
+        if (primaryTopic) {
+          const subtopicTitles = primaryTopic.subtopics.map(s => typeof s === 'string' ? s : s.title);
+          const mapRes = await api.generateMindMap(
+            primaryTopic.title,
+            subtopicTitles,
+            allTopicNotes[0]?.content?.slice(0, 3000) || fullMarkdown.slice(0, 3000)
+          );
+          if (mapRes && Array.isArray(mapRes.nodes) && mapRes.nodes.length > 0) {
+            generatedMindMaps[primaryTopic.id] = {
+              topicId: primaryTopic.id,
+              nodes: mapRes.nodes,
+              edges: mapRes.edges || [],
+            };
+            notifyLog(session, `Constructed visual concept flow diagram for "${primaryTopic.title}"`, 'success');
+          }
+        }
+      } catch (mmErr) {
+        console.warn('Pipeline automatic mind map generation skipped:', mmErr);
+      }
 
       const finalNotebook: Notebook = {
         id: notebookId,
@@ -871,6 +908,8 @@ Begin directly with the topic notes in structured Markdown.`;
           estimatedReadTime: readTime,
           sourceVideos: videoSources,
         },
+        quiz: generatedQuiz.length > 0 ? generatedQuiz : undefined,
+        mindMaps: Object.keys(generatedMindMaps).length > 0 ? generatedMindMaps : undefined,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };

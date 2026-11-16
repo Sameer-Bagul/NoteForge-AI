@@ -110,6 +110,9 @@ export const useProcessing = (initialJobId?: string | null) => {
             generatedAt: note.generatedAt || new Date().toISOString(),
           })),
           fullContent: allTopicNotes.map((note: any) => `## ${note.topicTitle}\n\n${buildContentFromSections(note)}`).join('\n\n---\n\n'),
+          mindMaps: jobStatus.notebook.mindMaps,
+          quiz: jobStatus.notebook.quiz,
+          interviewQA: jobStatus.notebook.interviewQA,
         };
       }
 
@@ -167,6 +170,9 @@ export const useProcessing = (initialJobId?: string | null) => {
             index: active.notebook.index.topics.map(t => ({ id: t.id, title: t.title, subtopics: t.subtopics.map(s => s.title) })),
             notes: allNotes as any,
             fullContent: allNotes.map(n => `## ${n.topicTitle}\n\n${n.content}`).join('\n\n---\n\n'),
+            mindMaps: active.notebook.mindMaps,
+            quiz: active.notebook.quiz,
+            interviewQA: active.notebook.interviewQA,
           } : undefined,
           error: active.error,
         });
@@ -208,13 +214,23 @@ export const useProcessing = (initialJobId?: string | null) => {
             index: index as any,
           }));
         },
-        onNoteDelta: (topicId, delta) => {
+        onNoteDelta: (topicId, delta, topicTitle) => {
           setState(prev => {
+            const syllabusTopic = prev.index?.topics?.find((t: any) => t.id === topicId);
+            const resolvedTitle = topicTitle || syllabusTopic?.title || 'Lecture Note';
+
             if (!prev.notes) {
               const dummyNotes: VideoNotes = {
                 videoId: prev.videoInfo?.id || 'pending',
-                title: prev.videoInfo?.title || 'Generating Notes...',
-                index: prev.topicIndex || [],
+                title: prev.videoInfo?.title || 'Synthesizing Study Notes...',
+                index: prev.index?.topics?.map((t: any) => ({
+                  id: t.id,
+                  title: t.title,
+                  subtopics: t.subtopics?.map((st: any) => typeof st === 'string' ? st : (st?.title || '')) || [],
+                  startTime: t.startTime,
+                  endTime: t.endTime,
+                  timeDisplay: t.timeDisplay,
+                })) || prev.topicIndex || [],
                 notes: [],
                 fullContent: '',
               };
@@ -228,19 +244,24 @@ export const useProcessing = (initialJobId?: string | null) => {
               const note = updatedNotesList[existingNoteIdx];
               updatedNotesList[existingNoteIdx] = {
                 ...note,
+                topicTitle: resolvedTitle,
+                title: resolvedTitle,
                 content: (note.content || '') + delta,
               };
             } else {
               updatedNotesList.push({
                 topicId,
-                topicTitle: 'Generating...',
+                topicTitle: resolvedTitle,
+                title: resolvedTitle,
                 content: delta,
-                summary: '',
+                summary: syllabusTopic?.description || '',
                 sections: [],
                 keyTakeaways: [],
                 videoSources: [],
                 generatedAt: new Date().toISOString(),
-                title: 'Generating...',
+                startTime: syllabusTopic?.startTime,
+                endTime: syllabusTopic?.endTime,
+                timeDisplay: syllabusTopic?.timeDisplay,
               } as any);
             }
 
@@ -268,6 +289,9 @@ export const useProcessing = (initialJobId?: string | null) => {
               index: notebook.index.topics.map(t => ({ id: t.id, title: t.title, subtopics: t.subtopics.map(s => s.title) })),
               notes: allNotes as any,
               fullContent: allNotes.map(n => `## ${n.topicTitle}\n\n${n.content}`).join('\n\n---\n\n'),
+              mindMaps: notebook.mindMaps,
+              quiz: notebook.quiz,
+              interviewQA: notebook.interviewQA,
             },
           }));
         },
@@ -351,6 +375,9 @@ export const useProcessing = (initialJobId?: string | null) => {
             index: notebook.index.topics.map(t => ({ id: t.id, title: t.title, subtopics: t.subtopics.map(s => s.title) })),
             notes: allNotes as any,
             fullContent: allNotes.map(n => `## ${n.topicTitle}\n\n${n.content}`).join('\n\n---\n\n'),
+            mindMaps: notebook.mindMaps,
+            quiz: notebook.quiz,
+            interviewQA: notebook.interviewQA,
           },
         }));
         return;

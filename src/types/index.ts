@@ -73,6 +73,10 @@ export interface TopicNotes {
   startTime?: number;
   endTime?: number;
   timeDisplay?: string;
+  originalContent?: string;
+  enhancedAt?: string;
+  enhancedWith?: string;
+  isEnhanced?: boolean;
 }
 
 export interface VideoSourceReference {

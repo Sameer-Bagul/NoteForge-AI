@@ -186,8 +186,8 @@ impl LLMService {
             .as_deref()
             .unwrap_or("http://localhost:11434");
 
-        let model = if config.model.is_empty() || config.model == "llama3.2:1b" {
-            "qwen2.5:7b"
+        let model = if config.model.is_empty() {
+            "llama3.2:1b"
         } else {
             &config.model
         };
@@ -205,7 +205,7 @@ impl LLMService {
         }
 
         let send_fut = self.client.post(&url).json(&body).send();
-        let resp = match tokio::time::timeout(std::time::Duration::from_secs(600), send_fut).await {
+        let mut resp = match tokio::time::timeout(std::time::Duration::from_secs(600), send_fut).await {
             Ok(Ok(r)) => r,
             Ok(Err(e)) => return Err(format!("Ollama connection error (check if Ollama is running): {e}")),
             Err(_) => return Err("Ollama connection timed out after 600s".to_string()),
@@ -214,7 +214,40 @@ impl LLMService {
         if !resp.status().is_success() {
             let status = resp.status();
             let err_text = resp.text().await.unwrap_or_default();
-            return Err(format!("Ollama error ({}): {}", status, err_text));
+
+            // If requested model was not found in Ollama, try auto-fallback to an installed model
+            if status.as_u16() == 404 && err_text.contains("not found") {
+                let tags_url = format!("{base_url}/api/tags");
+                if let Ok(tags_resp) = self.client.get(&tags_url).send().await {
+                    if let Ok(tags_json) = tags_resp.json::<serde_json::Value>().await {
+                        if let Some(models) = tags_json["models"].as_array() {
+                            if let Some(first_model) = models.first().and_then(|m| m["name"].as_str()) {
+                                body["model"] = serde_json::json!(first_model);
+                                if let Ok(retry_resp) = self.client.post(&url).json(&body).send().await {
+                                    if retry_resp.status().is_success() {
+                                        resp = retry_resp;
+                                    } else {
+                                        let retry_err = retry_resp.text().await.unwrap_or_default();
+                                        return Err(format!("Ollama error ({}): {}", status, retry_err));
+                                    }
+                                } else {
+                                    return Err("Failed to reconnect to Ollama with fallback model".to_string());
+                                }
+                            } else {
+                                return Err(format!("Ollama error ({}): {}", status, err_text));
+                            }
+                        } else {
+                            return Err(format!("Ollama error ({}): {}", status, err_text));
+                        }
+                    } else {
+                        return Err(format!("Ollama error ({}): {}", status, err_text));
+                    }
+                } else {
+                    return Err(format!("Ollama error ({}): {}", status, err_text));
+                }
+            } else {
+                return Err(format!("Ollama error ({}): {}", status, err_text));
+            }
         }
 
         let mut stream = resp.bytes_stream();

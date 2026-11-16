@@ -23,6 +23,7 @@ import {
 import { Link } from 'react-router-dom';
 import { formatDistanceToNow } from 'date-fns';
 import { toast } from '@/hooks/use-toast';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 
 function getNotebookSynthesisMode(notebook?: Notebook) {
   if (!notebook) return null;
@@ -59,6 +60,8 @@ const Library = () => {
   const queryClient = useQueryClient();
   const [isClearing, setIsClearing] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [jobToDelete, setJobToDelete] = useState<JobStatus | null>(null);
+  const [isClearAllDialogOpen, setIsClearAllDialogOpen] = useState(false);
 
   const { data: jobs, isLoading, error, refetch } = useQuery({
     queryKey: ['jobs'],
@@ -66,64 +69,63 @@ const Library = () => {
     refetchInterval: 5000,
   });
 
-  const handleDeleteJob = async (job: JobStatus) => {
-    const title = job.notebook?.title || job.videos?.[0]?.title || `Job ${job.id.slice(0, 8)}`;
-    if (!window.confirm(`Are you sure you want to delete "${title}"?`)) {
-      return;
-    }
+  const handleDeleteJob = (job: JobStatus) => {
+    setJobToDelete(job);
+  };
+
+  const handleConfirmDeleteJob = async () => {
+    if (!jobToDelete) return;
+    const title = jobToDelete.notebook?.title || jobToDelete.videos?.[0]?.title || `Job ${jobToDelete.id.slice(0, 8)}`;
 
     try {
-      setDeletingId(job.id);
-      if (job.status === 'complete' || job.notebook?.id || job.notebookId) {
-        const nbId = job.notebook?.id || job.notebookId || job.id;
+      setDeletingId(jobToDelete.id);
+      if (jobToDelete.status === 'complete' || jobToDelete.notebook?.id || jobToDelete.notebookId) {
+        const nbId = jobToDelete.notebook?.id || jobToDelete.notebookId || jobToDelete.id;
         await api.deleteNotebook(nbId).catch(() => {});
       }
-      // Also ensure job record is removed
-      await api.deleteJob(job.id).catch(() => {});
+      await api.deleteJob(jobToDelete.id).catch(() => {});
 
       await queryClient.invalidateQueries({ queryKey: ['jobs'] });
       toast({
-        title: 'Deleted',
+        title: 'Notebook deleted',
         description: `"${title}" has been removed.`,
       });
     } catch (err: any) {
       console.error('Failed to delete item:', err);
       toast({
-        title: 'Error',
+        title: 'Delete failed',
         description: err?.message || 'Failed to delete item.',
         variant: 'destructive',
       });
     } finally {
       setDeletingId(null);
+      setJobToDelete(null);
     }
   };
 
-  const handleClearAll = async () => {
-    if (
-      !window.confirm(
-        'Delete all notebooks and pipeline history from your local database? This cannot be undone.'
-      )
-    ) {
-      return;
-    }
+  const handleClearAll = () => {
+    setIsClearAllDialogOpen(true);
+  };
 
+  const handleConfirmClearAll = async () => {
     try {
       setIsClearing(true);
       await api.clearAllData();
       await queryClient.invalidateQueries({ queryKey: ['jobs'] });
       toast({
-        title: 'Library Cleared',
+        title: 'Library cleared',
         description: 'All notebooks and jobs have been removed from local SQLite.',
       });
     } catch (err: any) {
       console.error('Failed to clear library:', err);
       toast({
-        title: 'Error',
+        title: 'Clear failed',
         description: err?.message || 'Failed to clear library.',
         variant: 'destructive',
       });
     } finally {
       setIsClearing(false);
+      setIsClearAllDialogOpen(false);
     }
   };
 
@@ -175,7 +177,7 @@ const Library = () => {
   const totalReadTime = Math.max(1, Math.round(totalWords / 200));
 
   return (
-    <div className="flex-1 flex flex-col max-w-6xl w-full mx-auto py-2">
+    <div className="flex-1 overflow-y-auto flex flex-col max-w-6xl w-full mx-auto px-6 py-6">
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-border/50 gap-3 shrink-0">
         <div>
@@ -339,6 +341,28 @@ const Library = () => {
           )}
         </div>
       )}
+
+      {/* Delete Job Confirmation Dialog */}
+      <ConfirmDialog
+        open={jobToDelete !== null}
+        onOpenChange={(open) => !open && setJobToDelete(null)}
+        title="Delete notebook"
+        description={`Delete "${jobToDelete?.notebook?.title || jobToDelete?.videos?.[0]?.title || 'this item'}"? All notes, diagrams, and quizzes will be permanently removed.`}
+        confirmText="Delete notebook"
+        isLoading={deletingId !== null}
+        onConfirm={handleConfirmDeleteJob}
+      />
+
+      {/* Clear All Confirmation Dialog */}
+      <ConfirmDialog
+        open={isClearAllDialogOpen}
+        onOpenChange={setIsClearAllDialogOpen}
+        title="Clear entire library"
+        description="Delete all notebooks and pipeline history from your local SQLite database? This cannot be undone."
+        confirmText="Clear library"
+        isLoading={isClearing}
+        onConfirm={handleConfirmClearAll}
+      />
     </div>
   );
 };

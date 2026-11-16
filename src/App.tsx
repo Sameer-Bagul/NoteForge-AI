@@ -7,6 +7,7 @@ import { HelmetProvider } from "react-helmet-async";
 import { SettingsProvider } from "@/context/SettingsContext";
 import { ThemeProvider } from "@/context/ThemeContext";
 import { SettingsPanel } from "@/components/SettingsPanel";
+import { UpdateNotification } from "@/components/UpdateNotification";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import Layout from "./components/Layout";
 import Create from "./pages/Create";
@@ -40,6 +41,8 @@ const App = () => (
             </BrowserRouter>
             {/* Global Settings Panel overlay */}
             <SettingsPanel />
+            {/* OTA Auto-Update Notification Banner */}
+            <UpdateNotification />
           </TooltipProvider>
         </ThemeProvider>
       </SettingsProvider>

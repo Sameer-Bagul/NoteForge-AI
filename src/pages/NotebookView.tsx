@@ -77,7 +77,7 @@ const NotebookViewContent = () => {
   };
 
   return (
-    <div className="w-full max-w-[1720px] mx-auto px-1 md:px-3 py-2 flex-1 flex flex-col">
+    <div className="w-full h-full flex-1 flex flex-col overflow-hidden">
       <NotebookShell
         notes={videoNotes}
         onReset={() => navigate('/library')}
@@ -119,8 +119,7 @@ const topicToMarkdown = (topic: TopicNotes): string => {
       md += `> ${section.content}\n\n`;
     } else if (section.type === 'special') {
       const type = section.specialNote?.type || 'info';
-      const icon = type === 'warning' ? '⚠️' : type === 'tip' ? '💡' : 'ℹ️';
-      md += `> **${icon} ${type.toUpperCase()}**: ${section.specialNote?.content || section.content}\n\n`;
+      md += `> **${type.toUpperCase()}:** ${section.specialNote?.content || section.content}\n\n`;
     } else {
       md += `${section.content}\n\n`;
     }
@@ -129,7 +128,7 @@ const topicToMarkdown = (topic: TopicNotes): string => {
   if (topic.keyTakeaways && topic.keyTakeaways.length > 0) {
     md += `#### Key Takeaways\n`;
     topic.keyTakeaways.forEach((takeaway) => {
-      md += `- ✅ ${takeaway}\n`;
+      md += `- ${takeaway}\n`;
     });
     md += `\n`;
   }
