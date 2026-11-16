@@ -29,6 +29,7 @@ import { toast } from '@/hooks/use-toast';
 import { ToastAction } from '@/components/ui/toast';
 import { cn } from '@/lib/utils';
 import { api } from '@/services/api';
+import { useNavRail } from '@/context/NavRailContext';
 
 interface NotebookShellProps {
     notes: VideoNotes;
@@ -506,182 +507,6 @@ function IndexPanel({
     );
 }
 
-// ─── Edge-Attached Dynamic Island Navigation Rail ──────────────────────────────
-
-function DynamicIslandNavRail({
-    activeTab,
-    onTabChange,
-    onReset,
-    isStudioMode,
-    onToggleStudioMode,
-    hasVideo,
-    topicsCount,
-    quizCount,
-    interviewCount,
-    onExportPdf,
-    onDownloadMarkdown,
-    onExportCmsJson,
-    isExportingPdf,
-    onDeleteNotebook,
-    isDeleting,
-    isArchived,
-}: {
-    activeTab: TabType;
-    onTabChange: (tab: TabType) => void;
-    onReset: () => void;
-    isStudioMode: boolean;
-    onToggleStudioMode: () => void;
-    hasVideo: boolean;
-    topicsCount: number;
-    quizCount?: number;
-    interviewCount?: number;
-    onExportPdf: () => void;
-    onDownloadMarkdown: () => void;
-    onExportCmsJson: () => void;
-    isExportingPdf: boolean;
-    onDeleteNotebook: () => void;
-    isDeleting: boolean;
-    isArchived?: boolean;
-}) {
-    const navItems: { id: TabType; label: string; icon: any; count?: number }[] = [
-        { id: 'index', label: 'Curriculum Index', icon: Layers, count: topicsCount },
-        { id: 'mindmap', label: 'Concept Map', icon: GitBranch },
-        { id: 'quiz', label: 'Self-Check Quiz', icon: HelpCircle, count: quizCount },
-        { id: 'interview', label: 'Technical Q&A', icon: Briefcase, count: interviewCount },
-    ];
-
-    return (
-        <aside className="h-full w-[64px] sm:w-[70px] shrink-0 border-r border-border/40 bg-card/25 backdrop-blur-xl flex flex-col justify-between items-center py-4 px-2 z-30 select-none">
-            {/* Top Back Action */}
-            <div className="shrink-0">
-                <Tooltip>
-                    <TooltipTrigger asChild>
-                        <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={onReset}
-                            className="w-9 h-9 rounded-full bg-secondary/40 hover:bg-secondary/80 text-muted-foreground hover:text-foreground transition-all"
-                        >
-                            <ArrowLeft className="w-4 h-4" />
-                        </Button>
-                    </TooltipTrigger>
-                    <TooltipContent side="right" className="font-mono text-xs">
-                        All Notebooks (Library)
-                    </TooltipContent>
-                </Tooltip>
-            </div>
-
-            {/* Center: Dynamic Island Navigation Capsule */}
-            <div className="bg-secondary/40 border border-border/40 rounded-full p-1.5 flex flex-col items-center gap-1.5 shadow-sm backdrop-blur-xl">
-                {navItems.map((item) => {
-                    const isActive = activeTab === item.id;
-                    const Icon = item.icon;
-
-                    return (
-                        <Tooltip key={item.id}>
-                            <TooltipTrigger asChild>
-                                <button
-                                    onClick={() => onTabChange(item.id)}
-                                    className={cn(
-                                        'relative w-9 h-9 sm:w-10 sm:h-10 rounded-full flex items-center justify-center transition-all group',
-                                        isActive
-                                            ? 'bg-foreground text-background shadow-md shadow-foreground/10'
-                                            : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
-                                    )}
-                                >
-                                    <Icon className={cn('w-4 h-4 transition-transform group-hover:scale-105', isActive ? 'stroke-[2]' : 'stroke-[1.75]')} />
-
-                                    {/* Unobtrusive Micro Indicator */}
-                                    {item.count !== undefined && item.count > 0 && !isActive && (
-                                        <span className="w-1.5 h-1.5 rounded-full bg-primary absolute top-1.5 right-1.5 ring-2 ring-background" />
-                                    )}
-                                </button>
-                            </TooltipTrigger>
-                            <TooltipContent side="right" className="font-mono text-xs">
-                                {item.label}
-                            </TooltipContent>
-                        </Tooltip>
-                    );
-                })}
-            </div>
-
-            {/* Bottom: Dynamic Island Utilities Capsule */}
-            <div className="bg-secondary/40 border border-border/40 rounded-full p-1.5 flex flex-col items-center gap-1.5 shadow-sm backdrop-blur-xl shrink-0">
-                {/* Focus Mode Toggle */}
-                {hasVideo && (
-                    <Tooltip>
-                        <TooltipTrigger asChild>
-                            <button
-                                onClick={onToggleStudioMode}
-                                className={cn(
-                                    'w-8 h-8 rounded-full flex items-center justify-center transition-all',
-                                    !isStudioMode
-                                        ? 'bg-primary/20 text-primary'
-                                        : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
-                                )}
-                            >
-                                {!isStudioMode ? <Eye className="w-3.5 h-3.5" /> : <Tv className="w-3.5 h-3.5" />}
-                            </button>
-                        </TooltipTrigger>
-                        <TooltipContent side="right" className="font-mono text-xs">
-                            {isStudioMode ? 'Focus Mode (Hide Video)' : 'Studio View (Show Video)'}
-                        </TooltipContent>
-                    </Tooltip>
-                )}
-
-                {/* Export Dropdown */}
-                <DropdownMenu>
-                    <Tooltip>
-                        <TooltipTrigger asChild>
-                            <DropdownMenuTrigger asChild>
-                                <button className="w-8 h-8 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-all">
-                                    {isExportingPdf ? <Loader2 className="w-3.5 h-3.5 animate-spin text-primary" /> : <Download className="w-3.5 h-3.5" />}
-                                </button>
-                            </DropdownMenuTrigger>
-                        </TooltipTrigger>
-                        <TooltipContent side="right" className="font-mono text-xs">
-                            Export Package
-                        </TooltipContent>
-                    </Tooltip>
-
-                    <DropdownMenuContent side="right" align="end" className="w-48 font-sans">
-                        <DropdownMenuLabel className="text-[11px] font-mono text-muted-foreground">Export Options</DropdownMenuLabel>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem onClick={onExportPdf} disabled={isExportingPdf} className="gap-2 text-xs cursor-pointer">
-                            <Printer className="w-3.5 h-3.5 text-primary" />
-                            <span>Print / Vector PDF</span>
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={onDownloadMarkdown} className="gap-2 text-xs cursor-pointer">
-                            <FileText className="w-3.5 h-3.5 text-emerald-400" />
-                            <span>Download Markdown (.md)</span>
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={onExportCmsJson} className="gap-2 text-xs cursor-pointer">
-                            <Share2 className="w-3.5 h-3.5 text-cyan-400" />
-                            <span>Export CMS JSON (.json)</span>
-                        </DropdownMenuItem>
-                    </DropdownMenuContent>
-                </DropdownMenu>
-
-                {/* Delete / Trash Notebook */}
-                <Tooltip>
-                    <TooltipTrigger asChild>
-                        <button
-                            onClick={onDeleteNotebook}
-                            disabled={isDeleting}
-                            className="w-8 h-8 rounded-full flex items-center justify-center text-muted-foreground/60 hover:text-destructive hover:bg-destructive/10 transition-colors"
-                        >
-                            {isDeleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
-                        </button>
-                    </TooltipTrigger>
-                    <TooltipContent side="right" className="font-mono text-xs text-destructive">
-                        {isArchived ? 'Delete Notebook Permanently' : 'Move Notebook to Trash'}
-                    </TooltipContent>
-                </Tooltip>
-            </div>
-        </aside>
-    );
-}
-
 // ─── NotebookShell ─────────────────────────────────────────────────────────────
 
 export function NotebookShell({ notes, onReset }: NotebookShellProps) {
@@ -1153,34 +978,64 @@ export function NotebookShell({ notes, onReset }: NotebookShellProps) {
 
     const topicTitles = notes.index.map(t => t.title);
 
+    const { setStudioProps } = useNavRail();
+
+    const handlersRef = useRef({
+        handleDownloadPdf,
+        handleDownloadAll,
+        handleExportCmsJson,
+        setIsStudioMode,
+        setIsDeleteDialogOpen,
+    });
+    handlersRef.current = {
+        handleDownloadPdf,
+        handleDownloadAll,
+        handleExportCmsJson,
+        setIsStudioMode,
+        setIsDeleteDialogOpen,
+    };
+
+    useEffect(() => {
+        setStudioProps({
+            activeTab,
+            onTabChange: setActiveTab,
+            topicsCount: currentNotes.index.length,
+            quizCount: currentNotes.quiz?.length,
+            interviewCount: currentNotes.interviewQA?.length,
+            hasVideo: Boolean(videoId),
+            isStudioMode,
+            onToggleStudioMode: () => handlersRef.current.setIsStudioMode(prev => !prev),
+            isExportingPdf,
+            onExportPdf: () => handlersRef.current.handleDownloadPdf(),
+            onDownloadMarkdown: () => handlersRef.current.handleDownloadAll(),
+            onExportCmsJson: () => handlersRef.current.handleExportCmsJson(),
+            isDeleting,
+            onDeleteNotebook: () => handlersRef.current.setIsDeleteDialogOpen(true),
+            isArchived,
+        });
+
+        return () => {
+            setStudioProps(null);
+        };
+    }, [
+        setStudioProps,
+        activeTab,
+        currentNotes.index.length,
+        currentNotes.quiz?.length,
+        currentNotes.interviewQA?.length,
+        videoId,
+        isStudioMode,
+        isExportingPdf,
+        isDeleting,
+        isArchived,
+    ]);
+
     return (
         <TooltipProvider delayDuration={100}>
-            {/* Fixed Edge-to-Edge Container (Zero Outer Scroll, Pure Shell) */}
-            <div className="w-full h-full flex flex-row overflow-hidden bg-background">
-                {/* ── Dynamic Island Edge Sidebar (Attached Flush to Left Boundary) ── */}
-                <DynamicIslandNavRail
-                    activeTab={activeTab}
-                    onTabChange={setActiveTab}
-                    onReset={onReset}
-                    isStudioMode={isStudioMode}
-                    onToggleStudioMode={() => setIsStudioMode(!isStudioMode)}
-                    hasVideo={Boolean(videoId)}
-                    topicsCount={currentNotes.index.length}
-                    quizCount={currentNotes.quiz?.length}
-                    interviewCount={currentNotes.interviewQA?.length}
-                    onExportPdf={handleDownloadPdf}
-                    onDownloadMarkdown={handleDownloadAll}
-                    onExportCmsJson={handleExportCmsJson}
-                    isExportingPdf={isExportingPdf}
-                    onDeleteNotebook={() => setIsDeleteDialogOpen(true)}
-                    isDeleting={isDeleting}
-                    isArchived={isArchived}
-                />
-
-                {/* ── Main Workspace Body (Fixed Header + Single Smooth Scroll Area) ── */}
-                <main className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
-                    {/* Archived / Trash Notification Banner */}
-                    {isArchived && (
+            {/* Fixed Edge-to-Edge Container (Single Smooth Workspace) */}
+            <main className="w-full h-full flex flex-col min-w-0 overflow-hidden bg-background">
+                {/* Archived / Trash Notification Banner */}
+                {isArchived && (
                         <div className="bg-amber-500/10 border-b border-amber-500/30 px-4 sm:px-6 py-2.5 flex items-center justify-between gap-3 text-xs text-amber-300 shrink-0 select-none">
                             <div className="flex items-center gap-2 truncate">
                                 <Trash2 className="w-4 h-4 text-amber-400 shrink-0" />
@@ -1405,7 +1260,6 @@ export function NotebookShell({ notes, onReset }: NotebookShellProps) {
                         )}
                     </div>
                 </main>
-            </div>
 
             {/* AI Deep Enhancement Modal */}
             <EnhanceModal
