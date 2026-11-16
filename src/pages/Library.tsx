@@ -101,8 +101,6 @@ export default function Library() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [isEmptyTrashOpen, setIsEmptyTrashOpen] = useState(false);
   const [isEmptyingTrash, setIsEmptyingTrash] = useState(false);
-  const [isClearAllDialogOpen, setIsClearAllDialogOpen] = useState(false);
-  const [isClearing, setIsClearing] = useState(false);
 
   // Search input ref for Ctrl+K
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -235,29 +233,6 @@ export default function Library() {
     } finally {
       setDeletingId(null);
       setJobToDelete(null);
-    }
-  };
-
-  // Clear Entire Library
-  const handleConfirmClearAll = async () => {
-    try {
-      setIsClearing(true);
-      await api.clearAllData();
-      await queryClient.invalidateQueries({ queryKey: ['jobs'] });
-      toast({
-        title: 'Library cleared',
-        description: 'All notebooks have been removed from local SQLite vault.',
-      });
-    } catch (err: any) {
-      console.error('Failed to clear library:', err);
-      toast({
-        title: 'Clear failed',
-        description: err?.message || 'Failed to clear library.',
-        variant: 'destructive',
-      });
-    } finally {
-      setIsClearing(false);
-      setIsClearAllDialogOpen(false);
     }
   };
 
@@ -548,23 +523,11 @@ export default function Library() {
           </div>
         </div>
 
-        {/* Bottom Vault Controls */}
-        <div className="pt-4 border-t border-border/40 space-y-2">
-          {counts.all > 0 && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setIsClearAllDialogOpen(true)}
-              className="w-full h-8 text-xs text-muted-foreground hover:text-destructive hover:bg-destructive/10 justify-start px-3 gap-2"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-              <span>Clear Entire Library</span>
-            </Button>
-          )}
-
+        {/* Bottom Vault Status */}
+        <div className="pt-4 border-t border-border/40">
           <div className="px-3 py-1.5 rounded-lg bg-secondary/30 border border-border/30 text-[10px] font-mono text-muted-foreground flex items-center justify-between">
             <span>SQLite Vault</span>
-            <span className="text-emerald-400 font-medium flex items-center gap-1">
+            <span className="text-emerald-400 font-medium flex items-center gap-1.5">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
               Connected
             </span>
@@ -1096,17 +1059,6 @@ export default function Library() {
         variant="destructive"
         isLoading={isEmptyingTrash}
         onConfirm={handleConfirmEmptyTrash}
-      />
-
-      {/* Clear Entire Library Dialog */}
-      <ConfirmDialog
-        open={isClearAllDialogOpen}
-        onOpenChange={setIsClearAllDialogOpen}
-        title="Clear entire SQLite library"
-        description="Permanently erase all notebooks and pipeline history from your local SQLite database? This cannot be undone."
-        confirmText="Clear library"
-        isLoading={isClearing}
-        onConfirm={handleConfirmClearAll}
       />
     </div>
   );
