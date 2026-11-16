@@ -42,6 +42,7 @@ import {
 import { Link, useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { toast } from '@/hooks/use-toast';
+import { ToastAction } from '@/components/ui/toast';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { cn } from '@/lib/utils';
 
@@ -95,9 +96,11 @@ export default function Library() {
   const [sortOption, setSortOption] = useState<SortOption>('newest');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
 
-  // Deletion State
+  // Deletion & Trash State
   const [jobToDelete, setJobToDelete] = useState<JobStatus | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [isEmptyTrashOpen, setIsEmptyTrashOpen] = useState(false);
+  const [isEmptyingTrash, setIsEmptyingTrash] = useState(false);
   const [isClearAllDialogOpen, setIsClearAllDialogOpen] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
 
@@ -144,17 +147,26 @@ export default function Library() {
     }
   };
 
-  // Toggle Archived / Trash
+  // Toggle Archived / Trash (with Interactive Undo Action)
   const handleToggleTrash = async (e: React.MouseEvent | undefined, item: JobStatus, shouldTrash: boolean) => {
     e?.stopPropagation();
     const nbId = item.notebook?.id || item.notebookId || item.id;
+    const notebookTitle = item.notebook?.title || item.videos?.[0]?.title || 'Notebook';
 
     try {
       await api.toggleArchived(nbId, shouldTrash);
       await queryClient.invalidateQueries({ queryKey: ['jobs'] });
       toast({
         title: shouldTrash ? 'Moved to trash' : 'Restored from trash',
-        description: `"${item.notebook?.title || item.videos?.[0]?.title || 'Notebook'}"`,
+        description: `"${notebookTitle}"`,
+        action: (
+          <ToastAction
+            altText="Undo action"
+            onClick={() => handleToggleTrash(undefined, item, !shouldTrash)}
+          >
+            Undo
+          </ToastAction>
+        ),
       });
     } catch (err: any) {
       console.error('Failed to update trash state:', err);
@@ -163,6 +175,38 @@ export default function Library() {
         description: err?.message || 'Could not update notebook status.',
         variant: 'destructive',
       });
+    }
+  };
+
+  // Empty Trash (Purge all trashed notebooks permanently)
+  const handleConfirmEmptyTrash = async () => {
+    try {
+      setIsEmptyingTrash(true);
+      const trashedItems = processedNotebooks.filter(n => n.isArchived);
+      await Promise.all(
+        trashedItems.map(item => {
+          const nbId = item.notebook?.id || item.notebookId || item.id;
+          return Promise.all([
+            api.deleteNotebook(nbId).catch(() => {}),
+            api.deleteJob(item.id).catch(() => {}),
+          ]);
+        })
+      );
+      await queryClient.invalidateQueries({ queryKey: ['jobs'] });
+      toast({
+        title: 'Trash emptied',
+        description: `Permanently removed ${trashedItems.length} notebook${trashedItems.length === 1 ? '' : 's'}.`,
+      });
+    } catch (err: any) {
+      console.error('Failed to empty trash:', err);
+      toast({
+        title: 'Failed to empty trash',
+        description: err?.message || 'Could not purge all items.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsEmptyingTrash(false);
+      setIsEmptyTrashOpen(false);
     }
   };
 
@@ -646,6 +690,20 @@ export default function Library() {
                 <List className="w-3.5 h-3.5" />
               </button>
             </div>
+
+            {/* Empty Trash Button (Visible when viewing Trash and has items) */}
+            {activeCategory === 'trash' && counts.trash > 0 && (
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => setIsEmptyTrashOpen(true)}
+                className="h-8 px-2.5 sm:px-3 text-xs rounded-xl gap-1.5 font-medium shadow-xs"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Empty Trash</span>
+                <span className="sm:hidden">Empty</span>
+              </Button>
+            )}
           </div>
         </header>
 
@@ -729,37 +787,73 @@ export default function Library() {
                   <div
                     key={item.id}
                     onClick={() => navigate(targetLink)}
-                    className="h-[185px] rounded-2xl border border-border/50 hover:border-border/80 bg-card/70 hover:bg-card/95 transition-all duration-200 p-5 flex flex-col justify-between relative group cursor-pointer shadow-xs hover:shadow-md overflow-hidden select-none"
+                    className={cn(
+                      "h-[185px] rounded-2xl border transition-all duration-200 p-5 flex flex-col justify-between relative group cursor-pointer shadow-xs hover:shadow-md overflow-hidden select-none",
+                      item.isArchived
+                        ? "border-amber-500/35 hover:border-amber-500/60 bg-card/60"
+                        : "border-border/50 hover:border-border/80 bg-card/70 hover:bg-card/95"
+                    )}
                     style={{
-                      background: `linear-gradient(145deg, hsl(var(--card)) 0%, hsl(var(--card)) 75%, ${badgeInfo.color}10 100%)`,
+                      background: item.isArchived
+                        ? `linear-gradient(145deg, hsl(var(--card)) 0%, hsl(var(--card)) 75%, rgba(245, 158, 11, 0.06) 100%)`
+                        : `linear-gradient(145deg, hsl(var(--card)) 0%, hsl(var(--card)) 75%, ${badgeInfo.color}10 100%)`,
                     }}
                   >
                     {/* Top Row: Topic Badge & Action Buttons */}
                     <div className="flex items-center justify-between">
-                      <div
-                        className={cn(
-                          "w-8 h-8 rounded-xl border flex items-center justify-center font-bold text-xs shadow-xs",
-                          badgeInfo.bg
+                      <div className="flex items-center gap-2">
+                        <div
+                          className={cn(
+                            "w-8 h-8 rounded-xl border flex items-center justify-center font-bold text-xs shadow-xs",
+                            badgeInfo.bg
+                          )}
+                          title={badgeInfo.label}
+                        >
+                          <BadgeIcon className="w-4 h-4" />
+                        </div>
+                        {item.isArchived && (
+                          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                            Trash
+                          </span>
                         )}
-                        title={badgeInfo.label}
-                      >
-                        <BadgeIcon className="w-4 h-4" />
                       </div>
 
                       <div className="flex items-center gap-1">
-                        {/* Star Favorite Button */}
-                        <button
-                          onClick={e => handleToggleFavorite(e, item)}
-                          className={cn(
-                            "w-7 h-7 rounded-lg flex items-center justify-center transition-colors",
-                            item.isFavorite
-                              ? "text-amber-400 hover:text-amber-300"
-                              : "text-muted-foreground/30 group-hover:text-muted-foreground/60 hover:!text-amber-400"
-                          )}
-                          title={item.isFavorite ? "Remove favorite" : "Mark as favorite"}
-                        >
-                          <Star className={cn("w-4 h-4", item.isFavorite ? "fill-amber-400" : "fill-none")} />
-                        </button>
+                        {item.isArchived ? (
+                          <>
+                            {/* Direct Restore Button */}
+                            <button
+                              onClick={e => handleToggleTrash(e, item, false)}
+                              className="h-7 px-2 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1 text-[11px] font-medium transition-colors"
+                              title="Restore notebook"
+                            >
+                              <RotateCcw className="w-3 h-3" />
+                              <span className="hidden sm:inline">Restore</span>
+                            </button>
+                            {/* Direct Delete Forever Button */}
+                            <button
+                              onClick={e => { e.stopPropagation(); setJobToDelete(item); }}
+                              className="w-7 h-7 rounded-lg flex items-center justify-center text-muted-foreground/40 hover:text-destructive hover:bg-destructive/10 transition-colors"
+                              title="Delete permanently"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </>
+                        ) : (
+                          /* Star Favorite Button */
+                          <button
+                            onClick={e => handleToggleFavorite(e, item)}
+                            className={cn(
+                              "w-7 h-7 rounded-lg flex items-center justify-center transition-colors",
+                              item.isFavorite
+                                ? "text-amber-400 hover:text-amber-300"
+                                : "text-muted-foreground/30 group-hover:text-muted-foreground/60 hover:!text-amber-400"
+                            )}
+                            title={item.isFavorite ? "Remove favorite" : "Mark as favorite"}
+                          >
+                            <Star className={cn("w-4 h-4", item.isFavorite ? "fill-amber-400" : "fill-none")} />
+                          </button>
+                        )}
 
                         {/* Three Dots Menu */}
                         <DropdownMenu>
@@ -777,10 +871,12 @@ export default function Library() {
                               <ExternalLink className="w-3.5 h-3.5" />
                               <span>Open notebook</span>
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={e => handleToggleFavorite(e, item)} className="text-xs gap-2">
-                              <Star className="w-3.5 h-3.5" />
-                              <span>{item.isFavorite ? 'Unfavorite' : 'Favorite'}</span>
-                            </DropdownMenuItem>
+                            {!item.isArchived && (
+                              <DropdownMenuItem onClick={e => handleToggleFavorite(e, item)} className="text-xs gap-2">
+                                <Star className="w-3.5 h-3.5" />
+                                <span>{item.isFavorite ? 'Unfavorite' : 'Favorite'}</span>
+                              </DropdownMenuItem>
+                            )}
                             <DropdownMenuSeparator />
                             {item.isArchived ? (
                               <>
@@ -859,15 +955,22 @@ export default function Library() {
                       >
                         <td className="py-3 px-4 font-medium text-foreground">
                           <div className="flex items-center gap-2.5">
-                            <button
-                              onClick={e => handleToggleFavorite(e, item)}
-                              className={cn(
-                                "p-1 rounded transition-colors",
-                                item.isFavorite ? "text-amber-400 fill-amber-400" : "text-muted-foreground/30 hover:text-amber-400"
-                              )}
-                            >
-                              <Star className={cn("w-3.5 h-3.5", item.isFavorite ? "fill-amber-400" : "fill-none")} />
-                            </button>
+                            {!item.isArchived && (
+                              <button
+                                onClick={e => handleToggleFavorite(e, item)}
+                                className={cn(
+                                  "p-1 rounded transition-colors",
+                                  item.isFavorite ? "text-amber-400 fill-amber-400" : "text-muted-foreground/30 hover:text-amber-400"
+                                )}
+                              >
+                                <Star className={cn("w-3.5 h-3.5", item.isFavorite ? "fill-amber-400" : "fill-none")} />
+                              </button>
+                            )}
+                            {item.isArchived && (
+                              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30 shrink-0">
+                                Trash
+                              </span>
+                            )}
                             <span className="truncate max-w-xs sm:max-w-md md:max-w-lg group-hover:text-primary transition-colors">
                               {item.resolvedTitle}
                             </span>
@@ -899,38 +1002,68 @@ export default function Library() {
                           {formattedDate}
                         </td>
                         <td className="py-3 px-4 text-right">
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <button
-                                onClick={e => e.stopPropagation()}
-                                className="p-1.5 rounded-lg text-muted-foreground/40 hover:text-foreground hover:bg-muted/40 transition-colors"
-                              >
-                                <MoreHorizontal className="w-4 h-4" />
-                              </button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="w-36 rounded-xl shadow-md border-border/50">
-                              <DropdownMenuItem onClick={() => navigate(targetLink)} className="text-xs gap-2">
-                                <ExternalLink className="w-3.5 h-3.5" />
-                                <span>Open</span>
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={e => handleToggleFavorite(e, item)} className="text-xs gap-2">
-                                <Star className="w-3.5 h-3.5" />
-                                <span>{item.isFavorite ? 'Unfavorite' : 'Favorite'}</span>
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                              {item.isArchived ? (
-                                <DropdownMenuItem onClick={e => handleToggleTrash(e, item, false)} className="text-xs gap-2 text-emerald-400">
-                                  <RotateCcw className="w-3.5 h-3.5" />
+                          <div className="flex items-center justify-end gap-1">
+                            {item.isArchived && (
+                              <>
+                                <button
+                                  onClick={e => handleToggleTrash(e, item, false)}
+                                  className="h-7 px-2 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1 text-[11px] font-medium transition-colors"
+                                  title="Restore notebook"
+                                >
+                                  <RotateCcw className="w-3 h-3" />
                                   <span>Restore</span>
-                                </DropdownMenuItem>
-                              ) : (
-                                <DropdownMenuItem onClick={e => handleToggleTrash(e, item, true)} className="text-xs gap-2 text-destructive">
+                                </button>
+                                <button
+                                  onClick={e => { e.stopPropagation(); setJobToDelete(item); }}
+                                  className="w-7 h-7 rounded-lg flex items-center justify-center text-muted-foreground/40 hover:text-destructive hover:bg-destructive/10 transition-colors"
+                                  title="Delete permanently"
+                                >
                                   <Trash2 className="w-3.5 h-3.5" />
-                                  <span>Trash</span>
+                                </button>
+                              </>
+                            )}
+
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <button
+                                  onClick={e => e.stopPropagation()}
+                                  className="p-1.5 rounded-lg text-muted-foreground/40 hover:text-foreground hover:bg-muted/40 transition-colors"
+                                >
+                                  <MoreHorizontal className="w-4 h-4" />
+                                </button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="w-36 rounded-xl shadow-md border-border/50">
+                                <DropdownMenuItem onClick={() => navigate(targetLink)} className="text-xs gap-2">
+                                  <ExternalLink className="w-3.5 h-3.5" />
+                                  <span>Open</span>
                                 </DropdownMenuItem>
-                              )}
-                            </DropdownMenuContent>
-                          </DropdownMenu>
+                                {!item.isArchived && (
+                                  <DropdownMenuItem onClick={e => handleToggleFavorite(e, item)} className="text-xs gap-2">
+                                    <Star className="w-3.5 h-3.5" />
+                                    <span>{item.isFavorite ? 'Unfavorite' : 'Favorite'}</span>
+                                  </DropdownMenuItem>
+                                )}
+                                <DropdownMenuSeparator />
+                                {item.isArchived ? (
+                                  <>
+                                    <DropdownMenuItem onClick={e => handleToggleTrash(e, item, false)} className="text-xs gap-2 text-emerald-400">
+                                      <RotateCcw className="w-3.5 h-3.5" />
+                                      <span>Restore</span>
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={e => { e.stopPropagation(); setJobToDelete(item); }} className="text-xs gap-2 text-destructive">
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                      <span>Delete forever</span>
+                                    </DropdownMenuItem>
+                                  </>
+                                ) : (
+                                  <DropdownMenuItem onClick={e => handleToggleTrash(e, item, true)} className="text-xs gap-2 text-destructive">
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                    <span>Move to trash</span>
+                                  </DropdownMenuItem>
+                                )}
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -951,6 +1084,18 @@ export default function Library() {
         confirmText="Delete permanently"
         isLoading={deletingId !== null}
         onConfirm={handleConfirmDelete}
+      />
+
+      {/* Empty Trash Confirmation Dialog */}
+      <ConfirmDialog
+        open={isEmptyTrashOpen}
+        onOpenChange={setIsEmptyTrashOpen}
+        title="Empty Trash?"
+        description={`Permanently purge all ${counts.trash} notebook${counts.trash > 1 ? 's' : ''} currently in the trash? All content and concept maps will be permanently erased.`}
+        confirmText="Empty trash"
+        variant="destructive"
+        isLoading={isEmptyingTrash}
+        onConfirm={handleConfirmEmptyTrash}
       />
 
       {/* Clear Entire Library Dialog */}

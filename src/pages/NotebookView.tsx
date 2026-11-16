@@ -74,6 +74,9 @@ const NotebookViewContent = () => {
     mindMaps: notebook.mindMaps,
     quiz: notebook.quiz,
     interviewQA: notebook.interviewQA,
+    isFavorite: notebook.isFavorite,
+    isArchived: notebook.isArchived,
+    tags: notebook.tags,
   };
 
   return (

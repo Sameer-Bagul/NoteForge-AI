@@ -183,6 +183,9 @@ export interface VideoNotes {
   mindMaps?: Record<string, MindMapData>;
   quiz?: QuizQuestion[];
   interviewQA?: InterviewQuestion[];
+  isFavorite?: boolean;
+  isArchived?: boolean;
+  tags?: string[];
 }
 
 export interface ProcessingStep {

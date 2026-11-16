@@ -26,6 +26,7 @@ import { EnhanceModal, EnhanceOptions } from './EnhanceModal';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { VideoNotes, Notebook } from '@/types';
 import { toast } from '@/hooks/use-toast';
+import { ToastAction } from '@/components/ui/toast';
 import { cn } from '@/lib/utils';
 import { api } from '@/services/api';
 
@@ -523,6 +524,7 @@ function DynamicIslandNavRail({
     isExportingPdf,
     onDeleteNotebook,
     isDeleting,
+    isArchived,
 }: {
     activeTab: TabType;
     onTabChange: (tab: TabType) => void;
@@ -539,6 +541,7 @@ function DynamicIslandNavRail({
     isExportingPdf: boolean;
     onDeleteNotebook: () => void;
     isDeleting: boolean;
+    isArchived?: boolean;
 }) {
     const navItems: { id: TabType; label: string; icon: any; count?: number }[] = [
         { id: 'index', label: 'Curriculum Index', icon: Layers, count: topicsCount },
@@ -659,7 +662,7 @@ function DynamicIslandNavRail({
                     </DropdownMenuContent>
                 </DropdownMenu>
 
-                {/* Delete Notebook */}
+                {/* Delete / Trash Notebook */}
                 <Tooltip>
                     <TooltipTrigger asChild>
                         <button
@@ -671,7 +674,7 @@ function DynamicIslandNavRail({
                         </button>
                     </TooltipTrigger>
                     <TooltipContent side="right" className="font-mono text-xs text-destructive">
-                        Delete Notebook
+                        {isArchived ? 'Delete Notebook Permanently' : 'Move Notebook to Trash'}
                     </TooltipContent>
                 </Tooltip>
             </div>
@@ -1006,24 +1009,73 @@ export function NotebookShell({ notes, onReset }: NotebookShellProps) {
     };
 
     const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+    const isArchived = Boolean(currentNotes.isArchived);
+
+    const handleRestoreNotebook = async () => {
+        try {
+            const targetId = currentNotes.notebookId || currentNotes.videoId;
+            if (targetId) {
+                await api.toggleArchived(targetId, false);
+                setCurrentNotes(prev => ({ ...prev, isArchived: false }));
+                toast({
+                    title: 'Notebook restored',
+                    description: `"${currentNotes.title}" has been restored to your active library.`,
+                });
+            }
+        } catch (err: any) {
+            console.error('Failed to restore notebook:', err);
+            toast({
+                title: 'Restore failed',
+                description: err?.message || 'Could not restore notebook.',
+                variant: 'destructive',
+            });
+        }
+    };
 
     const handleConfirmDeleteNotebook = async () => {
         try {
             setIsDeleting(true);
-            const targetId = notes.notebookId || notes.videoId;
-            if (targetId) {
-                await api.deleteNotebook(targetId);
+            const targetId = currentNotes.notebookId || currentNotes.videoId;
+            if (isArchived) {
+                if (targetId) {
+                    await api.deleteNotebook(targetId);
+                }
+                toast({
+                    title: 'Notebook deleted permanently',
+                    description: `"${currentNotes.title}" has been removed.`,
+                });
+                onReset();
+            } else {
+                if (targetId) {
+                    await api.toggleArchived(targetId, true);
+                }
+                toast({
+                    title: 'Moved to trash',
+                    description: `"${currentNotes.title}" moved to trash.`,
+                    action: (
+                        <ToastAction
+                            altText="Undo"
+                            onClick={async () => {
+                                if (targetId) {
+                                    await api.toggleArchived(targetId, false);
+                                    toast({
+                                        title: 'Restored',
+                                        description: `"${currentNotes.title}" restored.`,
+                                    });
+                                }
+                            }}
+                        >
+                            Undo
+                        </ToastAction>
+                    ),
+                });
+                onReset();
             }
-            toast({
-                title: 'Notebook deleted',
-                description: `"${notes.title}" has been removed.`,
-            });
-            onReset();
         } catch (err: any) {
-            console.error('Failed to delete notebook:', err);
+            console.error('Failed to delete/trash notebook:', err);
             toast({
-                title: 'Delete failed',
-                description: err?.message || 'Failed to delete notebook.',
+                title: 'Action failed',
+                description: err?.message || 'Failed to update notebook state.',
                 variant: 'destructive',
             });
         } finally {
@@ -1122,10 +1174,37 @@ export function NotebookShell({ notes, onReset }: NotebookShellProps) {
                     isExportingPdf={isExportingPdf}
                     onDeleteNotebook={() => setIsDeleteDialogOpen(true)}
                     isDeleting={isDeleting}
+                    isArchived={isArchived}
                 />
 
                 {/* ── Main Workspace Body (Fixed Header + Single Smooth Scroll Area) ── */}
                 <main className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
+                    {/* Archived / Trash Notification Banner */}
+                    {isArchived && (
+                        <div className="bg-amber-500/10 border-b border-amber-500/30 px-4 sm:px-6 py-2.5 flex items-center justify-between gap-3 text-xs text-amber-300 shrink-0 select-none">
+                            <div className="flex items-center gap-2 truncate">
+                                <Trash2 className="w-4 h-4 text-amber-400 shrink-0" />
+                                <span className="font-semibold text-amber-200 truncate">
+                                    This notebook is in your Trash.
+                                </span>
+                                <span className="text-amber-300/80 hidden sm:inline">
+                                    Restore it to keep studying or edit chapters.
+                                </span>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={handleRestoreNotebook}
+                                    className="h-7 px-3 text-xs rounded-lg border-amber-500/40 text-amber-200 hover:bg-amber-500/20 hover:text-amber-100 gap-1.5 font-medium shadow-xs"
+                                >
+                                    <RotateCcw className="w-3.5 h-3.5" />
+                                    <span>Restore Notebook</span>
+                                </Button>
+                            </div>
+                        </div>
+                    )}
+
                     {/* Minimalist Top App Navigation Bar (Un-slopped, single title) */}
                     <header className="h-12 border-b border-border/30 px-4 sm:px-6 flex items-center justify-between shrink-0 bg-background/50 backdrop-blur-md select-none">
                         <div className="flex items-center gap-2 min-w-0">
@@ -1342,13 +1421,18 @@ export function NotebookShell({ notes, onReset }: NotebookShellProps) {
                 isEnhancing={isEnhancing}
             />
 
-            {/* Dedicated Notebook Deletion Dialog */}
+            {/* Dedicated Notebook Deletion / Move to Trash Dialog */}
             <ConfirmDialog
                 open={isDeleteDialogOpen}
                 onOpenChange={setIsDeleteDialogOpen}
-                title="Delete notebook"
-                description={`Delete "${notes.title}"? All chapters, visual concept maps, and quizzes will be permanently removed from local storage.`}
-                confirmText="Delete notebook"
+                title={isArchived ? "Delete notebook permanently" : "Move notebook to trash"}
+                description={
+                    isArchived
+                        ? `Permanently delete "${currentNotes.title}"? All chapters, visual concept maps, and quizzes will be erased forever.`
+                        : `Move "${currentNotes.title}" to trash? You can restore it anytime from the Trash section in your Library.`
+                }
+                confirmText={isArchived ? "Delete permanently" : "Move to trash"}
+                variant={isArchived ? "destructive" : "default"}
                 isLoading={isDeleting}
                 onConfirm={handleConfirmDeleteNotebook}
             />
