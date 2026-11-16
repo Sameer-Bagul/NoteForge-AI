@@ -166,6 +166,9 @@ export interface Notebook {
   mindMaps?: Record<string, MindMapData>;
   quiz?: QuizQuestion[];
   interviewQA?: InterviewQuestion[];
+  isFavorite?: boolean;
+  tags?: string[];
+  isArchived?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -227,4 +230,7 @@ export interface JobStatus {
   createdAt: string;
   updatedAt: string;
   isLive?: boolean;
+  isFavorite?: boolean;
+  tags?: string[];
+  isArchived?: boolean;
 }

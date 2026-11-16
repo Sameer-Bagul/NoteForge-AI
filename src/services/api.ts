@@ -256,6 +256,9 @@ export const api = {
             notebook: parsed,
             createdAt: nb.created_at,
             updatedAt: nb.created_at,
+            isFavorite: Boolean(parsed.isFavorite),
+            tags: parsed.tags || [],
+            isArchived: Boolean(parsed.isArchived),
           };
         });
 
@@ -418,6 +421,14 @@ export const api = {
     if (!response.ok) {
       throw new Error('Failed to delete notebook');
     }
+  },
+
+  async toggleFavorite(notebookId: string, isFavorite: boolean): Promise<Notebook> {
+    return this.updateNotebook(notebookId, { isFavorite });
+  },
+
+  async toggleArchived(notebookId: string, isArchived: boolean): Promise<Notebook> {
+    return this.updateNotebook(notebookId, { isArchived });
   },
 
   async deleteJob(jobId: string): Promise<void> {
