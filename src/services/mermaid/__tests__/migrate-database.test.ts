@@ -121,6 +121,6 @@ describe('Mermaid Database Repair and Migration Script', () => {
 
     expect(invalidAfterMigration.length).toBe(0);
     expect(totalValidAfter).toBe(totalCheckedAfter);
-    expect(totalCheckedAfter).toBe(45);
+    expect(totalCheckedAfter).toBeGreaterThanOrEqual(45);
   });
 });

@@ -28,15 +28,25 @@ export function repairMermaidDeterministic(code: string): string {
   sanitized = sanitized.replace(/<style[\s\S]*?<\/style>/gi, '');
   sanitized = sanitized.replace(/<script[\s\S]*?<\/script>/gi, '');
 
-  // 3. Normalize header: if missing diagram type header, default to flowchart TD
-  const firstNonCommentLine = sanitized
+  // 3. Handle frontmatter block (e.g. --- \n title: ... \n ---)
+  // If a diagram header was erroneously placed before frontmatter, normalize it
+  sanitized = sanitized.replace(/^(?:flowchart|graph)\s+[A-Za-z]+\s*\n\s*---\s*\n/i, '---\n');
+
+  let frontmatter = '';
+  let body = sanitized;
+  if (sanitized.startsWith('---')) {
+    const endFm = sanitized.indexOf('---', 3);
+    if (endFm !== -1) {
+      frontmatter = sanitized.slice(0, endFm + 3).trim();
+      body = sanitized.slice(endFm + 3).trim();
+    }
+  }
+
+  // Normalize header on body: if missing diagram type header, default to flowchart TD
+  const firstNonCommentLine = body
     .split('\n')
     .map(l => l.trim())
-    .find(l => l && !l.startsWith('%%') && !l.startsWith('---'));
-
-  if (!firstNonCommentLine) {
-    return 'flowchart TD\n  Start["Process Start"] --> End["Process End"]';
-  }
+    .find(l => l && !l.startsWith('%%'));
 
   const validHeaders = [
     'flowchart',
@@ -52,16 +62,22 @@ export function repairMermaidDeterministic(code: string): string {
     'pie',
   ];
 
-  const hasValidHeader = validHeaders.some(h =>
-    firstNonCommentLine.toLowerCase().startsWith(h)
-  );
+  if (!firstNonCommentLine) {
+    body = 'flowchart TD\n  Start["Process Start"] --> End["Process End"]';
+  } else {
+    const hasValidHeader = validHeaders.some(h =>
+      firstNonCommentLine.toLowerCase().startsWith(h)
+    );
 
-  if (!hasValidHeader) {
-    sanitized = `flowchart TD\n${sanitized}`;
-  } else if (firstNonCommentLine.toLowerCase().startsWith('graph ')) {
-    // Upgrade legacy 'graph' to modern 'flowchart' for better shape & syntax handling
-    sanitized = sanitized.replace(/^graph\s+([A-Za-z]+)/i, 'flowchart $1');
+    if (!hasValidHeader) {
+      body = `flowchart TD\n${body}`;
+    } else if (firstNonCommentLine.toLowerCase().startsWith('graph ')) {
+      // Upgrade legacy 'graph' to modern 'flowchart' for better shape & syntax handling
+      body = body.replace(/^graph\s+([A-Za-z]+)/i, 'flowchart $1');
+    }
   }
+
+  sanitized = frontmatter ? `${frontmatter}\n${body}` : body;
 
   // 4. Fix flowchart syntax issues if flowchart
   if (sanitized.toLowerCase().includes('flowchart') || sanitized.toLowerCase().includes('graph')) {
