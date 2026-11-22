@@ -1,14 +1,71 @@
-name: Release & Multi-Platform Build
+name: Release NoteForge AI
 
 on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      draft:
+        description: 'Create release as draft'
+        type: boolean
+        default: false
+      prerelease:
+        description: 'Mark release as pre-release'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
 
 jobs:
-  publish-tauri:
-    permissions:
-      contents: write
+  # ---------------------------------------------------------------------------
+  # Stage 1: Pre-Flight Verification & Quality Gate
+  # ---------------------------------------------------------------------------
+  pre-flight:
+    name: Pre-Flight Quality Gate
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Rust Stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install Linux Build Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libsecret-1-dev
+
+      - name: Install Node Dependencies
+        run: npm ci
+
+      - name: TypeScript Typecheck
+        run: npx tsc --noEmit
+
+      - name: Vitest Frontend Tests
+        run: npm run test
+
+      - name: Cargo Backend Tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml
+
+  # ---------------------------------------------------------------------------
+  # Stage 2: Cross-Platform Build & Packaging Matrix
+  # ---------------------------------------------------------------------------
+  build-release:
+    name: Build (${{ matrix.platform }})
+    needs: pre-flight
     strategy:
       fail-fast: false
       matrix:
@@ -19,19 +76,26 @@ jobs:
             args: ''
           - platform: 'windows-latest'
             args: ''
-
     runs-on: ${{ matrix.platform }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
+      - name: Resolve Release Configuration
+        id: release_info
+        shell: bash
+        run: |
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            echo "tag_name=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+            echo "release_name=NoteForge AI ${{ github.ref_name }}" >> $GITHUB_OUTPUT
+            echo "is_prerelease=false" >> $GITHUB_OUTPUT
+          else
+            echo "tag_name=v1.0.0" >> $GITHUB_OUTPUT
+            echo "release_name=NoteForge AI v1.0.0" >> $GITHUB_OUTPUT
+            echo "is_prerelease=false" >> $GITHUB_OUTPUT
+          fi
 
-      - name: Install Rust Stable
+      - name: Setup Rust Stable
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
@@ -45,22 +109,123 @@ jobs:
         if: matrix.platform == 'ubuntu-22.04'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libsecret-1-dev
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libsecret-1-dev
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
 
       - name: Install Node Dependencies
         run: npm ci
 
-      - name: Build & Publish Release with OTA Updater
+      - name: Build & Package with Tauri Action
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
-          tagName: __VERSION__
-          releaseName: 'NoteForge AI v__VERSION__'
-          releaseBody: 'See full release details and release assets below.'
-          releaseDraft: false
-          prerelease: false
+          tagName: ${{ steps.release_info.outputs.tag_name }}
+          releaseName: ${{ steps.release_info.outputs.release_name }}
+          releaseBody: |
+            ## ${{ steps.release_info.outputs.release_name }}
+
+            ### Included Distribution Binaries:
+            - **macOS**: Universal DMG & App Bundle (Apple Silicon M1-M4 & Intel x86_64)
+            - **Windows**: NSIS Setup (`.exe`), MSI Installer (`.msi`), and Portable Archive (`.zip`)
+            - **Linux**: Universal AppImage (`.AppImage`) and Debian Package (`.deb`)
+
+            ### Over-The-Air (OTA) Updates:
+            Cryptographically signed with Minisign (`latest.json` attached for in-app automatic updater).
+
+            ### Checksums:
+            Verify downloaded assets against `SHA256SUMS.txt` attached below.
+          releaseDraft: true
+          prerelease: ${{ steps.release_info.outputs.is_prerelease == 'true' || inputs.prerelease == true }}
           args: ${{ matrix.args }}
 
+      # Build standalone Windows portable zip if building on Windows
+      - name: Package Windows Portable Zip
+        if: matrix.platform == 'windows-latest'
+        shell: powershell
+        run: |
+          $version = (Get-Content package.json | ConvertFrom-Json).version
+          $tag = "${{ steps.release_info.outputs.tag_name }}"
+          $exe = Get-ChildItem -Path . -Filter "*NoteForge*.exe" -Recurse | Where-Object { $_.FullName -notmatch "incremental" -and $_.FullName -match "release" } | Select-Object -First 1
+          if ($exe) {
+            New-Item -ItemType Directory -Force -Path "portable_dist/NoteForge"
+            Copy-Item $exe.FullName -Destination "portable_dist/NoteForge/"
+            if (Test-Path "README.md") { Copy-Item "README.md" "portable_dist/NoteForge/" }
+            if (Test-Path "LICENSE") { Copy-Item "LICENSE" "portable_dist/NoteForge/" }
+            Compress-Archive -Path "portable_dist/NoteForge" -DestinationPath "NoteForge_${version}_windows_portable_x64.zip" -Force
+            gh release upload $tag "NoteForge_${version}_windows_portable_x64.zip" --clobber
+          }
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ---------------------------------------------------------------------------
+  # Stage 3: SHA-256 Checksums & Release Finalization
+  # ---------------------------------------------------------------------------
+  finalize-release:
+    name: Generate Checksums & Publish
+    needs: build-release
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Resolve Release Tag
+        id: release_info
+        shell: bash
+        run: |
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            echo "tag_name=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+            echo "is_prerelease=false" >> $GITHUB_OUTPUT
+          else
+            echo "tag_name=v1.0.0" >> $GITHUB_OUTPUT
+            echo "is_prerelease=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Download all release assets and compute SHA-256 sums
+        run: |
+          TAG="${{ steps.release_info.outputs.tag_name }}"
+          mkdir -p release_assets
+          cd release_assets
+          echo "Downloading assets for release ${TAG}..."
+          gh release download "${TAG}" --skip-existing || true
+          
+          echo "Computing SHA256 checksums..."
+          sha256sum * > SHA256SUMS.txt 2>/dev/null || true
+          
+          if [ -s SHA256SUMS.txt ]; then
+            cat SHA256SUMS.txt
+            echo "Uploading SHA256SUMS.txt to GitHub release ${TAG}..."
+            gh release upload "${TAG}" SHA256SUMS.txt --clobber
+          else
+            echo "No downloaded assets found to checksum."
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish Release (Undraft)
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.draft) }}
+        run: |
+          TAG="${{ steps.release_info.outputs.tag_name }}"
+          echo "Publishing release ${TAG}..."
+          if [ "${{ steps.release_info.outputs.is_prerelease }}" = "true" ]; then
+            gh release edit "${TAG}" --draft=false --prerelease || true
+          else
+            gh release edit "${TAG}" --draft=false --latest || true
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
