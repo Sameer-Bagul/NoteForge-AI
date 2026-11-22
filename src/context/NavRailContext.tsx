@@ -13,6 +13,8 @@ export interface StudioNavProps {
   onToggleStudioMode: () => void;
   isExportingPdf: boolean;
   onExportPdf: () => void;
+  isExportingFolder?: boolean;
+  onExportFolder?: () => void;
   onDownloadMarkdown: () => void;
   onExportCmsJson: () => void;
   isDeleting: boolean;

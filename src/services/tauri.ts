@@ -128,6 +128,33 @@ export const tauriApi = {
     return invoke<void>('clear_all_data');
   },
 
+  async exportNotebookFolder(basePath: string, folderName: string, files: Record<string, string>): Promise<string> {
+    return invoke<string>('export_notebook_folder', { basePath, folderName, files });
+  },
+
+  async revealFolder(path: string): Promise<void> {
+    return invoke<void>('reveal_folder', { path });
+  },
+
+  async pickDirectory(): Promise<string | null> {
+    if (isTauri()) {
+      try {
+        const { open } = await import('@tauri-apps/plugin-dialog');
+        const selected = await open({
+          directory: true,
+          multiple: false,
+          title: 'Select Destination Folder for Study Vault',
+        });
+        if (typeof selected === 'string') return selected;
+        if (Array.isArray(selected) && typeof selected[0] === 'string') return selected[0];
+        return null;
+      } catch (err) {
+        console.warn('Tauri open dialog error:', err);
+      }
+    }
+    return null;
+  },
+
   async streamLLM(
     prompt: string,
     systemPrompt: string | undefined,

@@ -10,6 +10,7 @@ import {
   Eye,
   Tv,
   Download,
+  FolderDown,
   Printer,
   FileText,
   Share2,
@@ -234,6 +235,10 @@ export function AppNavRail() {
                 <DropdownMenuItem onClick={studioProps.onExportPdf} disabled={studioProps.isExportingPdf} className="gap-2 text-xs cursor-pointer">
                   <Printer className="w-3.5 h-3.5 text-primary" />
                   <span>Print / Vector PDF</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={studioProps.onExportFolder} disabled={studioProps.isExportingFolder} className="gap-2 text-xs cursor-pointer">
+                  <FolderDown className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Export Study Vault (Folder)</span>
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={studioProps.onDownloadMarkdown} className="gap-2 text-xs cursor-pointer">
                   <FileText className="w-3.5 h-3.5 text-emerald-400" />

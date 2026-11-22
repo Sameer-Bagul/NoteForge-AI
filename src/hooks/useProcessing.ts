@@ -399,24 +399,51 @@ export const useProcessing = (initialJobId?: string | null) => {
     }
   }, [connectToStream]);
 
-  const resumeJob = useCallback(async () => {
+  const resumeJob = useCallback(async (overrideConfig?: any) => {
     const jobId = currentJobIdRef.current;
     if (!jobId) return;
 
     try {
-      addLog('Resuming job generation...', 'info');
-      await api.resumeJob(jobId);
+      addLog('Resuming generation from checkpoint...', 'info');
       setState(prev => ({
         ...prev,
         status: 'generating',
+        error: undefined,
       }));
 
+      if (isTauri()) {
+        const notebook = await nativePipeline.resumeGeneration(jobId, overrideConfig);
+        const allNotes = notebook.chapters.flatMap(c => c.topics);
+        setState(prev => ({
+          ...prev,
+          status: 'complete',
+          currentStep: 4,
+          steps: prev.steps.map(s => ({ ...s, status: 'complete' })),
+          notes: {
+            videoId: notebook.metadata?.sourceVideos?.[0]?.id || '',
+            notebookId: notebook.id,
+            title: notebook.title,
+            index: notebook.index.topics.map(t => ({ id: t.id, title: t.title, subtopics: t.subtopics.map(s => s.title) })),
+            notes: allNotes as any,
+            fullContent: allNotes.map(n => `## ${n.topicTitle}\n\n${n.content}`).join('\n\n---\n\n'),
+            mindMaps: notebook.mindMaps,
+            quiz: notebook.quiz,
+            interviewQA: notebook.interviewQA,
+          },
+        }));
+        return;
+      }
+
+      await api.resumeJob(jobId);
       if (!eventSourceRef.current) {
         connectToStream(jobId);
       }
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.isQuotaExhausted || error?.message?.includes('QUOTA_EXHAUSTED')) {
+        return;
+      }
       console.error('Error resuming job:', error);
-      addLog('Failed to resume job', 'error');
+      addLog('Failed to resume job: ' + (error?.message || ''), 'error');
     }
   }, [connectToStream, addLog]);
 

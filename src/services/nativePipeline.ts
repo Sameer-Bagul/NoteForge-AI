@@ -190,58 +190,91 @@ export function buildLectureWiseOutline(videoAnalyses: VideoAnalysis[]): Array<{
   return topics;
 }
 
-export function getAIConfigForTask(task: 'notes' | 'indexing' | 'features'): { provider: string; model: string; baseUrl?: string; apiKey?: string } {
+export interface ResolvedAIConfig {
+  provider: string;
+  model: string;
+  baseUrl?: string;
+  apiKey?: string;
+}
+
+export function isRateLimitOrQuotaError(err: any): boolean {
+  const msg = (typeof err === 'string' ? err : err?.message || JSON.stringify(err)).toLowerCase();
+  return (
+    msg.includes('429') ||
+    msg.includes('quota') ||
+    msg.includes('rate limit') ||
+    msg.includes('rate_limit') ||
+    msg.includes('ratelimit') ||
+    msg.includes('resource_exhausted') ||
+    msg.includes('tokens per minute') ||
+    msg.includes('requests per minute') ||
+    msg.includes('capacity') ||
+    msg.includes('overloaded') ||
+    msg.includes('too many requests') ||
+    msg.includes('exceeded your current quota') ||
+    msg.includes('credit limit')
+  );
+}
+
+export function getAIConfigFallbackChain(task: 'notes' | 'indexing' | 'features'): ResolvedAIConfig[] {
   try {
     const raw = localStorage.getItem('noteforge_ai_settings');
     if (raw) {
       const parsed = JSON.parse(raw) as AppSettings;
       const assigned = parsed.taskMapping?.[task];
-      let providerConfig = (assigned && assigned !== 'auto')
-        ? parsed.providers.find(p => p.provider === assigned && p.enabled)
-        : null;
+      const usableProviders: ResolvedAIConfig[] = [];
+      const enabledList = (parsed.providers || []).filter(p => p.enabled);
 
-      // Prioritize enabled provider that is either local (Ollama) or has an API key
-      if (!providerConfig) {
-        providerConfig = parsed.providers.find(p => p.enabled && (p.provider === 'ollama' || p.provider === 'lmstudio' || Boolean(p.apiKey?.trim())));
-      }
-
-      if (!providerConfig) {
-        providerConfig = parsed.providers.find(p => p.enabled) || parsed.providers[0];
-      }
-
-      // If selected provider is cloud without an API key, fallback to Ollama if active
-      if (providerConfig && (providerConfig.provider === 'gemini' || providerConfig.provider === 'grok') && !providerConfig.apiKey?.trim()) {
-        const ollamaCandidate = parsed.providers.find(p => p.provider === 'ollama');
-        if (ollamaCandidate) {
-          providerConfig = ollamaCandidate;
-        }
-      }
-
-      if (providerConfig) {
-        let model = (task === 'indexing' && providerConfig.indexingModel)
-          ? providerConfig.indexingModel
-          : (providerConfig.model || (providerConfig.provider === 'ollama' ? 'llama3.2:1b' : 'gemini-flash-lite-latest'));
-
-        // Migrate away from models experiencing high-demand outages or deprecations
+      const toResolved = (p: ProviderConfig): ResolvedAIConfig => {
+        let model = (task === 'indexing' && p.indexingModel)
+          ? p.indexingModel
+          : (p.model || (p.provider === 'ollama' ? 'llama3.2:1b' : 'gemini-flash-lite-latest'));
         if (model === 'gemini-flash-latest' || model === 'gemini-2.5-flash' || model === 'gemini-1.5-flash') {
           model = 'gemini-flash-lite-latest';
         }
-
         return {
-          provider: providerConfig.provider,
+          provider: p.provider,
           model,
-          baseUrl: providerConfig.baseUrl,
-          apiKey: providerConfig.apiKey,
+          baseUrl: p.baseUrl,
+          apiKey: p.apiKey,
         };
+      };
+
+      const validProviders = enabledList.filter(p => {
+        if (p.provider === 'ollama' || p.provider === 'lmstudio') return true;
+        return Boolean(p.apiKey && p.apiKey.trim().length > 0);
+      });
+
+      if (assigned && assigned !== 'auto') {
+        const assignedMatch = validProviders.find(p => p.provider === assigned);
+        if (assignedMatch) {
+          usableProviders.push(toResolved(assignedMatch));
+        }
+      }
+
+      const remaining = validProviders
+        .filter(p => !usableProviders.some(u => u.provider === p.provider))
+        .sort((a, b) => (a.priority ?? 99) - (b.priority ?? 99));
+
+      remaining.forEach(p => usableProviders.push(toResolved(p)));
+
+      if (usableProviders.length > 0) {
+        return usableProviders;
       }
     }
-  } catch {}
+  } catch (err) {
+    console.warn('Error constructing fallback AI chain:', err);
+  }
 
-  return {
-    provider: 'ollama',
-    model: 'llama3.2:1b',
-    baseUrl: 'http://localhost:11434',
-  };
+  return [
+    { provider: 'ollama', model: 'llama3.2:1b', baseUrl: 'http://localhost:11434' },
+    { provider: 'gemini', model: 'gemini-flash-lite-latest' },
+  ];
+}
+
+export function getAIConfigForTask(task: 'notes' | 'indexing' | 'features'): ResolvedAIConfig {
+  const chain = getAIConfigFallbackChain(task);
+  return chain[0];
 }
 
 export interface PipelineCallbacks {
@@ -278,6 +311,7 @@ export interface ActivePipelineSession {
     generationMode?: 'topical' | 'chronological';
   };
   index?: UnifiedIndex;
+  checkpointedTopics?: TopicNotes[];
   notebook?: Notebook;
   error?: string;
 }
@@ -715,65 +749,137 @@ Instructions:
       throw new Error(`No active session found for job ${jobId}`);
     }
 
-    const { transcripts, videoSources, title, options } = session;
-
     try {
       session.index = approvedIndex;
       notifyStatusChange(session, 'generating');
       notifyStepChange(session, 2, 'active', `Writing detailed study notes (1/${approvedIndex.topics.length})...`);
       notifyLog(session, `Beginning deep notes synthesis for ${approvedIndex.topics.length} topics...`, 'ai');
 
-      const aiConfig = getAIConfigForTask('notes');
-      const allTopicNotes: TopicNotes[] = [];
+      return await executeGenerationLoop(session, approvedIndex, [], undefined);
+    } catch (err: any) {
+      if (err?.isQuotaExhausted || err?.message?.includes('QUOTA_EXHAUSTED')) {
+        throw err;
+      }
+      console.error('Error during notes generation:', err);
+      const errMsg = (typeof err === 'string' ? err : err?.message) || 'Notes generation failed';
+      notifyStepChange(session, session.currentStep, 'error', errMsg);
+      notifyStatusChange(session, 'error');
+      notifyLog(session, errMsg, 'error');
+      notifyError(session, errMsg);
+      throw err;
+    }
+  },
 
-      let topicIndex = 0;
-      for (const topic of approvedIndex.topics) {
-        topicIndex++;
-        notifyStepChange(session, 2, 'active', `Writing topic ${topicIndex}/${approvedIndex.topics.length}: ${topic.title}...`);
-        notifyLog(session, `Generating study notes for: "${topic.title}"`, 'ai');
+  async resumeGeneration(jobId: string, overrideConfig?: ResolvedAIConfig): Promise<Notebook> {
+    let session = activeSessions.get(jobId);
+    if (!session) {
+      const jobRecord = await tauriApi.getJob(jobId);
+      if (!jobRecord || !jobRecord.options_json) {
+        throw new Error(`Session ${jobId} not found in SQLite`);
+      }
+      const data = JSON.parse(jobRecord.options_json);
+      session = {
+        jobId,
+        url: jobRecord.url,
+        title: data.title || 'Study Notebook',
+        status: 'generating',
+        currentStep: 2,
+        steps: PIPELINE_STEPS.map((s, idx) => idx < 2 ? { ...s, status: 'complete' } : (idx === 2 ? { ...s, status: 'active' } : s)),
+        logs: [],
+        transcripts: data.transcripts || [],
+        videoSources: data.videoSources || [],
+        options: data.options || {},
+        index: data.approvedIndex,
+        checkpointedTopics: data.completedTopics || [],
+      };
+      activeSessions.set(jobId, session);
+    }
 
-        const creativity = options.creativityLevel || 2;
-        const creativityMode =
-          creativity === 1 ? 'Strict transcript adherence' :
-          creativity === 2 ? 'Balanced with clear explanations' :
-          creativity === 3 ? 'Enhanced with diagrams and deep context' :
-          'Creative, comprehensive publication-grade mastery notes';
+    try {
+      notifyStatusChange(session, 'generating');
+      const completed = session.checkpointedTopics || [];
+      notifyLog(session, `Resuming generation from checkpoint (${completed.length} topics already completed)...`, 'info');
+      notifyStepChange(session, 2, 'active', `Resuming topic generation (${completed.length + 1}/${session.index?.topics.length || 0})...`);
 
-        // 1. Identify which video transcript this topic belongs to
-        const targetTranscript = (topic.videoSources && topic.videoSources.length > 0)
-          ? transcripts.find(t => topic.videoSources.includes(t.video_info.id))
-          : transcripts.find(t => t.video_info.title.toLowerCase() === topic.title.toLowerCase())
-            || transcripts[Math.min(topicIndex - 1, transcripts.length - 1)];
+      return await executeGenerationLoop(session, session.index!, completed, overrideConfig);
+    } catch (err: any) {
+      if (err?.isQuotaExhausted || err?.message?.includes('QUOTA_EXHAUSTED')) {
+        throw err;
+      }
+      console.error('Error resuming notes generation:', err);
+      const errMsg = (typeof err === 'string' ? err : err?.message) || 'Resume generation failed';
+      notifyStepChange(session, session.currentStep, 'error', errMsg);
+      notifyStatusChange(session, 'error');
+      notifyLog(session, errMsg, 'error');
+      notifyError(session, errMsg);
+      throw err;
+    }
+  },
+};
 
-        const activeTranscript = targetTranscript || transcripts[0];
+async function executeGenerationLoop(
+  session: ActivePipelineSession,
+  approvedIndex: UnifiedIndex,
+  existingCompletedNotes: TopicNotes[] = [],
+  overrideConfig?: ResolvedAIConfig
+): Promise<Notebook> {
+  const { transcripts, videoSources, title, options, jobId } = session;
 
-        // 2. Extract and window transcript segments
-        let segs = activeTranscript.segments;
-        if (topic.startTime !== undefined && (topic.endTime !== undefined || activeTranscript.segments.length > 80)) {
-          const start = topic.startTime;
-          const end = topic.endTime ?? (start + 900);
-          const filtered = segs.filter(s => s.start >= Math.max(0, start - 15) && s.start <= end + 15);
-          if (filtered.length >= 5) {
-            segs = filtered;
-          }
-        }
+  const fallbackChain = overrideConfig
+    ? [overrideConfig, ...getAIConfigFallbackChain('notes').filter(c => c.provider !== overrideConfig.provider)]
+    : getAIConfigFallbackChain('notes');
 
-        const maxExcerpt = aiConfig.provider === 'ollama' ? 7000 : 14000;
-        const transcriptExcerpt = segs
-          .slice(0, 250)
-          .map(s => {
-            const h = Math.floor(s.start / 3600);
-            const m = Math.floor((s.start % 3600) / 60);
-            const sec = Math.floor(s.start % 60);
-            const ts = h > 0
-              ? `${h}:${m.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`
-              : `${m}:${sec.toString().padStart(2, '0')}`;
-            return `[${ts}] ${s.text}`;
-          })
-          .join(' ')
-          .slice(0, maxExcerpt);
+  let currentProviderIndex = 0;
+  const allTopicNotes: TopicNotes[] = [...existingCompletedNotes];
+  const startIndex = existingCompletedNotes.length;
 
-        const prompt = `Write comprehensive, book-quality study notes for the following topic.
+  for (let idx = startIndex; idx < approvedIndex.topics.length; idx++) {
+    const topic = approvedIndex.topics[idx];
+    const topicDisplayNum = idx + 1;
+    notifyStepChange(session, 2, 'active', `Writing topic ${topicDisplayNum}/${approvedIndex.topics.length}: ${topic.title}...`);
+    notifyLog(session, `Generating study notes for: "${topic.title}"`, 'ai');
+
+    const creativity = options.creativityLevel || 2;
+    const creativityMode =
+      creativity === 1 ? 'Strict transcript adherence' :
+      creativity === 2 ? 'Balanced with clear explanations' :
+      creativity === 3 ? 'Enhanced with diagrams and deep context' :
+      'Creative, comprehensive publication-grade mastery notes';
+
+    const targetTranscript = (topic.videoSources && topic.videoSources.length > 0)
+      ? transcripts.find(t => topic.videoSources.includes(t.video_info.id))
+      : transcripts.find(t => t.video_info.title.toLowerCase() === topic.title.toLowerCase())
+        || transcripts[Math.min(idx, transcripts.length - 1)];
+
+    const activeTranscript = targetTranscript || transcripts[0];
+
+    let segs = activeTranscript.segments;
+    if (topic.startTime !== undefined && (topic.endTime !== undefined || activeTranscript.segments.length > 80)) {
+      const start = topic.startTime;
+      const end = topic.endTime ?? (start + 900);
+      const filtered = segs.filter(s => s.start >= Math.max(0, start - 15) && s.start <= end + 15);
+      if (filtered.length >= 5) {
+        segs = filtered;
+      }
+    }
+
+    const activeProvider = fallbackChain[currentProviderIndex] || fallbackChain[0];
+    const maxExcerpt = activeProvider.provider === 'ollama' ? 7000 : 14000;
+    const transcriptExcerpt = segs
+      .slice(0, 250)
+      .map(s => {
+        const h = Math.floor(s.start / 3600);
+        const m = Math.floor((s.start % 3600) / 60);
+        const sec = Math.floor(s.start % 60);
+        const ts = h > 0
+          ? `${h}:${m.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`
+          : `${m}:${sec.toString().padStart(2, '0')}`;
+        return `[${ts}] ${s.text}`;
+      })
+      .join(' ')
+      .slice(0, maxExcerpt);
+
+    const prompt = `Write comprehensive, book-quality study notes for the following topic.
 Topic: "${topic.title}"${topic.timeDisplay ? ` [Timeline Chapter: ${topic.timeDisplay}]` : ''}
 Video Source: "${activeTranscript.video_info.title}"
 Description: ${topic.description || ''}
@@ -793,163 +899,230 @@ ${MERMAID_PROMPT}
 
 Begin directly with the topic notes in structured Markdown.`;
 
-        const systemPrompt = "You are an expert academic tutor and technical note author. Write thoroughly, formatting with rich markdown, clickable timestamps [mm:ss], and valid Mermaid diagrams where useful. Strictly avoid emojis and do NOT output raw HTML tags.";
+    const systemPrompt = "You are an expert academic tutor and technical note author. Write thoroughly, formatting with rich markdown, clickable timestamps [mm:ss], and valid Mermaid diagrams where useful. Strictly avoid emojis and do NOT output raw HTML tags.";
 
-        let topicContent = '';
+    let topicSuccess = false;
+    let topicContent = '';
+    let lastError: any = null;
+
+    while (!topicSuccess && currentProviderIndex < fallbackChain.length) {
+      const curConfig = fallbackChain[currentProviderIndex];
+      topicContent = '';
+      try {
         await tauriApi.streamLLM(
           prompt,
           systemPrompt,
-          aiConfig.provider,
-          aiConfig.model,
-          aiConfig.baseUrl,
+          curConfig.provider,
+          curConfig.model,
+          curConfig.baseUrl,
           (delta) => {
             topicContent += delta;
             notifyNoteDelta(session, topic.id, delta, topic.title);
           },
-          aiConfig.apiKey
+          curConfig.apiKey
         );
+        topicSuccess = true;
+      } catch (err: any) {
+        lastError = err;
+        console.warn(`Provider ${curConfig.provider} (${curConfig.model}) failed for topic "${topic.title}":`, err);
 
-        // Sanitize and validate any Mermaid blocks generated by the LLM
-        const validatedContent = await sanitizeMarkdownMermaidBlocks(topicContent, {
-          topicTitle: topic.title,
-          useAiRepair: false,
-        });
-
-        allTopicNotes.push({
-          topicId: topic.id,
-          topicTitle: topic.title,
-          summary: topic.description || topic.title,
-          sections: [],
-          keyTakeaways: [],
-          videoSources: [{
-            videoId: activeTranscript.video_info.id,
-            videoTitle: activeTranscript.video_info.title,
-            timestamps: topic.startTime !== undefined ? [topic.startTime] : undefined,
-          }],
-          generatedAt: new Date().toISOString(),
-          content: validatedContent,
-          title: topic.title,
-          startTime: topic.startTime,
-          endTime: topic.endTime,
-          timeDisplay: topic.timeDisplay,
-        });
-
-        notifyLog(session, `Completed notes for "${topic.title}"`, 'success');
-      }
-
-      notifyStepChange(session, 2, 'complete', `Synthesized detailed notes for ${allTopicNotes.length} topics`);
-
-      // ── Step 3: Assembling Notebook & Saving to SQLite Vault ──────────────
-      notifyStatusChange(session, 'assembling');
-      notifyStepChange(session, 3, 'active', 'Synthesizing quizzes, concept diagrams & archiving to SQLite...');
-      notifyLog(session, 'Generating self-check quiz and concept flow diagrams...', 'info');
-
-      const notebookId = `nb-${Date.now()}`;
-      const fullMarkdown = allTopicNotes
-        .map(n => `## ${n.topicTitle}\n\n${n.content}`)
-        .join('\n\n---\n\n');
-
-      const wordCount = fullMarkdown.split(/\s+/).length;
-      const readTime = Math.max(1, Math.round(wordCount / 200));
-
-      // Synthesize Quiz Questions automatically
-      let generatedQuiz: any[] = [];
-      try {
-        const topicNames = approvedIndex.topics.map(t => t.title);
-        const quizRes = await api.generateQuiz(topicNames, fullMarkdown.slice(0, 4000));
-        if (Array.isArray(quizRes) && quizRes.length > 0) {
-          generatedQuiz = quizRes;
-          notifyLog(session, `Synthesized ${quizRes.length} interactive self-check questions`, 'success');
+        if (currentProviderIndex + 1 < fallbackChain.length) {
+          const nextConfig = fallbackChain[currentProviderIndex + 1];
+          currentProviderIndex++;
+          notifyLog(session, `Provider ${curConfig.provider} unavailable or quota reached. Failing over to ${nextConfig.provider} (${nextConfig.model})...`, 'info');
+        } else {
+          break; // Exhausted all providers in the fallback chain!
         }
-      } catch (qErr) {
-        console.warn('Pipeline automatic quiz generation skipped:', qErr);
       }
+    }
 
-      // Synthesize Visual Concept Flow Diagram (Mind Map) for first topic
-      const generatedMindMaps: Record<string, any> = {};
-      try {
-        const primaryTopic = approvedIndex.topics[0];
-        if (primaryTopic) {
-          const subtopicTitles = primaryTopic.subtopics.map(s => typeof s === 'string' ? s : s.title);
-          const mapRes = await api.generateMindMap(
-            primaryTopic.title,
-            subtopicTitles,
-            allTopicNotes[0]?.content?.slice(0, 3000) || fullMarkdown.slice(0, 3000)
-          );
-          if (mapRes && Array.isArray(mapRes.nodes) && mapRes.nodes.length > 0) {
-            generatedMindMaps[primaryTopic.id] = {
-              topicId: primaryTopic.id,
-              nodes: mapRes.nodes,
-              edges: mapRes.edges || [],
-            };
-            notifyLog(session, `Constructed visual concept flow diagram for "${primaryTopic.title}"`, 'success');
-          }
-        }
-      } catch (mmErr) {
-        console.warn('Pipeline automatic mind map generation skipped:', mmErr);
-      }
+    if (!topicSuccess) {
+      const errStr = (typeof lastError === 'string' ? lastError : lastError?.message) || 'AI providers quota exhausted or unreachable';
+      session.checkpointedTopics = allTopicNotes;
+      session.error = errStr;
 
-      const finalNotebook: Notebook = {
-        id: notebookId,
-        title: title || 'Study Notebook',
-        description: `Comprehensive synthesis from YouTube with ${approvedIndex.topics.length} chapters.`,
-        chapters: [
-          {
-            id: 'chap-1',
-            title: title || 'Main Study Guide',
-            order: 1,
-            topics: allTopicNotes,
-          },
-        ],
-        index: approvedIndex,
-        metadata: {
-          totalVideos: videoSources.length,
-          totalTopics: approvedIndex.topics.length,
-          totalWords: wordCount,
-          estimatedReadTime: readTime,
-          sourceVideos: videoSources,
-        },
-        quiz: generatedQuiz.length > 0 ? generatedQuiz : undefined,
-        mindMaps: Object.keys(generatedMindMaps).length > 0 ? generatedMindMaps : undefined,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-
-      // Persist to native SQLite
-      await tauriApi.saveNotebook({
-        id: notebookId,
-        job_id: jobId,
-        title: finalNotebook.title,
-        content_json: JSON.stringify(finalNotebook),
-        created_at: finalNotebook.createdAt,
-      });
-
+      // Checkpoint immediately to SQLite
       await tauriApi.saveJob({
         id: jobId,
         url: session.url,
-        status: 'complete',
-        current_step: 3,
-        options_json: JSON.stringify({ notebookId, notebook: finalNotebook }),
+        status: 'paused-rate-limit',
+        current_step: 2,
+        options_json: JSON.stringify({
+          completedTopics: allTopicNotes,
+          failedTopicIndex: idx,
+          approvedIndex,
+          videoSources,
+          title,
+          transcripts,
+          options,
+          error: errStr,
+        }),
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
-      });
+      }).catch(console.warn);
 
-      notifyStepChange(session, 3, 'complete', 'Notebook archived to local SQLite vault');
-      notifyStatusChange(session, 'complete');
-      notifyLog(session, 'Notebook generated successfully and stored in SQLite!', 'success');
+      notifyStepChange(session, 2, 'active', `Paused: Quota exhausted at topic ${topicDisplayNum}/${approvedIndex.topics.length}. ${allTopicNotes.length} topics saved.`);
+      notifyStatusChange(session, 'paused-rate-limit');
+      notifyLog(session, `Quota exhausted on all providers. Generation paused at topic ${topicDisplayNum}. Completed topics (${allTopicNotes.length}) safely stored in SQLite.`, 'error');
 
-      notifyComplete(session, finalNotebook);
-      activeSessions.delete(jobId);
-
-      return finalNotebook;
-    } catch (err: any) {
-      console.error('Error during notes generation:', err);
-      const errMsg = (typeof err === 'string' ? err : err?.message) || 'Notes generation failed';
-      notifyStepChange(session, session.currentStep, 'error', errMsg);
-      notifyStatusChange(session, 'error');
-      notifyLog(session, errMsg, 'error');
-      notifyError(session, errMsg);
-      throw err;
+      const haltErr = new Error(`QUOTA_EXHAUSTED: ${errStr}`);
+      (haltErr as any).isQuotaExhausted = true;
+      throw haltErr;
     }
-  },
-};
+
+    // Sanitize and validate Mermaid blocks
+    const validatedContent = await sanitizeMarkdownMermaidBlocks(topicContent, {
+      topicTitle: topic.title,
+      useAiRepair: false,
+    });
+
+    const newTopicNote: TopicNotes = {
+      topicId: topic.id,
+      topicTitle: topic.title,
+      summary: topic.description || topic.title,
+      sections: [],
+      keyTakeaways: [],
+      videoSources: [{
+        videoId: activeTranscript.video_info.id,
+        videoTitle: activeTranscript.video_info.title,
+        timestamps: topic.startTime !== undefined ? [topic.startTime] : undefined,
+      }],
+      generatedAt: new Date().toISOString(),
+      content: validatedContent,
+      title: topic.title,
+      startTime: topic.startTime,
+      endTime: topic.endTime,
+      timeDisplay: topic.timeDisplay,
+    };
+
+    allTopicNotes.push(newTopicNote);
+    session.checkpointedTopics = allTopicNotes;
+
+    // Incremental checkpoint to SQLite after each successful topic
+    await tauriApi.saveJob({
+      id: jobId,
+      url: session.url,
+      status: 'generating',
+      current_step: 2,
+      options_json: JSON.stringify({
+        completedTopics: allTopicNotes,
+        currentTopicIndex: topicDisplayNum,
+        approvedIndex,
+        videoSources,
+        title,
+        transcripts,
+        options,
+      }),
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }).catch(console.warn);
+
+    notifyLog(session, `Completed notes for "${topic.title}" (${topicDisplayNum}/${approvedIndex.topics.length})`, 'success');
+  }
+
+  notifyStepChange(session, 2, 'complete', `Synthesized detailed notes for ${allTopicNotes.length} topics`);
+
+  // ── Step 3: Assembling Notebook & Archiving to SQLite Vault ────────
+  notifyStatusChange(session, 'assembling');
+  notifyStepChange(session, 3, 'active', 'Synthesizing quizzes, concept diagrams & archiving to SQLite...');
+  notifyLog(session, 'Generating self-check quiz and concept flow diagrams...', 'info');
+
+  const notebookId = `nb-${Date.now()}`;
+  const fullMarkdown = allTopicNotes
+    .map(n => `## ${n.topicTitle}\n\n${n.content}`)
+    .join('\n\n---\n\n');
+
+  const wordCount = fullMarkdown.split(/\s+/).length;
+  const readTime = Math.max(1, Math.round(wordCount / 200));
+
+  // Quiz generation
+  let generatedQuiz: any[] = [];
+  try {
+    const topicNames = approvedIndex.topics.map(t => t.title);
+    const quizRes = await api.generateQuiz(topicNames, fullMarkdown.slice(0, 4000));
+    if (Array.isArray(quizRes) && quizRes.length > 0) {
+      generatedQuiz = quizRes;
+      notifyLog(session, `Synthesized ${quizRes.length} interactive self-check questions`, 'success');
+    }
+  } catch (qErr) {
+    console.warn('Pipeline automatic quiz generation skipped:', qErr);
+  }
+
+  // Mind map generation
+  const generatedMindMaps: Record<string, any> = {};
+  try {
+    const primaryTopic = approvedIndex.topics[0];
+    if (primaryTopic) {
+      const subtopicTitles = primaryTopic.subtopics.map(s => typeof s === 'string' ? s : s.title);
+      const mapRes = await api.generateMindMap(
+        primaryTopic.title,
+        subtopicTitles,
+        allTopicNotes[0]?.content?.slice(0, 3000) || fullMarkdown.slice(0, 3000)
+      );
+      if (mapRes && Array.isArray(mapRes.nodes) && mapRes.nodes.length > 0) {
+        generatedMindMaps[primaryTopic.id] = {
+          topicId: primaryTopic.id,
+          nodes: mapRes.nodes,
+          edges: mapRes.edges || [],
+        };
+        notifyLog(session, `Constructed visual concept flow diagram for "${primaryTopic.title}"`, 'success');
+      }
+    }
+  } catch (mmErr) {
+    console.warn('Pipeline automatic mind map generation skipped:', mmErr);
+  }
+
+  const finalNotebook: Notebook = {
+    id: notebookId,
+    title: title || 'Study Notebook',
+    description: `Comprehensive synthesis from YouTube with ${approvedIndex.topics.length} chapters.`,
+    chapters: [
+      {
+        id: 'chap-1',
+        title: title || 'Main Study Guide',
+        order: 1,
+        topics: allTopicNotes,
+      },
+    ],
+    index: approvedIndex,
+    metadata: {
+      totalVideos: videoSources.length,
+      totalTopics: approvedIndex.topics.length,
+      totalWords: wordCount,
+      estimatedReadTime: readTime,
+      sourceVideos: videoSources,
+    },
+    quiz: generatedQuiz.length > 0 ? generatedQuiz : undefined,
+    mindMaps: Object.keys(generatedMindMaps).length > 0 ? generatedMindMaps : undefined,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+
+  // Persist to native SQLite
+  await tauriApi.saveNotebook({
+    id: notebookId,
+    job_id: jobId,
+    title: finalNotebook.title,
+    content_json: JSON.stringify(finalNotebook),
+    created_at: finalNotebook.createdAt,
+  });
+
+  await tauriApi.saveJob({
+    id: jobId,
+    url: session.url,
+    status: 'complete',
+    current_step: 3,
+    options_json: JSON.stringify({ notebookId, notebook: finalNotebook }),
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  });
+
+  notifyStepChange(session, 3, 'complete', 'Notebook archived to local SQLite vault');
+  notifyStatusChange(session, 'complete');
+  notifyLog(session, 'Notebook generated successfully and stored in SQLite!', 'success');
+
+  notifyComplete(session, finalNotebook);
+  activeSessions.delete(jobId);
+
+  return finalNotebook;
+}

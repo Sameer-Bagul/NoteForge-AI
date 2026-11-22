@@ -6,7 +6,8 @@ import {
     Printer, Share2, Sparkles, RotateCcw
 } from 'lucide-react';
 import { useSettings } from '@/context/SettingsContext';
-import { isTauri } from '@/services/tauri';
+import { isTauri, tauriApi } from '@/services/tauri';
+import { exportNotebookAsFolder } from '@/services/export/bundleExport';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -833,6 +834,36 @@ export function NotebookShell({ notes, onReset }: NotebookShellProps) {
         toast({ title: 'Downloaded!', description: 'Notebook saved as Markdown.' });
     };
 
+    const [isExportingFolder, setIsExportingFolder] = useState(false);
+
+    const handleExportFolder = async () => {
+        try {
+            setIsExportingFolder(true);
+            const res = await exportNotebookAsFolder(currentNotes);
+            if (res.cancelled) return;
+            if (res.success) {
+                toast({
+                    title: res.isZipFallback ? 'Study Vault Downloaded' : 'Study Vault Exported',
+                    description: res.message || 'Notebook files exported successfully.',
+                });
+            } else {
+                toast({
+                    title: 'Export Failed',
+                    description: res.message || 'Could not export folder.',
+                    variant: 'destructive',
+                });
+            }
+        } catch (err: any) {
+            toast({
+                title: 'Export Error',
+                description: err?.message || 'Unexpected error during folder export.',
+                variant: 'destructive',
+            });
+        } finally {
+            setIsExportingFolder(false);
+        }
+    };
+
     const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
     const isArchived = Boolean(currentNotes.isArchived);
 
@@ -982,6 +1013,7 @@ export function NotebookShell({ notes, onReset }: NotebookShellProps) {
 
     const handlersRef = useRef({
         handleDownloadPdf,
+        handleExportFolder,
         handleDownloadAll,
         handleExportCmsJson,
         setIsStudioMode,
@@ -989,6 +1021,7 @@ export function NotebookShell({ notes, onReset }: NotebookShellProps) {
     });
     handlersRef.current = {
         handleDownloadPdf,
+        handleExportFolder,
         handleDownloadAll,
         handleExportCmsJson,
         setIsStudioMode,
@@ -1007,6 +1040,8 @@ export function NotebookShell({ notes, onReset }: NotebookShellProps) {
             onToggleStudioMode: () => handlersRef.current.setIsStudioMode(prev => !prev),
             isExportingPdf,
             onExportPdf: () => handlersRef.current.handleDownloadPdf(),
+            isExportingFolder,
+            onExportFolder: () => handlersRef.current.handleExportFolder(),
             onDownloadMarkdown: () => handlersRef.current.handleDownloadAll(),
             onExportCmsJson: () => handlersRef.current.handleExportCmsJson(),
             isDeleting,
@@ -1026,6 +1061,7 @@ export function NotebookShell({ notes, onReset }: NotebookShellProps) {
         videoId,
         isStudioMode,
         isExportingPdf,
+        isExportingFolder,
         isDeleting,
         isArchived,
     ]);

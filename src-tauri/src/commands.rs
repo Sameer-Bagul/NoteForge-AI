@@ -3,6 +3,7 @@ use crate::keychain::KeychainVault;
 use crate::llm::{LLMConfig, LLMService};
 use crate::youtube::{ExtractedTranscript, PlaylistMetadata, YouTubeService};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, State};
 
@@ -136,4 +137,59 @@ pub async fn stream_llm(
     )
     .await
 }
+
+#[tauri::command]
+pub fn export_notebook_folder(
+    base_path: String,
+    folder_name: String,
+    files: HashMap<String, String>,
+) -> Result<String, String> {
+    let sanitized_folder = folder_name
+        .chars()
+        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' || c == ' ' { c } else { '_' })
+        .collect::<String>()
+        .trim()
+        .to_string();
+
+    let root = std::path::PathBuf::from(&base_path).join(&sanitized_folder);
+    std::fs::create_dir_all(&root).map_err(|e| format!("Failed to create folder: {}", e))?;
+
+    for (rel_path, content) in files {
+        let file_path = root.join(&rel_path);
+        if let Some(parent) = file_path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| format!("Failed to create parent directory for {}: {}", rel_path, e))?;
+        }
+        std::fs::write(&file_path, content.as_bytes())
+            .map_err(|e| format!("Failed to write file {}: {}", rel_path, e))?;
+    }
+
+    Ok(root.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+pub fn reveal_folder(path: String) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("explorer")
+            .arg(&path)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(&path)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    #[cfg(target_os = "linux")]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(&path)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 

@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useProcessing } from '@/hooks/useProcessing';
+import { useSettings } from '@/context/SettingsContext';
 import ProcessingView from '@/components/ProcessingView';
 import { IndexReview } from '@/components/IndexReview';
 import ResultsView from '@/components/ResultsView';
@@ -10,13 +11,14 @@ import { SourceVideoCard } from '@/components/SourceVideoCard';
 import { StudyBlueprintCard } from '@/components/StudyBlueprintCard';
 import { SessionTelemetryCard } from '@/components/SessionTelemetryCard';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Loader2, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Loader2, AlertCircle, RefreshCw, Settings2, Database } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 const Process = () => {
     const { jobId } = useParams<{ jobId: string }>();
     const navigate = useNavigate();
     const { state, approveIndex, reset, logs, startProcessing, resumeJob } = useProcessing(jobId);
+    const { openSettings } = useSettings();
 
     useEffect(() => {
         if (!jobId) {
@@ -161,28 +163,81 @@ const Process = () => {
                     </div>
                 );
 
-            case 'paused-rate-limit':
+            case 'paused-rate-limit': {
+                const totalTopics = state.index?.topics?.length || 0;
+                const completedCount = state.notes?.notes?.length || 0;
+
                 return (
-                    <div className="flex flex-col items-center justify-center h-[60vh] gap-5 text-center max-w-md mx-auto">
-                        <div className="w-16 h-16 rounded-full bg-amber-500/10 flex items-center justify-center border border-amber-500/20">
-                            <AlertCircle className="w-8 h-8 text-amber-500" />
-                        </div>
-                        <div className="space-y-1.5">
-                            <h2 className="text-xl font-semibold tracking-tight text-foreground">API Quota Exhausted</h2>
-                            <p className="text-xs text-muted-foreground leading-relaxed">
-                                The AI provider has rate-limited requests. The job state has been saved in SQLite.
-                            </p>
-                        </div>
-                        <div className="flex gap-3 mt-2">
-                            <Button onClick={handleReset} variant="outline" size="sm">
-                                Return to Home
-                            </Button>
-                            <Button onClick={resumeJob} size="sm">
-                                Resume Generation
-                            </Button>
+                    <div className="flex flex-col items-center justify-center min-h-[65vh] px-4 py-8 max-w-xl mx-auto">
+                        <div className="w-full bg-card/60 border border-amber-500/25 rounded-2xl p-6 md:p-8 backdrop-blur-sm shadow-xl space-y-6">
+                            <div className="flex items-start gap-4">
+                                <div className="w-12 h-12 rounded-xl bg-amber-500/10 flex items-center justify-center border border-amber-500/20 shrink-0 mt-0.5">
+                                    <AlertCircle className="w-6 h-6 text-amber-500" />
+                                </div>
+                                <div className="space-y-1.5 flex-1 min-w-0">
+                                    <div className="flex items-center gap-2">
+                                        <h2 className="text-lg font-semibold tracking-tight text-foreground">
+                                            AI Quota Limit Reached
+                                        </h2>
+                                        <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-medium bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                                            Paused
+                                        </span>
+                                    </div>
+                                    <p className="text-xs text-muted-foreground leading-relaxed">
+                                        All active AI providers have temporarily exhausted their rate limit or token quota.
+                                    </p>
+                                </div>
+                            </div>
+
+                            {/* SQLite Checkpoint Guarantee Banner */}
+                            <div className="rounded-xl bg-emerald-500/10 border border-emerald-500/20 p-3.5 flex items-center gap-3">
+                                <Database className="w-4 h-4 text-emerald-400 shrink-0" />
+                                <div className="text-xs text-emerald-300 leading-normal">
+                                    <span className="font-medium text-emerald-200">Checkpoint Safe:</span>{' '}
+                                    {completedCount > 0
+                                        ? `${completedCount} of ${totalTopics || completedCount} chapters have been compiled and safely written to SQLite.`
+                                        : 'Session state is safely checkpointed in local SQLite.'}
+                                </div>
+                            </div>
+
+                            {state.error && (
+                                <div className="rounded-lg bg-muted/60 border border-border/40 p-3 text-[11px] font-mono text-muted-foreground break-all">
+                                    {state.error}
+                                </div>
+                            )}
+
+                            <div className="space-y-2 pt-1 text-xs text-muted-foreground">
+                                <p className="font-medium text-foreground">How would you like to proceed?</p>
+                                <ul className="list-disc pl-4 space-y-1 text-[11px]">
+                                    <li>Wait 30-60 seconds for provider per-minute quotas to refresh, then resume.</li>
+                                    <li>Open Settings to add a secondary API key or switch to local Ollama.</li>
+                                </ul>
+                            </div>
+
+                            <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-border/40">
+                                <Button onClick={handleReset} variant="ghost" size="sm" className="gap-2 text-xs">
+                                    <ArrowLeft className="w-3.5 h-3.5" />
+                                    Return to Home
+                                </Button>
+                                <div className="flex items-center gap-2">
+                                    <Button onClick={openSettings} variant="outline" size="sm" className="gap-2 text-xs">
+                                        <Settings2 className="w-3.5 h-3.5" />
+                                        Configure Providers
+                                    </Button>
+                                    <Button
+                                        onClick={() => resumeJob()}
+                                        size="sm"
+                                        className="gap-2 text-xs bg-amber-600 hover:bg-amber-500 text-white shadow-sm"
+                                    >
+                                        <RefreshCw className="w-3.5 h-3.5" />
+                                        Resume Generation
+                                    </Button>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 );
+            }
 
             default:
                 return null;
