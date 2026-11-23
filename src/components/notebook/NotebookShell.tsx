@@ -20,6 +20,7 @@ import {
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { RunningNotesViewer } from './RunningNotesViewer';
+import { NotebookCopilot } from './NotebookCopilot';
 import { MindMapTab } from './MindMapTab';
 import { QuizTab } from './QuizTab';
 import { InterviewTab } from './InterviewTab';
@@ -516,6 +517,22 @@ export function NotebookShell({ notes, onReset }: NotebookShellProps) {
     const [activeTab, setActiveTab] = useState<TabType>('index');
     const [isStudioMode, setIsStudioMode] = useState(true);
     const [seekTime, setSeekTime] = useState<number | null>(null);
+
+    // AI Study Copilot state
+    const [isCopilotOpen, setIsCopilotOpen] = useState(false);
+    const [copilotSelectedText, setCopilotSelectedText] = useState<string | undefined>(undefined);
+    const [copilotInitialPrompt, setCopilotInitialPrompt] = useState<string | undefined>(undefined);
+
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+                e.preventDefault();
+                setIsCopilotOpen(prev => !prev);
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, []);
 
     useEffect(() => {
         setCurrentNotes(notes);
@@ -1145,12 +1162,28 @@ export function NotebookShell({ notes, onReset }: NotebookShellProps) {
                                     <span>Index</span>
                                 </Button>
                             )}
+
+                            <Button
+                                variant={isCopilotOpen ? "default" : "outline"}
+                                size="sm"
+                                onClick={() => setIsCopilotOpen(prev => !prev)}
+                                className={cn(
+                                    "h-7 text-xs rounded-lg px-2.5 gap-1.5 font-medium transition-all",
+                                    isCopilotOpen && "bg-primary text-primary-foreground"
+                                )}
+                                title="Toggle AI Study Copilot (Ctrl+K / Cmd+K)"
+                            >
+                                <Sparkles className="w-3.5 h-3.5" />
+                                <span>Copilot</span>
+                                <kbd className="hidden sm:inline-flex text-[9px] px-1 py-0.2 rounded bg-muted/60 border border-border/40 font-mono opacity-80">⌘K</kbd>
+                            </Button>
                         </div>
                     </header>
 
                     {/* ── Active Tab Content Area (The Single Scrollable Container) ── */}
-                    <div className="flex-1 overflow-hidden min-h-0 flex flex-col">
-                        {/* TAB 1: CURRICULUM INDEX (Default View) */}
+                    <div className="flex-1 overflow-hidden min-h-0 flex flex-row">
+                        <div className="flex-1 overflow-hidden min-h-0 flex flex-col">
+                            {/* TAB 1: CURRICULUM INDEX (Default View) */}
                         {activeTab === 'index' && (
                             <div className="flex-1 overflow-y-auto min-h-0 scroll-smooth">
                                 <IndexPanel
@@ -1241,6 +1274,11 @@ export function NotebookShell({ notes, onReset }: NotebookShellProps) {
                                             enhancedWith={(activeNote as any)?.enhancedWith}
                                             onEnhance={() => handleEnhanceChapter((activeNote as any)?.topicId)}
                                             onRevert={() => handleRevertChapter((activeNote as any)?.topicId)}
+                                            onAskCopilot={(selectedText, prompt) => {
+                                                setCopilotSelectedText(selectedText);
+                                                setCopilotInitialPrompt(prompt);
+                                                setIsCopilotOpen(true);
+                                            }}
                                         />
                                     ) : (
                                         <div className="flex flex-col items-center justify-center h-full p-8 text-center text-muted-foreground space-y-2">
@@ -1294,6 +1332,25 @@ export function NotebookShell({ notes, onReset }: NotebookShellProps) {
                                 </div>
                             </div>
                         )}
+                        </div>
+
+                        {/* RAG Study Copilot Drawer */}
+                        <NotebookCopilot
+                            isOpen={isCopilotOpen}
+                            onClose={() => setIsCopilotOpen(false)}
+                            notes={currentNotes}
+                            activeTopicId={activeTopicId}
+                            onSeek={(secs) => {
+                                setSeekTime(secs);
+                                if (!isStudioMode) setIsStudioMode(true);
+                            }}
+                            initialSelectedText={copilotSelectedText}
+                            initialPrompt={copilotInitialPrompt}
+                            onClearInitialSelection={() => {
+                                setCopilotSelectedText(undefined);
+                                setCopilotInitialPrompt(undefined);
+                            }}
+                        />
                     </div>
                 </main>
 

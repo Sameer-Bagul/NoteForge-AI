@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { MermaidDiagram } from './MermaidDiagram';
+import { SelectionPopover } from './SelectionPopover';
 
 interface RunningNotesViewerProps {
     content: string;
@@ -35,6 +36,7 @@ interface RunningNotesViewerProps {
     enhancedWith?: string;
     onEnhance?: () => void;
     onRevert?: () => void;
+    onAskCopilot?: (selectedText: string, prompt?: string) => void;
 }
 
 // ─── Code Block Component (Un-slopped & Minimalist) ───────────────────────────
@@ -497,9 +499,11 @@ export function RunningNotesViewer({
     onEnhance,
     onRevert,
     streamingStatus,
+    onAskCopilot,
 }: RunningNotesViewerProps) {
     const [copied, setCopied] = useState(false);
     const scrollContainerRef = useRef<HTMLDivElement>(null);
+    const articleRef = useRef<HTMLElement>(null);
     const [userScrolledUp, setUserScrolledUp] = useState(false);
 
     const wordCount = useMemo(() => content.split(/\s+/).filter(Boolean).length, [content]);
@@ -655,9 +659,16 @@ export function RunningNotesViewer({
                         )}
 
                         {/* Article Content */}
-                        <article className="space-y-4">
+                        <article ref={articleRef} className="space-y-4 relative">
                             {renderNotebook(content, title, onSeek, isStreaming)}
                         </article>
+
+                        {onAskCopilot && (
+                            <SelectionPopover
+                                containerRef={articleRef}
+                                onAskCopilot={onAskCopilot}
+                            />
+                        )}
 
                         {/* ── Chapter Pagination Footer ─────────────────────────── */}
                         {(onPrevChapter || onNextChapter) && (
